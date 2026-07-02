@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 48">
+  <!-- VayuMail wordmark: icon at left (32x32, vertically centered),
+       weight-shifted wordmark at right. Do not modify geometry. -->
+  <g transform="translate(8,8) scale(0.5)">
+    <path d="M 10 14 C 14 38, 24 54, 32 58"
+          fill="none" stroke="#0D0D0D" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 54 14 C 50 38, 40 54, 32 58"
+          fill="none" stroke="#0D0D0D" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="32" cy="58" r="2.5" fill="#0D0D0D"/>
+  </g>
+  <text x="52" y="30" font-family="system-ui, -apple-system, sans-serif"
+        font-size="20" letter-spacing="0.5">
+    <tspan font-weight="300" fill="#0D0D0D">vayu</tspan><tspan font-weight="500" fill="#0D0D0D">mail</tspan>
+  </text>
+</svg>

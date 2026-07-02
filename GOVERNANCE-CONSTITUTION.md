@@ -1,0 +1,108 @@
+# VayuMail-Mobile Governance Constitution
+
+**Version: v1.0**
+
+These rules govern all code in this repository without exception. Any
+contribution that violates a rule must resolve the violation before merge.
+No rule may be bypassed by adding an exception — the rule must be revised by
+the maintainer with a documented rationale if it no longer serves the
+project.
+
+---
+
+## Rule 1 — Pure Go, no cgo
+
+Every dependency must be pure Go or have a documented, tested cgo-free build
+path. SQLite driver: `modernc.org/sqlite` only — never `mattn/go-sqlite3` or
+any cgo variant. If a required capability has no pure-Go implementation, it
+is documented explicitly in COMPLIANCE-TRACKER.md as a known gap, never
+hidden behind a silent workaround.
+
+## Rule 2 — Apache 2.0 / MIT dependency chain only
+
+Before any import is added to `go.mod`, its SPDX license identifier must be
+confirmed as Apache-2.0 or MIT. GPL, AGPL, LGPL, CDDL, EPL — any copyleft
+license — is a hard stop. Every dependency's license confirmation is
+recorded in docs/ADR-0006-dependency-license-audit.md, which must be updated
+every time `go.mod` changes.
+
+## Rule 3 — Module path
+
+`module github.com/johalputt/VayuMail-Mobile`. All internal imports use this
+path. Relative imports are forbidden everywhere in the codebase.
+
+## Rule 4 — Strict package boundary, enforced by CI
+
+`internal/mail/`, `internal/store/`, and `internal/syncmanager/` must never
+import `gioui.org/*`, any platform-specific package, or any package from
+`ui/` or `platform/`. Only `ui/` and `platform/` may import Gio. CI fails
+the build on any violation:
+
+```sh
+result=$(grep -rl "gioui.org" internal/mail internal/store internal/syncmanager 2>/dev/null)
+[ -z "$result" ] || (echo "BOUNDARY VIOLATION: $result" && exit 1)
+```
+
+Purpose: `internal/mail/` could be imported by a CLI, a VayuPress server
+plugin, or a desktop client tomorrow without any modification.
+
+## Rule 5 — Async discipline: Gio is single-threaded
+
+Gio's event loop runs on one goroutine. Nothing inside any `Layout()`,
+`Update()`, or event handler may block on network I/O, disk I/O, mutexes
+held longer than a map lookup, or `time.Sleep()`. All blocking operations
+happen in syncmanager goroutines. State flows to the UI through typed
+channels polled non-blockingly with `select { default: }`. A violation of
+this rule produces UI jank; there are none in this codebase.
+
+## Rule 6 — Credential sovereignty
+
+Raw IMAP passwords, SMTP passwords, OAuth tokens, and provisioning secrets
+are never written to SQLite or any file on disk by application code. Ever.
+Android uses the Android Keystore; iOS uses the iOS Keychain — both via
+gomobile bind. The account row in SQLite contains server addresses, ports,
+usernames, TLS settings, and a keystore key alias — never the credential
+itself. The credential is fetched from the platform keystore at connection
+time, used in memory, and discarded when the connection closes.
+
+## Rule 7 — QR provisioning signature verification
+
+QR-derived account payloads must be Ed25519-signature-verified before any
+field is used to open a network connection. An unsigned or unverifiable
+payload returns a typed error and produces a clear user-facing message. It
+never silently falls back to using unverified values. A malicious QR code
+must not be able to redirect the app to an attacker-controlled mail server.
+
+## Rule 8 — Battery and permission honesty
+
+Permissions requested at v0.1.0, and no others:
+
+| Permission | Justification |
+|---|---|
+| `INTERNET` | Required; self-evident for a mail client |
+| `CAMERA` | QR provisioning — the onboarding path |
+| `FOREGROUND_SERVICE` | Android background IMAP IDLE (ADR-0005) |
+| `RECEIVE_BOOT_COMPLETED` | Restart sync on reboot (ADR-0005) |
+
+No `ACCESS_FINE_LOCATION`. No `READ_CONTACTS`. No `RECORD_AUDIO`. Any
+future permission requires a new ADR before the manifest is touched.
+
+## Rule 9 — Honest compliance
+
+Any incomplete implementation is marked `// STUB: <reason>` in code and
+entered in COMPLIANCE-TRACKER.md with status PARTIAL or PENDING. No unmarked
+stubs. No silent omissions. COMPLIANCE-TRACKER.md is always a true
+representation of what is and is not production-ready.
+
+## Rule 10 — File size discipline
+
+No file exceeds 400 lines. Logic that grows beyond that is split into
+focused sub-files. This keeps every file graspable in one reading session.
+
+---
+
+## Amendment process
+
+A rule is amended only by the maintainer, in a commit that changes this
+document, bumps its version, and records the rationale in a new or updated
+ADR. Code may never lead the constitution; the constitution leads the code.

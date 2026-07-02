@@ -1,0 +1,29 @@
+# Recorded IMAP IDLE session (annotated transcript).
+# Live protocol behavior is exercised offline by imapsync_test.go via the
+# in-memory imapserver; this transcript documents the wire sequence the
+# IDLE loop in internal/mail/imapsync/idle.go implements.
+S: * OK [CAPABILITY IMAP4rev1 IDLE] IMAP server ready
+C: A1 LOGIN user@example.com <redacted>
+S: A1 OK LOGIN completed
+C: A2 LIST "" "*"
+S: * LIST (\HasNoChildren) "/" INBOX
+S: A2 OK LIST completed
+C: A3 SELECT INBOX
+S: * 2 EXISTS
+S: * OK [UIDVALIDITY 1717600000] UIDs valid
+S: A3 OK [READ-WRITE] SELECT completed
+C: A4 UID FETCH 1:* (UID ENVELOPE FLAGS RFC822.SIZE)
+S: * 1 FETCH (UID 101 ...)
+S: * 2 FETCH (UID 102 ...)
+S: A4 OK FETCH completed
+C: A5 IDLE
+S: + idling
+# ... 29-minute keepalive window; server push on new mail:
+S: * 3 EXISTS
+C: DONE
+S: A5 OK IDLE terminated
+C: A6 UID FETCH 103:* (UID ENVELOPE FLAGS RFC822.SIZE)
+S: * 3 FETCH (UID 103 ...)
+S: A6 OK FETCH completed
+C: A7 IDLE
+S: + idling

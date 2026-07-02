@@ -1,0 +1,29 @@
+# Binaries
+/vayumail
+/vayumail-cli
+*.apk
+*.aab
+*.ipa
+*.app
+
+# Build output
+/dist/
+/build/
+platform/android/build/
+platform/ios/build/
+
+# Go
+*.test
+*.out
+coverage.txt
+
+# Databases created during local runs
+*.db
+*.db-wal
+*.db-shm
+
+# Editor and OS noise
+.idea/
+.vscode/
+*.swp
+.DS_Store

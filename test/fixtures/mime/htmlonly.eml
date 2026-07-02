@@ -1,0 +1,8 @@
+From: eve@example.com
+To: bob@example.com
+Subject: HTML only
+Date: Thu, 04 Jun 2026 13:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<div>Hello<br>world<iframe src="http://evil.example"></iframe></div>

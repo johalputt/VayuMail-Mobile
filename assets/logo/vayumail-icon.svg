@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- VayuMail icon: two open arcs converging at a single point.
+       A V drawn by the wind, not by a ruler. Do not modify geometry. -->
+  <path d="M 10 14 C 14 38, 24 54, 32 58"
+        fill="none" stroke="#0D0D0D" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M 54 14 C 50 38, 40 54, 32 58"
+        fill="none" stroke="#0D0D0D" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="32" cy="58" r="2.5" fill="#0D0D0D"/>
+</svg>
