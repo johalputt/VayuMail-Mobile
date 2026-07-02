@@ -1,0 +1,19 @@
+From: dave@example.com
+To: bob@example.com
+Subject: Secret
+Date: Wed, 03 Jun 2026 12:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/encrypted; protocol="application/pgp-encrypted"; boundary="ENC"
+
+--ENC
+Content-Type: application/pgp-encrypted
+
+Version: 1
+--ENC
+Content-Type: application/octet-stream
+
+-----BEGIN PGP MESSAGE-----
+
+hQEMA000000000000AQf9
+-----END PGP MESSAGE-----
+--ENC--

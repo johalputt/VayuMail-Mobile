@@ -1,0 +1,12 @@
+From: Alice Example <alice@example.com>
+To: bob@example.com
+Subject: Simple plain text
+Date: Mon, 01 Jun 2026 10:00:00 +0000
+Message-ID: <simple-1@example.com>
+Content-Type: text/plain; charset=utf-8
+
+Hello Bob,
+
+The wind carries this message.
+
+Alice

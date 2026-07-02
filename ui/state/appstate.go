@@ -1,0 +1,324 @@
+// Package state holds the UI-side application state: an immutable
+// snapshot the render loop reads, refreshed asynchronously from the
+// store. Layout code never touches SQLite or the network (Rule 5) — it
+// reads the latest snapshot, and every mutation goes through the
+// syncmanager command channel or an async loader here.
+package state
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"sync"
+	"time"
+
+	"github.com/johalputt/VayuMail-Mobile/internal/mail/pgp"
+	"github.com/johalputt/VayuMail-Mobile/internal/mail/smtpsend"
+	"github.com/johalputt/VayuMail-Mobile/internal/store"
+	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
+)
+
+// Snapshot is one consistent view of everything the screens render. It is
+// replaced wholesale by Refresh; render code must treat it as read-only.
+type Snapshot struct {
+	Accounts      []store.Account
+	Folders       []store.Folder
+	Unread        map[int64]int
+	CurrentFolder store.Folder
+	Messages      []store.Message
+	Thread        []store.Message
+	SearchResults []store.Message
+	Online        bool
+	SyncDone      int
+	SyncTotal     int
+	AuthError     bool
+}
+
+// AppState mediates between the sync layer and the screens.
+type AppState struct {
+	db  *store.DB
+	mgr *syncmanager.Manager
+
+	// invalidate wakes the window after an async snapshot update.
+	invalidate func()
+	// Notify shows a transient snackbar; set by the app root.
+	Notify func(msg string)
+
+	mu           sync.Mutex
+	snap         Snapshot
+	selAccount   int64
+	selFolder    int64
+	selThread    string
+	searchQuery  string
+	refreshQueue chan struct{}
+}
+
+// New creates the state and starts its single loader goroutine, which
+// serializes all store reads triggered by Refresh.
+func New(ctx context.Context, db *store.DB, mgr *syncmanager.Manager) *AppState {
+	s := &AppState{
+		db:           db,
+		mgr:          mgr,
+		refreshQueue: make(chan struct{}, 1),
+		snap:         Snapshot{Unread: map[int64]int{}, Online: true},
+	}
+	go s.loaderLoop(ctx)
+	return s
+}
+
+// SetInvalidate wires the window wake-up used after async updates.
+func (s *AppState) SetInvalidate(fn func()) { s.invalidate = fn }
+
+// Snapshot returns the current view state. Cheap: shallow copy.
+func (s *AppState) Snapshot() Snapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.snap
+}
+
+// Send forwards a command to the sync layer without blocking; failures
+// surface through the snackbar.
+func (s *AppState) Send(cmd syncmanager.Cmd) {
+	if err := s.mgr.Send(cmd); err != nil {
+		s.notify("Busy — try again")
+	}
+}
+
+// Apply folds one sync event into the state. Called from the frame loop;
+// it must stay non-blocking (map updates and refresh scheduling only).
+func (s *AppState) Apply(ev syncmanager.Event) {
+	s.mu.Lock()
+	switch e := ev.(type) {
+	case syncmanager.ConnectionEvent:
+		s.snap.Online = e.Online
+	case syncmanager.SyncProgressEvent:
+		s.snap.SyncDone, s.snap.SyncTotal = e.Done, e.Total
+	case syncmanager.AuthErrorEvent:
+		s.snap.AuthError = true
+	case syncmanager.SendResultEvent:
+		s.mu.Unlock()
+		if e.Err != nil {
+			s.notify("Send failed — will retry")
+		} else {
+			s.notify("Sent")
+		}
+		s.Refresh()
+		return
+	}
+	s.mu.Unlock()
+	s.Refresh()
+}
+
+// Refresh schedules an async snapshot reload; multiple calls coalesce.
+func (s *AppState) Refresh() {
+	select {
+	case s.refreshQueue <- struct{}{}:
+	default:
+	}
+}
+
+// loaderLoop is the only goroutine that reads the store for the UI.
+func (s *AppState) loaderLoop(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.refreshQueue:
+			s.reload(ctx)
+			if s.invalidate != nil {
+				s.invalidate()
+			}
+		}
+	}
+}
+
+// reload rebuilds the snapshot from the store.
+func (s *AppState) reload(ctx context.Context) {
+	s.mu.Lock()
+	selAccount, selFolder := s.selAccount, s.selFolder
+	selThread, query := s.selThread, s.searchQuery
+	s.mu.Unlock()
+
+	next := Snapshot{Unread: map[int64]int{}}
+
+	accounts, err := s.db.ListAccounts(ctx)
+	if err != nil {
+		slog.Error("reload accounts", "err", err)
+		return
+	}
+	next.Accounts = accounts
+	if len(accounts) == 0 {
+		s.commit(next)
+		return
+	}
+	if selAccount == 0 {
+		selAccount = accounts[0].ID
+	}
+
+	folders, err := s.db.ListFolders(ctx, selAccount)
+	if err != nil {
+		slog.Error("reload folders", "err", err)
+		return
+	}
+	next.Folders = folders
+	for _, f := range folders {
+		n, err := s.db.UnreadCount(ctx, f.ID)
+		if err == nil {
+			next.Unread[f.ID] = n
+		}
+		if (selFolder == 0 && f.IsInbox) || f.ID == selFolder {
+			next.CurrentFolder = f
+		}
+	}
+	if next.CurrentFolder.ID != 0 {
+		msgs, err := s.db.ListMessages(ctx, next.CurrentFolder.ID, 0, 200)
+		if err != nil {
+			slog.Error("reload messages", "err", err)
+			return
+		}
+		next.Messages = msgs
+	}
+	if selThread != "" {
+		thread, err := s.db.ListThread(ctx, selAccount, selThread)
+		if err == nil {
+			next.Thread = thread
+		}
+	}
+	if query != "" {
+		results, err := s.db.Search(ctx, selAccount, query, 50)
+		if err == nil {
+			for _, r := range results {
+				next.SearchResults = append(next.SearchResults, r.Message)
+			}
+		}
+	}
+	s.commit(next)
+}
+
+// commit swaps in the new snapshot, preserving transient flags.
+func (s *AppState) commit(next Snapshot) {
+	s.mu.Lock()
+	next.Online = s.snap.Online
+	next.AuthError = s.snap.AuthError
+	next.SyncDone, next.SyncTotal = s.snap.SyncDone, s.snap.SyncTotal
+	s.snap = next
+	s.mu.Unlock()
+}
+
+// SelectAccount switches the active account and reloads.
+func (s *AppState) SelectAccount(id int64) {
+	s.mu.Lock()
+	s.selAccount = id
+	s.selFolder = 0
+	s.mu.Unlock()
+	s.Refresh()
+}
+
+// SelectFolder switches the active folder and reloads.
+func (s *AppState) SelectFolder(id int64) {
+	s.mu.Lock()
+	s.selFolder = id
+	s.mu.Unlock()
+	s.Refresh()
+}
+
+// OpenThread loads a conversation for the thread screen.
+func (s *AppState) OpenThread(threadID string) {
+	s.mu.Lock()
+	s.selThread = threadID
+	s.mu.Unlock()
+	s.Refresh()
+}
+
+// SetSearch updates the live search query.
+func (s *AppState) SetSearch(query string) {
+	s.mu.Lock()
+	changed := s.searchQuery != query
+	s.searchQuery = query
+	s.mu.Unlock()
+	if changed {
+		s.Refresh()
+	}
+}
+
+// CurrentAccount returns the active account, if any.
+func (s *AppState) CurrentAccount() (store.Account, bool) {
+	snap := s.Snapshot()
+	s.mu.Lock()
+	sel := s.selAccount
+	s.mu.Unlock()
+	for _, a := range snap.Accounts {
+		if a.ID == sel || sel == 0 {
+			return a, true
+		}
+	}
+	return store.Account{}, false
+}
+
+// SendOptions carries the PGP choices made in the composer.
+type SendOptions struct {
+	Encrypt bool
+	Sign    bool
+	Keyring *pgp.Keyring
+}
+
+// EnqueueDraft serializes a draft into the outbox asynchronously —
+// applying PGP when requested — then asks the scheduler to send it
+// immediately.
+func (s *AppState) EnqueueDraft(draft smtpsend.Draft, opts SendOptions) {
+	acct, ok := s.CurrentAccount()
+	if !ok {
+		s.notify("No account configured")
+		return
+	}
+	go func() {
+		raw, err := buildOutbound(&draft, opts)
+		if err != nil {
+			slog.Error("build draft", "err", err)
+			s.notify("Could not build message: " + err.Error())
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		id, err := s.db.EnqueueOutbox(ctx, acct.ID, raw)
+		if err != nil {
+			slog.Error("enqueue draft", "err", err)
+			s.notify("Could not queue message")
+			return
+		}
+		s.Send(syncmanager.SendCmd{OutboxID: id})
+	}()
+}
+
+// buildOutbound serializes a draft, wrapping it in PGP/MIME when the
+// composer toggles ask for it.
+func buildOutbound(draft *smtpsend.Draft, opts SendOptions) ([]byte, error) {
+	if !opts.Encrypt && !opts.Sign {
+		return smtpsend.BuildMIME(draft)
+	}
+	if opts.Keyring == nil {
+		return nil, errors.New("no PGP keys configured")
+	}
+	if opts.Encrypt {
+		signer := ""
+		if opts.Sign {
+			signer = draft.FromAddr
+		}
+		ciphertext, err := opts.Keyring.Encrypt(
+			[]byte(draft.TextBody), draft.Recipients(), signer)
+		if err != nil {
+			return nil, err
+		}
+		return smtpsend.BuildPGPEncrypted(draft, ciphertext)
+	}
+	// Sign-only: detached signatures over MIME parts (full RFC 3156
+	// multipart/signed) are tracked as PARTIAL in COMPLIANCE-TRACKER.md;
+	// v0.1 sends the message unsigned rather than pretending.
+	return nil, errors.New("sign-only mail is not supported yet — enable encryption too")
+}
+
+func (s *AppState) notify(msg string) {
+	if s.Notify != nil {
+		s.Notify(msg)
+	}
+}

@@ -1,0 +1,50 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      # Gio's Linux backend needs system windowing headers; the engine
+      # itself is pure Go (verified below).
+      - name: Install Gio system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libwayland-dev libx11-dev \
+            libx11-xcb-dev libxkbcommon-x11-dev libxkbcommon-dev \
+            libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev \
+            libxfixes-dev libvulkan-dev
+
+      - name: Format check
+        run: |
+          files=$(gofmt -l .)
+          [ -z "$files" ] || (echo "Unformatted: $files" && exit 1)
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Staticcheck
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          staticcheck ./...
+
+      - name: Package boundary check
+        run: |
+          result=$(grep -rl "gioui.org" internal/mail internal/store \
+            internal/syncmanager 2>/dev/null || true)
+          [ -z "$result" ] || (echo "BOUNDARY VIOLATION: $result" && exit 1)
+
+      - name: Engine is cgo-free
+        run: CGO_ENABLED=0 go build ./internal/... ./cmd/vayumail-cli/...
+
+      - name: Test
+        run: go test -race -count=1 -timeout=120s ./...
+
+      - name: Build
+        run: go build ./cmd/vayumail/... ./cmd/vayumail-cli/...
