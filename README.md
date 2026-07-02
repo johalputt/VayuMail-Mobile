@@ -2,7 +2,7 @@
 
 A sovereign mobile email client written in pure Go.
 
-Vayu (वायु) is Sanskrit for wind — the invisible carrier that moves things
+Vayu is Sanskrit for wind — the invisible carrier that moves things
 without being seen. VayuMail moves your mail the same way: no telemetry, no
 analytics, no vendor lock-in, no credential ever written to disk. One
 language, one binary per platform.
