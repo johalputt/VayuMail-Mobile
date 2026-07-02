@@ -27,18 +27,21 @@ type Account struct {
 	Username      string
 	KeystoreAlias string
 	CreatedAt     time.Time
+	// PinnedSPKI is an optional base64 SHA-256 hash of the server's TLS
+	// public key; when set, connections require a match (ADR-0008).
+	PinnedSPKI string
 }
 
 const accountCols = `id, display_name, email_address, imap_host, imap_port,
 	imap_tls, smtp_host, smtp_port, smtp_tls, username, keystore_alias,
-	created_at`
+	created_at, COALESCE(pinned_spki,'')`
 
 func scanAccount(row interface{ Scan(...any) error }) (Account, error) {
 	var a Account
 	var created int64
 	err := row.Scan(&a.ID, &a.DisplayName, &a.EmailAddress, &a.IMAPHost,
 		&a.IMAPPort, &a.IMAPTLS, &a.SMTPHost, &a.SMTPPort, &a.SMTPTLS,
-		&a.Username, &a.KeystoreAlias, &created)
+		&a.Username, &a.KeystoreAlias, &created, &a.PinnedSPKI)
 	if err != nil {
 		return Account{}, err
 	}
@@ -124,6 +127,18 @@ func (db *DB) DeleteAccount(ctx context.Context, id int64) error {
 	}
 	if n == 0 {
 		return ErrNotFound
+	}
+	return nil
+}
+
+// SetPinnedSPKI records (or clears, with "") the pinned TLS public-key
+// hash for an account (ADR-0008).
+func (db *DB) SetPinnedSPKI(ctx context.Context, accountID int64, spki string) error {
+	_, err := db.sql.ExecContext(ctx,
+		`UPDATE accounts SET pinned_spki = ? WHERE id = ?`,
+		nullable(spki), accountID)
+	if err != nil {
+		return fmt.Errorf("store: set pinned spki: %w", err)
 	}
 	return nil
 }

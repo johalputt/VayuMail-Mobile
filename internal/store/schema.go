@@ -12,6 +12,7 @@ import (
 // entry, always add a new one.
 var migrations = []string{
 	migrationV1,
+	migrationV2,
 }
 
 const migrationV1 = `
@@ -107,6 +108,54 @@ CREATE TRIGGER messages_fts_au AFTER UPDATE ON messages BEGIN
   INSERT INTO messages_fts(rowid,from_addr,from_name,subject,snippet)
   VALUES (new.id,new.from_addr,new.from_name,new.subject,new.snippet);
 END;
+`
+
+// migrationV2 (ADR-0007) adds local-intelligence columns, per-account
+// TLS pinning, PGP key storage, and rebuilds the FTS index to cover
+// message bodies.
+const migrationV2 = `
+ALTER TABLE messages ADD COLUMN has_trackers INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE messages ADD COLUMN is_list INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE messages ADD COLUMN list_unsubscribe TEXT;
+ALTER TABLE messages ADD COLUMN snooze_until INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE messages ADD COLUMN attachments TEXT;
+ALTER TABLE accounts ADD COLUMN pinned_spki TEXT;
+
+CREATE TABLE pgp_keys (
+  id           INTEGER PRIMARY KEY,
+  fingerprint  TEXT NOT NULL UNIQUE,
+  email        TEXT NOT NULL,
+  armored      TEXT NOT NULL,
+  is_private   INTEGER NOT NULL DEFAULT 0,
+  trust_level  INTEGER NOT NULL DEFAULT 0,
+  added_at     INTEGER NOT NULL
+);
+CREATE INDEX idx_pgp_keys_email ON pgp_keys(email);
+
+DROP TRIGGER messages_fts_ai;
+DROP TRIGGER messages_fts_ad;
+DROP TRIGGER messages_fts_au;
+DROP TABLE messages_fts;
+
+CREATE VIRTUAL TABLE messages_fts USING fts5(
+  from_addr, from_name, subject, snippet, body_text,
+  content=messages, content_rowid=id
+);
+CREATE TRIGGER messages_fts_ai AFTER INSERT ON messages BEGIN
+  INSERT INTO messages_fts(rowid,from_addr,from_name,subject,snippet,body_text)
+  VALUES (new.id,new.from_addr,new.from_name,new.subject,new.snippet,new.body_text);
+END;
+CREATE TRIGGER messages_fts_ad AFTER DELETE ON messages BEGIN
+  INSERT INTO messages_fts(messages_fts,rowid,from_addr,from_name,subject,snippet,body_text)
+  VALUES ('delete',old.id,old.from_addr,old.from_name,old.subject,old.snippet,old.body_text);
+END;
+CREATE TRIGGER messages_fts_au AFTER UPDATE ON messages BEGIN
+  INSERT INTO messages_fts(messages_fts,rowid,from_addr,from_name,subject,snippet,body_text)
+  VALUES ('delete',old.id,old.from_addr,old.from_name,old.subject,old.snippet,old.body_text);
+  INSERT INTO messages_fts(rowid,from_addr,from_name,subject,snippet,body_text)
+  VALUES (new.id,new.from_addr,new.from_name,new.subject,new.snippet,new.body_text);
+END;
+INSERT INTO messages_fts(messages_fts) VALUES ('rebuild');
 `
 
 // migrate brings the schema to the newest version, applying each pending

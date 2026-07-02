@@ -35,6 +35,15 @@ type Parsed struct {
 	// PGPStatus is "", "signed", "encrypted", or "signed+encrypted",
 	// matching the store's pgp_status column.
 	PGPStatus string
+	// HasTrackers reports detected tracking pixels or tracker-hosted
+	// resources (see track.go). VayuMail never fetches remote content;
+	// this powers the "this sender tracks you" indicator.
+	HasTrackers bool
+	// ListID is the List-Id header value; non-empty marks newsletter or
+	// mailing-list traffic.
+	ListID string
+	// ListUnsubscribe is the raw List-Unsubscribe header value.
+	ListUnsubscribe string
 }
 
 // Parse decomposes a raw RFC 2822 message. It is tolerant: charset and
@@ -57,6 +66,8 @@ func Parse(raw []byte) (*Parsed, error) {
 	if ctErr == nil {
 		p.PGPStatus = pgpStatusFromContentType(ct, ctParams)
 	}
+	p.ListID = mr.Header.Get("List-Id")
+	p.ListUnsubscribe = mr.Header.Get("List-Unsubscribe")
 
 	for {
 		part, err := mr.NextPart()
@@ -105,6 +116,7 @@ func Parse(raw []byte) (*Parsed, error) {
 	if p.PGPStatus == "" && looksInlinePGP(p.Text) {
 		p.PGPStatus = "encrypted"
 	}
+	p.HasTrackers = DetectTrackers(p.HTML)
 	p.Snippet = Snippet(p.Text, p.HTML)
 	return p, nil
 }

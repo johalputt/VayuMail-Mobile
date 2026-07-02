@@ -6,7 +6,8 @@ GOFLAGS   ?=
 MODULE    := github.com/johalputt/VayuMail-Mobile
 BIN_DIR   := dist
 
-.PHONY: all build cli test race lint fmt vet staticcheck boundary clean \
+.PHONY: all build cli test race lint fmt vet staticcheck boundary \
+        constitution fuzz clean \
         android ios coverage
 
 all: lint test build
@@ -48,7 +49,16 @@ boundary:
 		echo "package boundary clean"; \
 	fi
 
-lint: vet boundary
+# All ten constitutional rules, mechanically enforced.
+constitution:
+	sh scripts/constitution.sh
+
+# Parser hardening: fuzz the attacker-facing MIME surface.
+fuzz:
+	$(GO) test -run=NONE -fuzz=FuzzMIMEParse -fuzztime=30s ./test/
+	$(GO) test -run=NONE -fuzz=FuzzHTMLToText -fuzztime=15s ./test/
+
+lint: vet boundary constitution
 	@files=$$(gofmt -l .); \
 	if [ -n "$$files" ]; then echo "Unformatted: $$files"; exit 1; fi
 

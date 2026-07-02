@@ -15,7 +15,6 @@ import (
 	"gioui.org/op"
 	xtheme "gioui.org/x/pref/theme"
 
-	"github.com/johalputt/VayuMail-Mobile/internal/mail/pgp"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
 	"github.com/johalputt/VayuMail-Mobile/ui/screens"
@@ -59,6 +58,10 @@ func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Mana
 		snack.ShowInfo(msg)
 		w.Invalidate()
 	}
+	st.NotifyUndo = func(msg string, onUndo, onCommit func()) {
+		snack.Show(msg, onUndo, onCommit)
+		w.Invalidate()
+	}
 
 	env := &screens.Env{
 		Theme:    th,
@@ -66,7 +69,7 @@ func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Mana
 		Nav:      state.NewNav(state.ScreenInbox),
 		Snack:    snack,
 		Composer: widgets.NewComposer(),
-		Keyring:  pgp.NewKeyring(),
+		Keyring:  st.Keyring(),
 	}
 
 	ui := &UI{

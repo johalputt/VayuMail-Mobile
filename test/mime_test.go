@@ -9,6 +9,12 @@ import (
 	"github.com/johalputt/VayuMail-Mobile/internal/mail/mime"
 )
 
+// fixtureBytes loads a MIME fixture without requiring a *testing.T —
+// used by fuzz seed corpora.
+func fixtureBytes(name string) ([]byte, error) {
+	return os.ReadFile(filepath.Join("fixtures", "mime", name))
+}
+
 func readMIMEFixture(t *testing.T, name string) []byte {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join("fixtures", "mime", name))

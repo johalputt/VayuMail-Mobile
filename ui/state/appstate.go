@@ -7,13 +7,10 @@ package state
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"sync"
-	"time"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/mail/pgp"
-	"github.com/johalputt/VayuMail-Mobile/internal/mail/smtpsend"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
 )
@@ -32,6 +29,7 @@ type Snapshot struct {
 	SyncDone      int
 	SyncTotal     int
 	AuthError     bool
+	PGPKeys       []store.PGPKey
 }
 
 // AppState mediates between the sync layer and the screens.
@@ -43,6 +41,11 @@ type AppState struct {
 	invalidate func()
 	// Notify shows a transient snackbar; set by the app root.
 	Notify func(msg string)
+	// NotifyUndo shows a snackbar with an Undo action; onCommit fires
+	// when it expires un-undone. Set by the app root.
+	NotifyUndo func(msg string, onUndo, onCommit func())
+
+	keyring *pgp.Keyring
 
 	mu           sync.Mutex
 	snap         Snapshot
@@ -59,10 +62,14 @@ func New(ctx context.Context, db *store.DB, mgr *syncmanager.Manager) *AppState 
 	s := &AppState{
 		db:           db,
 		mgr:          mgr,
+		keyring:      pgp.NewKeyring(),
 		refreshQueue: make(chan struct{}, 1),
 		snap:         Snapshot{Unread: map[int64]int{}, Online: true},
 	}
-	go s.loaderLoop(ctx)
+	go func() {
+		s.loadPGPKeys(ctx)
+		s.loaderLoop(ctx)
+	}()
 	return s
 }
 
@@ -103,6 +110,14 @@ func (s *AppState) Apply(ev syncmanager.Event) {
 			s.notify("Sent")
 		}
 		s.Refresh()
+		return
+	case syncmanager.AttachmentSavedEvent:
+		s.mu.Unlock()
+		if e.Err != nil {
+			s.notify("Attachment download failed")
+		} else {
+			s.notify("Saved: " + e.Path)
+		}
 		return
 	}
 	s.mu.Unlock()
@@ -170,13 +185,27 @@ func (s *AppState) reload(ctx context.Context) {
 			next.CurrentFolder = f
 		}
 	}
-	if next.CurrentFolder.ID != 0 {
+	if unified, err := s.db.UnifiedUnreadCount(ctx); err == nil {
+		next.Unread[UnifiedFolderID] = unified
+	}
+	if selFolder == UnifiedFolderID {
+		next.CurrentFolder = store.Folder{ID: UnifiedFolderID, Name: "All inboxes"}
+		msgs, err := s.db.ListUnifiedInbox(ctx, 0, 200)
+		if err != nil {
+			slog.Error("reload unified inbox", "err", err)
+			return
+		}
+		next.Messages = msgs
+	} else if next.CurrentFolder.ID != 0 {
 		msgs, err := s.db.ListMessages(ctx, next.CurrentFolder.ID, 0, 200)
 		if err != nil {
 			slog.Error("reload messages", "err", err)
 			return
 		}
 		next.Messages = msgs
+	}
+	if keys, err := s.db.ListPGPKeys(ctx); err == nil {
+		next.PGPKeys = keys
 	}
 	if selThread != "" {
 		thread, err := s.db.ListThread(ctx, selAccount, selThread)
@@ -253,68 +282,6 @@ func (s *AppState) CurrentAccount() (store.Account, bool) {
 		}
 	}
 	return store.Account{}, false
-}
-
-// SendOptions carries the PGP choices made in the composer.
-type SendOptions struct {
-	Encrypt bool
-	Sign    bool
-	Keyring *pgp.Keyring
-}
-
-// EnqueueDraft serializes a draft into the outbox asynchronously —
-// applying PGP when requested — then asks the scheduler to send it
-// immediately.
-func (s *AppState) EnqueueDraft(draft smtpsend.Draft, opts SendOptions) {
-	acct, ok := s.CurrentAccount()
-	if !ok {
-		s.notify("No account configured")
-		return
-	}
-	go func() {
-		raw, err := buildOutbound(&draft, opts)
-		if err != nil {
-			slog.Error("build draft", "err", err)
-			s.notify("Could not build message: " + err.Error())
-			return
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		id, err := s.db.EnqueueOutbox(ctx, acct.ID, raw)
-		if err != nil {
-			slog.Error("enqueue draft", "err", err)
-			s.notify("Could not queue message")
-			return
-		}
-		s.Send(syncmanager.SendCmd{OutboxID: id})
-	}()
-}
-
-// buildOutbound serializes a draft, wrapping it in PGP/MIME when the
-// composer toggles ask for it.
-func buildOutbound(draft *smtpsend.Draft, opts SendOptions) ([]byte, error) {
-	if !opts.Encrypt && !opts.Sign {
-		return smtpsend.BuildMIME(draft)
-	}
-	if opts.Keyring == nil {
-		return nil, errors.New("no PGP keys configured")
-	}
-	if opts.Encrypt {
-		signer := ""
-		if opts.Sign {
-			signer = draft.FromAddr
-		}
-		ciphertext, err := opts.Keyring.Encrypt(
-			[]byte(draft.TextBody), draft.Recipients(), signer)
-		if err != nil {
-			return nil, err
-		}
-		return smtpsend.BuildPGPEncrypted(draft, ciphertext)
-	}
-	// Sign-only: detached signatures over MIME parts (full RFC 3156
-	// multipart/signed) are tracked as PARTIAL in COMPLIANCE-TRACKER.md;
-	// v0.1 sends the message unsigned rather than pretending.
-	return nil, errors.New("sign-only mail is not supported yet — enable encryption too")
 }
 
 func (s *AppState) notify(msg string) {

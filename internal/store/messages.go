@@ -34,6 +34,18 @@ type Message struct {
 	Date           time.Time
 	SizeBytes      int64
 	Flags          string // space-separated raw IMAP flags
+	// HasTrackers marks detected tracking pixels/links (ADR-0007).
+	HasTrackers bool
+	// IsList marks mailing-list/newsletter traffic (List-Id present).
+	IsList bool
+	// ListUnsubscribe is the raw List-Unsubscribe header value.
+	ListUnsubscribe string
+	// SnoozeUntil hides the message from lists until this time (zero =
+	// not snoozed).
+	SnoozeUntil time.Time
+	// Attachments is a JSON array of {"filename","contentType"} entries
+	// captured at parse time, in part order.
+	Attachments string
 }
 
 const messageCols = `id, account_id, folder_id, uid, COALESCE(thread_id,''),
@@ -42,20 +54,25 @@ const messageCols = `id, account_id, folder_id, uid, COALESCE(thread_id,''),
 	COALESCE(subject,''), COALESCE(snippet,''), COALESCE(body_text,''),
 	COALESCE(body_html,''), has_attachments, COALESCE(pgp_status,''),
 	is_read, is_flagged, is_deleted, date, COALESCE(size_bytes,0),
-	COALESCE(flags,'')`
+	COALESCE(flags,''), has_trackers, is_list,
+	COALESCE(list_unsubscribe,''), snooze_until, COALESCE(attachments,'')`
 
 func scanMessage(row interface{ Scan(...any) error }) (Message, error) {
 	var m Message
-	var date int64
+	var date, snooze int64
 	err := row.Scan(&m.ID, &m.AccountID, &m.FolderID, &m.UID, &m.ThreadID,
 		&m.MessageID, &m.InReplyTo, &m.FromAddr, &m.FromName, &m.ToAddrs,
 		&m.CcAddrs, &m.Subject, &m.Snippet, &m.BodyText, &m.BodyHTML,
 		&m.HasAttachments, &m.PGPStatus, &m.IsRead, &m.IsFlagged,
-		&m.IsDeleted, &date, &m.SizeBytes, &m.Flags)
+		&m.IsDeleted, &date, &m.SizeBytes, &m.Flags, &m.HasTrackers,
+		&m.IsList, &m.ListUnsubscribe, &snooze, &m.Attachments)
 	if err != nil {
 		return Message{}, err
 	}
 	m.Date = time.Unix(date, 0).UTC()
+	if snooze > 0 {
+		m.SnoozeUntil = time.Unix(snooze, 0).UTC()
+	}
 	return m, nil
 }
 
@@ -74,8 +91,9 @@ func (db *DB) UpsertMessage(ctx context.Context, m *Message) (int64, error) {
 			message_id, in_reply_to, from_addr, from_name, to_addrs,
 			cc_addrs, subject, snippet, body_text, body_html,
 			has_attachments, pgp_status, is_read, is_flagged, is_deleted,
-			date, size_bytes, flags)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+			date, size_bytes, flags, has_trackers, is_list,
+			list_unsubscribe)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(account_id, folder_id, uid) DO UPDATE SET
 			thread_id = excluded.thread_id,
 			snippet = excluded.snippet,
@@ -88,14 +106,21 @@ func (db *DB) UpsertMessage(ctx context.Context, m *Message) (int64, error) {
 			is_read = excluded.is_read,
 			is_flagged = excluded.is_flagged,
 			is_deleted = excluded.is_deleted,
-			flags = excluded.flags
+			flags = excluded.flags,
+			has_trackers = excluded.has_trackers,
+			is_list = excluded.is_list,
+			list_unsubscribe = excluded.list_unsubscribe,
+			attachments = CASE WHEN excluded.attachments IS NOT NULL
+				THEN excluded.attachments ELSE messages.attachments END
 		RETURNING id`,
 		m.AccountID, m.FolderID, m.UID, nullable(m.ThreadID),
 		nullable(m.MessageID), nullable(m.InReplyTo), m.FromAddr,
 		nullable(m.FromName), m.ToAddrs, nullable(m.CcAddrs),
 		nullable(m.Subject), nullable(m.Snippet), m.BodyText, m.BodyHTML,
 		m.HasAttachments, nullable(m.PGPStatus), m.IsRead, m.IsFlagged,
-		m.IsDeleted, m.Date.Unix(), m.SizeBytes, nullable(m.Flags))
+		m.IsDeleted, m.Date.Unix(), m.SizeBytes, nullable(m.Flags),
+		m.HasTrackers, m.IsList, nullable(m.ListUnsubscribe),
+		nullable(m.Attachments))
 	var id int64
 	if err := res.Scan(&id); err != nil {
 		return 0, fmt.Errorf("store: upsert message uid %d: %w", m.UID, err)
@@ -141,6 +166,7 @@ func (db *DB) ListMessages(ctx context.Context, folderID int64, offset, limit in
 	rows, err := db.sql.QueryContext(ctx, `
 		SELECT `+messageCols+` FROM messages
 		WHERE folder_id = ? AND is_deleted = 0
+			AND snooze_until <= unixepoch()
 		ORDER BY date DESC, uid DESC LIMIT ? OFFSET ?`,
 		folderID, limit, offset)
 	if err != nil {

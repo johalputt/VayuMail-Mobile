@@ -28,11 +28,12 @@ func Send(ctx context.Context, cfg account.Config, password, from string, recipi
 		client *smtp.Client
 		err    error
 	)
+	tlsConfig := cfg.TLSConfig()
 	switch cfg.SMTPTLS {
 	case account.TLSModeImplicit:
-		client, err = smtp.DialTLS(cfg.SMTPAddr(), nil)
+		client, err = smtp.DialTLS(cfg.SMTPAddr(), tlsConfig)
 	case account.TLSModeSTARTTLS:
-		client, err = smtp.DialStartTLS(cfg.SMTPAddr(), nil)
+		client, err = smtp.DialStartTLS(cfg.SMTPAddr(), tlsConfig)
 	default:
 		return fmt.Errorf("smtpsend: unsupported TLS mode %q", cfg.SMTPTLS)
 	}

@@ -27,6 +27,8 @@ type Manager struct {
 
 	mu      sync.Mutex
 	runners map[int64]context.CancelFunc
+
+	attachDir string
 }
 
 // New creates a Manager over the given store and keystore. Channel sizes
@@ -43,6 +45,18 @@ func New(db *store.DB, ks crypto.Keystore) *Manager {
 
 // Events returns the channel the UI drains non-blockingly each frame.
 func (m *Manager) Events() <-chan Event { return m.eventCh }
+
+// SetAttachmentsDir chooses where FetchAttachmentCmd saves files. Call
+// before Start; defaults to "attachments" under the working directory.
+func (m *Manager) SetAttachmentsDir(dir string) { m.attachDir = dir }
+
+// attachmentsDir returns the configured attachments directory.
+func (m *Manager) attachmentsDir() string {
+	if m.attachDir == "" {
+		return "attachments"
+	}
+	return m.attachDir
+}
 
 // Send submits a command without ever blocking the caller. When the
 // command buffer is full it returns an error immediately (Rule 5); the
@@ -183,5 +197,6 @@ func ConfigFromStore(a store.Account) account.Config {
 		SMTPTLS:       account.TLSMode(a.SMTPTLS),
 		Username:      a.Username,
 		KeystoreAlias: a.KeystoreAlias,
+		PinnedSPKI:    a.PinnedSPKI,
 	}
 }

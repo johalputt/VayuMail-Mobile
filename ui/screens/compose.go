@@ -54,6 +54,12 @@ func (s *Compose) send(gtx layout.Context, env *Env) {
 		return
 	}
 	draft := env.Composer.Draft(acct.DisplayName, acct.EmailAddress)
+	// Encrypted-by-default: when every recipient has a known key, turn
+	// encryption on automatically.
+	if !env.Composer.Encrypt && env.Keyring.HasKeyFor(draft.Recipients()...) {
+		env.Composer.Encrypt = true
+		env.Snack.ShowInfo("Encrypted — all recipients have keys")
+	}
 	opts := state.SendOptions{
 		Encrypt: env.Composer.Encrypt,
 		Sign:    env.Composer.Sign,

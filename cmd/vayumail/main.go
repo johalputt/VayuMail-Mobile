@@ -49,6 +49,9 @@ func run() int {
 	}()
 
 	mgr := syncmanager.New(db, keystore())
+	if dir, err := app.DataDir(); err == nil {
+		mgr.SetAttachmentsDir(filepath.Join(dir, "vayumail", "attachments"))
+	}
 	if err := mgr.Start(ctx); err != nil {
 		slog.Error("start sync manager", "err", err)
 		return 1

@@ -135,6 +135,20 @@ func (k *Keyring) SigningEntity(email string) (*openpgp.Entity, error) {
 	return e, nil
 }
 
+// EmailForFingerprint returns the primary identity email of a key.
+func (k *Keyring) EmailForFingerprint(fingerprint string) (string, error) {
+	e := k.byFingerprint(fingerprint)
+	if e == nil {
+		return "", ErrNoKey
+	}
+	for _, ident := range e.Identities {
+		if ident.UserId.Email != "" {
+			return ident.UserId.Email, nil
+		}
+	}
+	return "", ErrNoKey
+}
+
 // Entities returns a snapshot of all keys for read-only iteration.
 func (k *Keyring) Entities() openpgp.EntityList {
 	k.mu.RLock()

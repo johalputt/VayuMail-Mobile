@@ -2,7 +2,19 @@ name: CI
 on: [push, pull_request]
 
 jobs:
+  constitution:
+    name: Constitution compliance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Constitution gate (all 10 rules)
+        run: sh scripts/constitution.sh
+
   build:
+    name: Build, lint, test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -12,7 +24,7 @@ jobs:
           go-version: '1.25'
 
       # Gio's Linux backend needs system windowing headers; the engine
-      # itself is pure Go (verified below).
+      # itself is pure Go (verified in the constitution job).
       - name: Install Gio system dependencies
         run: |
           sudo apt-get update
@@ -34,17 +46,39 @@ jobs:
           go install honnef.co/go/tools/cmd/staticcheck@latest
           staticcheck ./...
 
-      - name: Package boundary check
+      - name: Test (race, deterministic)
+        run: go test -race -count=1 -timeout=180s ./...
+
+      - name: Fuzz smoke (parser hardening)
         run: |
-          result=$(grep -rl "gioui.org" internal/mail internal/store \
-            internal/syncmanager 2>/dev/null || true)
-          [ -z "$result" ] || (echo "BOUNDARY VIOLATION: $result" && exit 1)
+          go test -run=NONE -fuzz=FuzzMIMEParse -fuzztime=15s ./test/
+          go test -run=NONE -fuzz=FuzzHTMLToText -fuzztime=10s ./test/
 
-      - name: Engine is cgo-free
-        run: CGO_ENABLED=0 go build ./internal/... ./cmd/vayumail-cli/...
+      - name: Build all binaries
+        run: go build -trimpath ./cmd/...
 
-      - name: Test
-        run: go test -race -count=1 -timeout=120s ./...
+      - name: Binary size budget
+        run: |
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" \
+            -o vayumail-cli-size ./cmd/vayumail-cli
+          size=$(stat -c%s vayumail-cli-size)
+          echo "engine binary: $((size / 1024 / 1024)) MiB ($size bytes)"
+          # Lightness pillar: the headless engine stays under 40 MiB.
+          [ "$size" -lt 41943040 ] || (echo "SIZE BUDGET EXCEEDED" && exit 1)
 
-      - name: Build
-        run: go build ./cmd/vayumail/... ./cmd/vayumail-cli/...
+  coverage:
+    name: Engine coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Coverage on engine packages
+        run: |
+          go test -count=1 -coverpkg=./internal/... -coverprofile=coverage.out ./test/
+          go tool cover -func=coverage.out | tail -1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out

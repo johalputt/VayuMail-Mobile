@@ -45,6 +45,14 @@ func (m *Manager) handleCmd(ctx context.Context, cmd Cmd) error {
 		return m.execSyncNow(ctx, c)
 	case AddAccountCmd:
 		return m.execAddAccount(ctx, c)
+	case FetchAttachmentCmd:
+		return m.execFetchAttachment(ctx, c)
+	case SaveDraftCmd:
+		return m.execSaveDraft(ctx, c)
+	case SnoozeCmd:
+		return m.execSnooze(ctx, c)
+	case UnsubscribeCmd:
+		return m.execUnsubscribe(ctx, c)
 	default:
 		return fmt.Errorf("syncmanager: unknown command %T", cmd)
 	}
@@ -183,6 +191,8 @@ func (m *Manager) execSend(ctx context.Context, c SendCmd) error {
 		if err := m.db.MarkOutboxSent(ctx, entry.ID); err != nil {
 			return err
 		}
+		// File the message into Sent so every device sees it.
+		m.appendToSent(ctx, entry.AccountID, entry.RawMessage)
 	} else {
 		next := time.Now().Add(time.Minute << uint(entry.RetryCount))
 		if err := m.db.MarkOutboxFailed(ctx, entry.ID, sendErr, next); err != nil {

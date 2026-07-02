@@ -66,10 +66,21 @@ type FolderListEvent struct {
 	Folders   []store.Folder
 }
 
-func (NewMessageEvent) isEvent()   {}
-func (FlagChangeEvent) isEvent()   {}
-func (SyncProgressEvent) isEvent() {}
-func (SendResultEvent) isEvent()   {}
-func (AuthErrorEvent) isEvent()    {}
-func (ConnectionEvent) isEvent()   {}
-func (FolderListEvent) isEvent()   {}
+// AttachmentSavedEvent reports the outcome of a FetchAttachmentCmd:
+// Path is the saved file on success, Err the failure otherwise
+// (ADR-0007).
+type AttachmentSavedEvent struct {
+	MessageID int64
+	Index     int
+	Path      string
+	Err       error
+}
+
+func (NewMessageEvent) isEvent()      {}
+func (FlagChangeEvent) isEvent()      {}
+func (SyncProgressEvent) isEvent()    {}
+func (SendResultEvent) isEvent()      {}
+func (AuthErrorEvent) isEvent()       {}
+func (ConnectionEvent) isEvent()      {}
+func (FolderListEvent) isEvent()      {}
+func (AttachmentSavedEvent) isEvent() {}

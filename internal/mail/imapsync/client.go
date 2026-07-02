@@ -81,6 +81,8 @@ func Dial(ctx context.Context, cfg account.Config, password string) (*imapclient
 		},
 	}
 
+	options.TLSConfig = cfg.TLSConfig()
+
 	var (
 		client *imapclient.Client
 		err    error

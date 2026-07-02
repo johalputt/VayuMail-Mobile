@@ -89,9 +89,10 @@ func (d *FolderDrawer) Layout(gtx layout.Context, th *theme.Theme, folders []sto
 		return FillMax(gtx, theme.WithAlpha(th.Palette.OnBackground, alpha))
 	})
 
-	// Panel sliding from the left.
-	if len(d.clicks) < len(folders) {
-		d.clicks = append(d.clicks, make([]widget.Clickable, len(folders)-len(d.clicks))...)
+	// Panel sliding from the left. Row 0 is the synthetic "All inboxes"
+	// entry (folder ID -1); real folders follow.
+	if len(d.clicks) < len(folders)+1 {
+		d.clicks = append(d.clicks, make([]widget.Clickable, len(folders)+1-len(d.clicks))...)
 	}
 	w := gtx.Dp(drawerWidth)
 	offset := int(float32(w) * (progress - 1))
@@ -120,8 +121,17 @@ func (d *FolderDrawer) layoutPanel(gtx layout.Context, th *theme.Theme, folders 
 				})
 		}),
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-			return d.list.Layout(gtx, len(folders), func(gtx layout.Context, i int) layout.Dimensions {
-				f := folders[i]
+			return d.list.Layout(gtx, len(folders)+1, func(gtx layout.Context, i int) layout.Dimensions {
+				if i == 0 {
+					unifiedID := int64(-1)
+					if d.clicks[0].Clicked(gtx) {
+						action.FolderID = unifiedID
+					}
+					f := store.Folder{ID: unifiedID, Name: "All inboxes"}
+					return d.folderRow(gtx, th, &d.clicks[0], f,
+						unread[unifiedID], currentID == unifiedID)
+				}
+				f := folders[i-1]
 				if d.clicks[i].Clicked(gtx) {
 					action.FolderID = f.ID
 				}

@@ -39,6 +39,8 @@ type Config struct {
 	SMTPTLS       TLSMode
 	Username      string
 	KeystoreAlias string
+	// PinnedSPKI optionally pins the server TLS key (see pin.go).
+	PinnedSPKI string
 }
 
 // Validate checks that the configuration is complete and secure enough to

@@ -68,6 +68,12 @@ func run(args []string) int {
 		return cmdWatch(ctx, db, rest[1:])
 	case "search":
 		return cmdSearch(ctx, db, rest[1:])
+	case "pin":
+		return cmdPin(ctx, db, rest[1:])
+	case "settings-push":
+		return cmdSettingsPush(ctx, db, rest[1:])
+	case "settings-pull":
+		return cmdSettingsPull(ctx, db, rest[1:])
 	default:
 		usage()
 		return 2
@@ -82,7 +88,13 @@ func usage() {
   vayumail-cli [-db PATH] sync   -account ID   (VAYUMAIL_PASSWORD env)
   vayumail-cli [-db PATH] watch  -account ID   (VAYUMAIL_PASSWORD env)
   vayumail-cli [-db PATH] search -account ID -query TEXT
+  vayumail-cli [-db PATH] pin    -account ID [-save|-clear]
+  vayumail-cli [-db PATH] settings-push -account ID -file settings.json
+  vayumail-cli [-db PATH] settings-pull -account ID
   vayumail-cli qr-verify -file payload.b64
+
+  Env: VAYUMAIL_PASSWORD (mail password), VAYUMAIL_SYNC_KEY (32B base64,
+  settings sync).
 
 `)
 }

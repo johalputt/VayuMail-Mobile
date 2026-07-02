@@ -46,9 +46,42 @@ type AddAccountCmd struct {
 	Credential []byte
 }
 
-func (MoveCmd) isCmd()       {}
-func (DeleteCmd) isCmd()     {}
-func (MarkCmd) isCmd()       {}
-func (SendCmd) isCmd()       {}
-func (SyncNowCmd) isCmd()    {}
-func (AddAccountCmd) isCmd() {}
+// FetchAttachmentCmd downloads one attachment (0-based part order) and
+// saves it into the attachments directory; completion arrives as an
+// AttachmentSavedEvent (ADR-0007).
+type FetchAttachmentCmd struct {
+	MessageID int64
+	Index     int
+}
+
+// SaveDraftCmd appends a serialized draft to the account's Drafts folder
+// with the \Draft flag.
+type SaveDraftCmd struct {
+	AccountID int64
+	Raw       []byte
+}
+
+// SnoozeCmd hides a message from lists until the given Unix time; zero
+// unsnoozes. Local-only — nothing changes on the server.
+type SnoozeCmd struct {
+	MessageID int64
+	UntilUnix int64
+}
+
+// UnsubscribeCmd acts on a message's List-Unsubscribe mailto target by
+// queueing and sending the unsubscribe mail (RFC 8058 one-click for
+// mailto). HTTPS-only targets are the UI's job (copy/open).
+type UnsubscribeCmd struct {
+	MessageID int64
+}
+
+func (MoveCmd) isCmd()            {}
+func (DeleteCmd) isCmd()          {}
+func (MarkCmd) isCmd()            {}
+func (SendCmd) isCmd()            {}
+func (SyncNowCmd) isCmd()         {}
+func (AddAccountCmd) isCmd()      {}
+func (FetchAttachmentCmd) isCmd() {}
+func (SaveDraftCmd) isCmd()       {}
+func (SnoozeCmd) isCmd()          {}
+func (UnsubscribeCmd) isCmd()     {}

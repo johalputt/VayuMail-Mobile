@@ -31,6 +31,8 @@ const (
 	IconShield
 	IconSignature
 	IconQR
+	IconClock
+	IconDownload
 )
 
 // DrawIcon renders an icon at the given size, stroked in c. All icons are
@@ -124,6 +126,19 @@ func DrawIcon(gtx layout.Context, icon Icon, c color.NRGBA, size unit.Dp) layout
 		p.CubeTo(pt(10, 15), pt(11, 15), pt(13, 11))
 		p.MoveTo(pt(4, 20))
 		p.LineTo(pt(20, 20))
+	case IconClock:
+		circle(&p, pt(12, 12), 8*s)
+		p.MoveTo(pt(12, 7))
+		p.LineTo(pt(12, 12))
+		p.LineTo(pt(16, 14))
+	case IconDownload:
+		p.MoveTo(pt(12, 4))
+		p.LineTo(pt(12, 15))
+		p.MoveTo(pt(7, 11))
+		p.LineTo(pt(12, 16))
+		p.LineTo(pt(17, 11))
+		p.MoveTo(pt(5, 20))
+		p.LineTo(pt(19, 20))
 	case IconQR:
 		square(&p, pt(4, 4), 6*s)
 		square(&p, pt(14, 4), 6*s)

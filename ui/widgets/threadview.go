@@ -1,6 +1,8 @@
 package widgets
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -18,14 +20,31 @@ type ThreadView struct {
 	list    layout.List
 	toggles []widget.Clickable
 	shown   map[int64]bool // message ID -> quoted text expanded
+
+	attachClicks map[int64][]widget.Clickable
+	requests     []DownloadRequest
+}
+
+// DownloadRequest identifies one attachment the user tapped this frame.
+type DownloadRequest struct {
+	MessageID int64
+	Index     int
 }
 
 // NewThreadView constructs an empty thread view.
 func NewThreadView() *ThreadView {
 	return &ThreadView{
-		list:  layout.List{Axis: layout.Vertical},
-		shown: make(map[int64]bool),
+		list:         layout.List{Axis: layout.Vertical},
+		shown:        make(map[int64]bool),
+		attachClicks: make(map[int64][]widget.Clickable),
 	}
+}
+
+// DownloadRequests drains the attachment taps collected this frame.
+func (tv *ThreadView) DownloadRequests() []DownloadRequest {
+	out := tv.requests
+	tv.requests = nil
+	return out
 }
 
 // Layout renders the messages oldest-first.
@@ -33,6 +52,7 @@ func (tv *ThreadView) Layout(gtx layout.Context, th *theme.Theme, msgs []store.M
 	if len(tv.toggles) < len(msgs) {
 		tv.toggles = append(tv.toggles, make([]widget.Clickable, len(msgs)-len(tv.toggles))...)
 	}
+	tv.requests = tv.requests[:0]
 	return tv.list.Layout(gtx, len(msgs), func(gtx layout.Context, i int) layout.Dimensions {
 		return tv.message(gtx, th, &tv.toggles[i], msgs[i])
 	})
@@ -71,6 +91,21 @@ func (tv *ThreadView) message(gtx layout.Context, th *theme.Theme, toggle *widge
 										pgpLabel(msg.PGPStatus), 1)
 								}))
 						})
+				}),
+				// Tracking indicator: honesty about surveillance mail.
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					if !msg.HasTrackers {
+						return layout.Dimensions{}
+					}
+					return layout.Inset{Bottom: theme.SM}.Layout(gtx,
+						func(gtx layout.Context) layout.Dimensions {
+							return th.Label(gtx, theme.Caption, th.Palette.Destructive,
+								"This sender tracks opens — trackers blocked", 1)
+						})
+				}),
+				// Attachments: one chip per file, tap to download.
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return tv.attachmentChips(gtx, th, msg)
 				}),
 				// Body text.
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -181,4 +216,51 @@ func pgpLabel(status string) string {
 	default:
 		return status
 	}
+}
+
+// attachmentChips renders a tappable row per attachment, recording taps
+// as download requests.
+func (tv *ThreadView) attachmentChips(gtx layout.Context, th *theme.Theme, msg store.Message) layout.Dimensions {
+	if msg.Attachments == "" {
+		return layout.Dimensions{}
+	}
+	var refs []mime.AttachmentRef
+	if err := json.Unmarshal([]byte(msg.Attachments), &refs); err != nil || len(refs) == 0 {
+		return layout.Dimensions{}
+	}
+	clicks := tv.attachClicks[msg.ID]
+	if len(clicks) < len(refs) {
+		clicks = append(clicks, make([]widget.Clickable, len(refs)-len(clicks))...)
+		tv.attachClicks[msg.ID] = clicks
+	}
+	children := make([]layout.FlexChild, 0, len(refs))
+	for i, ref := range refs {
+		i, ref := i, ref
+		if clicks[i].Clicked(gtx) {
+			tv.requests = append(tv.requests, DownloadRequest{MessageID: msg.ID, Index: i})
+		}
+		children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return clicks[i].Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return layout.Inset{Top: theme.XS, Bottom: theme.XS}.Layout(gtx,
+					func(gtx layout.Context) layout.Dimensions {
+						return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								return DrawIcon(gtx, IconDownload, th.Palette.Accent, 14)
+							}),
+							layout.Rigid(layout.Spacer{Width: theme.XS}.Layout),
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								label := ref.Filename
+								if label == "" {
+									label = fmt.Sprintf("attachment %d", i+1)
+								}
+								return th.Label(gtx, theme.Caption, th.Palette.Accent, label, 1)
+							}))
+					})
+			})
+		}))
+	}
+	return layout.Inset{Bottom: theme.SM}.Layout(gtx,
+		func(gtx layout.Context) layout.Dimensions {
+			return layout.Flex{Axis: layout.Vertical}.Layout(gtx, children...)
+		})
 }

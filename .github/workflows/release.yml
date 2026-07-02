@@ -69,6 +69,8 @@ jobs:
           echo "gogio=$SEMVER.$CODE" >> "$GITHUB_OUTPUT"
 
       - name: Build APK
+        env:
+          GOFLAGS: -trimpath   # reproducible builds: no local paths in the binary
         run: |
           gogio -target android -arch arm64,amd64 \
             -appid org.vayumail.mobile \

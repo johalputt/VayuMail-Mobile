@@ -2,6 +2,7 @@ package imapsync
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -110,7 +111,32 @@ func fetchAndAttachBody(client *imapclient.Client, uid imap.UID, msg *store.Mess
 	msg.Snippet = parsed.Snippet
 	msg.HasAttachments = len(parsed.Attachments) > 0
 	msg.PGPStatus = parsed.PGPStatus
+	msg.HasTrackers = parsed.HasTrackers
+	msg.IsList = parsed.ListID != ""
+	msg.ListUnsubscribe = parsed.ListUnsubscribe
+	if len(parsed.Attachments) > 0 {
+		if encoded, err := json.Marshal(parsed.Attachments); err == nil {
+			msg.Attachments = string(encoded)
+		}
+	}
 	return nil
+}
+
+// FetchRaw downloads the complete raw RFC 5322 bytes of one message.
+// Used for attachment extraction and oversized-body loads; the folder
+// must already be selected.
+func FetchRaw(client *imapclient.Client, uid uint32) ([]byte, error) {
+	full, err := client.Fetch(imap.UIDSetNum(imap.UID(uid)), &imap.FetchOptions{
+		UID:         true,
+		BodySection: []*imap.FetchItemBodySection{{Peek: true}},
+	}).Collect()
+	if err != nil {
+		return nil, fmt.Errorf("imapsync: fetch raw uid %d: %w", uid, err)
+	}
+	if len(full) == 0 || len(full[0].BodySection) == 0 {
+		return nil, fmt.Errorf("imapsync: empty raw response for uid %d", uid)
+	}
+	return full[0].BodySection[0].Bytes, nil
 }
 
 // FetchBody downloads and parses the full body of one already-cached
