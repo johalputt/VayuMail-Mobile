@@ -9,6 +9,8 @@ import (
 	"log/slog"
 
 	"gioui.org/app"
+	"gioui.org/io/key"
+	"gioui.org/io/system"
 	"gioui.org/layout"
 	"gioui.org/op"
 	xtheme "gioui.org/x/pref/theme"
@@ -38,6 +40,7 @@ type UI struct {
 	search   *screens.Search
 
 	events <-chan syncmanager.Event
+	notify *mailNotifier
 	ops    op.Ops
 }
 
@@ -79,6 +82,7 @@ func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Mana
 		settings: screens.NewSettings(),
 		search:   screens.NewSearch(),
 		events:   mgr.Events(),
+		notify:   newMailNotifier(ctx, db),
 	}
 	st.Refresh() // SQLite on first paint: cached mail renders immediately.
 	return ui
@@ -97,6 +101,7 @@ func (ui *UI) Run() error {
 				select {
 				case ev := <-ui.events:
 					ui.st.Apply(ev)
+					ui.notify.observe(ev)
 				default:
 					break drain
 				}
@@ -115,6 +120,7 @@ func (ui *UI) Run() error {
 // transitions.
 func (ui *UI) layout(gtx layout.Context) {
 	widgets.FillMax(gtx, ui.th.Palette.Background)
+	ui.handleBackKey(gtx)
 
 	snap := ui.st.Snapshot()
 	current := ui.nav.Current()
@@ -153,6 +159,30 @@ func (ui *UI) layout(gtx layout.Context) {
 	snackGtx := gtx
 	snackGtx.Constraints.Min = gtx.Constraints.Max
 	ui.env.Snack.Layout(snackGtx, ui.th)
+}
+
+// handleBackKey maps the Android back button (and Escape on desktop)
+// onto the navigation stack: close the drawer first, then pop; at the
+// stack root it closes the window, matching platform convention.
+func (ui *UI) handleBackKey(gtx layout.Context) {
+	for {
+		ev, ok := gtx.Event(
+			key.Filter{Name: key.NameBack},
+			key.Filter{Name: key.NameEscape})
+		if !ok {
+			break
+		}
+		e, ok := ev.(key.Event)
+		if !ok || e.State != key.Press {
+			continue
+		}
+		if ui.inbox.CloseDrawer(gtx.Now) {
+			continue
+		}
+		if !ui.nav.Pop(gtx.Now) {
+			ui.window.Perform(system.ActionClose)
+		}
+	}
 }
 
 func (ui *UI) drawOffset(gtx layout.Context, x int, f func(layout.Context)) {

@@ -1,0 +1,106 @@
+name: Release APK
+
+# Builds the Android APK with gogio on GitHub's runners (which carry the
+# Android SDK + NDK) — the sovereign build machine when no local Android
+# toolchain is available.
+#
+# Signing:
+#   - If the repository secrets ANDROID_KEYSTORE_B64 / ANDROID_KEYSTORE_PASS
+#     are set, the APK is signed with that release key (Play Store ready —
+#     keep that key safe; Play requires every update signed by it).
+#   - Otherwise a fresh test key is generated in the run: the APK installs
+#     fine for sideloading/testing, but is NOT suitable for Play upload.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK packages
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0 ndk;26.3.11579264 platform-tools'
+
+      - name: Install gogio
+        run: go install gioui.org/cmd/gogio@latest
+
+      - name: Prepare signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > release.keystore
+            echo "SIGN_PASS=$KEYSTORE_PASS" >> "$GITHUB_ENV"
+            echo "SIGN_KIND=release" >> "$GITHUB_ENV"
+          else
+            keytool -genkeypair -v -keystore release.keystore \
+              -storepass vayumail-test -keypass vayumail-test \
+              -alias vayumail -keyalg RSA -keysize 4096 -validity 10000 \
+              -dname "CN=VayuMail Test, O=VayuMail, C=IN"
+            echo "SIGN_PASS=vayumail-test" >> "$GITHUB_ENV"
+            echo "SIGN_KIND=test" >> "$GITHUB_ENV"
+          fi
+
+      - name: Determine version
+        id: ver
+        run: |
+          SEMVER=$(grep -oP 'Semantic = "\K[^"]+' internal/version/version.go)
+          CODE=$(grep -oP 'Code = \K[0-9]+' internal/version/version.go)
+          echo "semver=$SEMVER" >> "$GITHUB_OUTPUT"
+          echo "gogio=$SEMVER.$CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Build APK
+        run: |
+          gogio -target android -arch arm64,amd64 \
+            -appid org.vayumail.mobile \
+            -version ${{ steps.ver.outputs.gogio }} \
+            -minsdk 24 -targetsdk 34 \
+            -signkey release.keystore -signpass "$SIGN_PASS" \
+            -o vayumail-${{ steps.ver.outputs.semver }}.apk \
+            ./cmd/vayumail
+
+      - name: Verify signature
+        run: |
+          BT="$ANDROID_HOME/build-tools/34.0.0"
+          "$BT/apksigner" verify --print-certs \
+            vayumail-${{ steps.ver.outputs.semver }}.apk
+          echo "signed with the $SIGN_KIND key"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vayumail-apk
+          path: vayumail-*.apk
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: vayumail-*.apk
+          body: |
+            VayuMail-Mobile ${{ steps.ver.outputs.semver }} — pure-Go
+            sovereign email client.
+
+            Signed with the ${{ env.SIGN_KIND }} key. Test-key builds are
+            for sideloading only; set ANDROID_KEYSTORE_B64 /
+            ANDROID_KEYSTORE_PASS repository secrets to produce Play
+            Store-ready builds.

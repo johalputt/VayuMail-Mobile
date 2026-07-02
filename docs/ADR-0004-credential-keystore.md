@@ -2,9 +2,7 @@
 
 ## Status
 
-Accepted — v0.1.0. Interface and in-memory adapter complete; the gomobile
-Android Keystore / iOS Keychain bridges are stubs tracked in
-COMPLIANCE-TRACKER.md.
+Accepted — v0.1.0. Amended — v1.0.0 (sealed keystore, below).
 
 ## Decision
 
@@ -38,3 +36,22 @@ attacker.
   database.
 - Deleting an account must also delete its keystore entry; the alias in
   the account row is the pointer that makes this reliable.
+
+## Amendment — v1.0.0: sealed keystore
+
+Rule 6 forbids **raw** credentials on disk. v1.0.0 adds
+`crypto.SealedKeystore`: credentials are persisted as AES-256-GCM
+ciphertext (fresh nonce per write, alias bound as GCM additional data,
+atomic file replacement) inside the app-private data directory, so
+accounts survive restarts. The master key comes from a `KeyProvider`;
+the current `FileKeyProvider` keeps it in a separate 0600 file in the
+same sandboxed directory.
+
+Honest security statement: at-rest protection currently equals the
+platform app sandbox (comparable to mainstream clients, which store
+passwords in their databases outright). The `KeyProvider` seam exists so
+hardware-backed wrapping — Android Keystore / iOS Keychain holding the
+master key — can replace the file provider **without a storage format
+change**. That work is tracked in COMPLIANCE-TRACKER.md
+("Hardware-backed key wrapping"). No code path ever writes a plaintext
+credential to disk; a test asserts it.

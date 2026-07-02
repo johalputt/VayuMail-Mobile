@@ -7,6 +7,7 @@ import (
 	"gioui.org/widget"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
+	"github.com/johalputt/VayuMail-Mobile/internal/version"
 	"github.com/johalputt/VayuMail-Mobile/ui/theme"
 	"github.com/johalputt/VayuMail-Mobile/ui/widgets"
 )
@@ -107,7 +108,7 @@ func (s *Settings) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 	item("Theme", "Follows the system light/dark preference", nil)
 
 	section("About")
-	item("VayuMail v0.1.0", "Pure Go · no telemetry · Apache-2.0", nil)
+	item("VayuMail v"+version.Semantic, "Pure Go · no telemetry · Apache-2.0", nil)
 
 	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {

@@ -1,6 +1,8 @@
 package screens
 
 import (
+	"time"
+
 	"gioui.org/layout"
 	"gioui.org/widget"
 
@@ -33,6 +35,16 @@ func NewInbox() *Inbox {
 		drawer:        widgets.NewFolderDrawer(),
 		pendingHidden: make(map[int64]bool),
 	}
+}
+
+// CloseDrawer closes the folder drawer if it is open, reporting whether
+// it consumed the action — the first stop for the platform back button.
+func (s *Inbox) CloseDrawer(now time.Time) bool {
+	if s.drawer.IsOpen() {
+		s.drawer.Close(now)
+		return true
+	}
+	return false
 }
 
 // Layout renders the inbox.

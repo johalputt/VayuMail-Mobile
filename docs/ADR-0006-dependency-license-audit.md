@@ -41,7 +41,9 @@ rationale required by the constitution's amendment clause.
 | Dependency | License | Permissive confirmed | Pulled in by |
 |---|---|---|---|
 | gioui.org/shader | MIT / Unlicense | ✅ | gioui.org |
-| git.wow.st/gmp/jni | BSD-3-Clause | ✅ | gioui.org/x (Android pref) |
+| git.wow.st/gmp/jni | BSD-3-Clause | ✅ | gioui.org/x (Android pref, notify) |
+| github.com/esiqveland/notify | BSD-3-Clause | ✅ | gioui.org/x/notify (Linux DBus) |
+| github.com/godbus/dbus/v5 | BSD-2-Clause | ✅ | esiqveland/notify |
 | github.com/cloudflare/circl | BSD-3-Clause | ✅ | ProtonMail/go-crypto |
 | github.com/dustin/go-humanize | MIT | ✅ | modernc.org/sqlite |
 | github.com/go-text/typesetting | BSD-3-Clause | ✅ | gioui.org (text shaping) |

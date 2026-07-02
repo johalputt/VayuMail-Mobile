@@ -68,16 +68,25 @@ func run() int {
 }
 
 // keystore selects the platform keystore when a gomobile bridge is
-// registered, else falls back to the in-memory store (desktop test runs:
-// credentials then live only for the process, never on disk — Rule 6
-// holds either way).
+// registered, else the sealed AES-GCM store in the app-private data
+// directory: credentials are encrypted at rest and survive restarts, and
+// raw secrets never touch disk (Rule 6, ADR-0004). The in-memory store is
+// the last-resort fallback if the data directory is unavailable.
 func keystore() appcrypto.Keystore {
 	p := appcrypto.NewPlatformKeystore()
-	if _, err := p.Fetch("vayumail-probe"); err == appcrypto.ErrNoPlatformKeystore {
-		slog.Warn("no platform keystore bridge; using in-memory keystore (credentials last one session)")
-		return appcrypto.NewMemoryKeystore()
+	if _, err := p.Fetch("vayumail-probe"); err != appcrypto.ErrNoPlatformKeystore {
+		return p
 	}
-	return p
+	dir, err := app.DataDir()
+	if err == nil {
+		sealed, serr := appcrypto.NewSealedKeystore(filepath.Join(dir, "vayumail", "keys"))
+		if serr == nil {
+			return sealed
+		}
+		err = serr
+	}
+	slog.Warn("sealed keystore unavailable; credentials last one session", "err", err)
+	return appcrypto.NewMemoryKeystore()
 }
 
 // databasePath places vayumail.db inside the platform data directory.

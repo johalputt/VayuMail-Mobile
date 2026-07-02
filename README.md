@@ -63,6 +63,15 @@ make android    # APK via gogio (requires Android SDK/NDK)
 make ios        # iOS app via gogio (requires Xcode on macOS)
 ```
 
+### Getting an APK without a local Android toolchain
+
+Push a `v*` tag (or run the "Release APK" workflow manually): GitHub
+Actions builds, signs, and attaches `vayumail-<version>.apk` to the
+Release. Set the `ANDROID_KEYSTORE_B64` and `ANDROID_KEYSTORE_PASS`
+repository secrets to sign with your own release key for the Play Store;
+without them the build is signed with a throwaway test key suitable for
+sideloading.
+
 The headless engine can be exercised without any UI:
 
 ```sh

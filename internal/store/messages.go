@@ -104,6 +104,22 @@ func (db *DB) UpsertMessage(ctx context.Context, m *Message) (int64, error) {
 	return id, nil
 }
 
+// GetMessageByUID returns the cached message with the given server UID
+// in a folder. Used by the notifier to describe a freshly synced message.
+func (db *DB) GetMessageByUID(ctx context.Context, folderID int64, uid uint32) (Message, error) {
+	row := db.sql.QueryRowContext(ctx,
+		`SELECT `+messageCols+` FROM messages WHERE folder_id = ? AND uid = ?`,
+		folderID, uid)
+	m, err := scanMessage(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Message{}, ErrNotFound
+	}
+	if err != nil {
+		return Message{}, fmt.Errorf("store: get message uid %d: %w", uid, err)
+	}
+	return m, nil
+}
+
 // GetMessage returns the message with the given local ID.
 func (db *DB) GetMessage(ctx context.Context, id int64) (Message, error) {
 	row := db.sql.QueryRowContext(ctx,
