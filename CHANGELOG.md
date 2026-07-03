@@ -6,6 +6,22 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.2] — 2026-07-03
+
+### Fixed
+- **Tapping a message did nothing.** The row's swipe gesture sat above its
+  Clickable and swallowed taps, so messages never opened. The swipeable
+  now recognises a press-and-release-in-place as a tap and opens the
+  conversation; horizontal drags still archive/delete.
+- **Sent mail (and other folders) not showing.** "Sync now" only synced
+  INBOX, so messages sent from another client or filed server-side never
+  appeared. It now discovers and syncs every folder. Opening a folder
+  (Sent, Archive, …) also triggers a one-shot sync of just that folder.
+
+### Added
+- **Refresh button** in the inbox toolbar — fetches new mail across all
+  folders on demand (`SyncFolderCmd` / `SyncNow`).
+
 ## [1.2.1] — 2026-07-03
 
 ### Fixed

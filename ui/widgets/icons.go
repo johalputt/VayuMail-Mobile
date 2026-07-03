@@ -33,6 +33,7 @@ const (
 	IconQR
 	IconClock
 	IconDownload
+	IconRefresh
 )
 
 // DrawIcon renders an icon at the given size, stroked in c. All icons are
@@ -149,6 +150,15 @@ func DrawIcon(gtx layout.Context, icon Icon, c color.NRGBA, size unit.Dp) layout
 		p.LineTo(pt(20, 17))
 		p.MoveTo(pt(14, 20))
 		p.LineTo(pt(17, 20))
+	case IconRefresh:
+		// Three-quarter circular arrow, gap and arrowhead at the top-left.
+		p.MoveTo(pt(12, 5))
+		p.CubeTo(pt(15.9, 5), pt(19, 8.1), pt(19, 12))
+		p.CubeTo(pt(19, 15.9), pt(15.9, 19), pt(12, 19))
+		p.CubeTo(pt(8.1, 19), pt(5, 15.9), pt(5, 12))
+		p.MoveTo(pt(2.5, 10))
+		p.LineTo(pt(5, 12))
+		p.LineTo(pt(7.5, 10))
 	}
 
 	paint.FillShape(gtx.Ops, c, clip.Stroke{Path: p.End(), Width: stroke}.Op())

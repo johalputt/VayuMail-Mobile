@@ -89,6 +89,10 @@ func (ml *MessageList) Layout(gtx layout.Context, th *theme.Theme, msgs []store.
 				actions = append(actions, ListAction{Kind: ActionArchive, Message: msg})
 			case SwipeDelete:
 				actions = append(actions, ListAction{Kind: ActionDelete, Message: msg})
+			case SwipeTap:
+				// The drag gesture consumes taps before the row's Clickable,
+				// so a tap arrives here as SwipeTap — treat it as open.
+				actions = append(actions, ListAction{Kind: ActionOpen, Message: msg})
 			}
 		} else {
 			dims = rowWidget(gtx)

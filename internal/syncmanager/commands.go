@@ -38,6 +38,13 @@ type SyncNowCmd struct {
 	AccountID int64
 }
 
+// SyncFolderCmd syncs a single folder now — used when the user opens a
+// folder (e.g. Sent) so its server contents load without a full sync.
+type SyncFolderCmd struct {
+	AccountID int64
+	FolderID  int64
+}
+
 // AddAccountCmd provisions a new account: the manager stores the
 // credential in the platform keystore, persists the account row, and
 // starts its sync goroutines. Credential is wiped after storage.
@@ -80,6 +87,7 @@ func (DeleteCmd) isCmd()          {}
 func (MarkCmd) isCmd()            {}
 func (SendCmd) isCmd()            {}
 func (SyncNowCmd) isCmd()         {}
+func (SyncFolderCmd) isCmd()      {}
 func (AddAccountCmd) isCmd()      {}
 func (FetchAttachmentCmd) isCmd() {}
 func (SaveDraftCmd) isCmd()       {}

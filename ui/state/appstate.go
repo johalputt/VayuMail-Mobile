@@ -243,12 +243,28 @@ func (s *AppState) SelectAccount(id int64) {
 	s.Refresh()
 }
 
-// SelectFolder switches the active folder and reloads.
+// SelectFolder switches the active folder, reloads from cache, and asks
+// the sync layer to refresh that folder from the server so folders that
+// the idle loop doesn't watch (Sent, Archive, …) show their real contents.
 func (s *AppState) SelectFolder(id int64) {
 	s.mu.Lock()
 	s.selFolder = id
+	acct := s.selAccount
 	s.mu.Unlock()
 	s.Refresh()
+	if id > 0 && acct > 0 {
+		s.Send(syncmanager.SyncFolderCmd{AccountID: acct, FolderID: id})
+	}
+}
+
+// SyncNow asks the sync layer to refresh every folder of the active
+// account now (pull-to-refresh, or the Settings "Sync now" button).
+func (s *AppState) SyncNow() {
+	acct, ok := s.CurrentAccount()
+	if !ok {
+		return
+	}
+	s.Send(syncmanager.SyncNowCmd{AccountID: acct.ID})
 }
 
 // OpenThread loads a conversation for the thread screen.
