@@ -30,6 +30,7 @@ type Snapshot struct {
 	SyncTotal     int
 	AuthError     bool
 	PGPKeys       []store.PGPKey
+	PGPKeyDirURL  string
 }
 
 // AppState mediates between the sync layer and the screens.
@@ -206,6 +207,9 @@ func (s *AppState) reload(ctx context.Context) {
 	}
 	if keys, err := s.db.ListPGPKeys(ctx); err == nil {
 		next.PGPKeys = keys
+	}
+	if urlStr, err := s.db.GetSetting(ctx, store.SettingPGPKeyDirectoryURL); err == nil {
+		next.PGPKeyDirURL = urlStr
 	}
 	if selThread != "" {
 		thread, err := s.db.ListThread(ctx, selAccount, selThread)

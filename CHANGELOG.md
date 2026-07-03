@@ -6,6 +6,19 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.3] — 2026-07-03
+
+### Added
+- **PGP key sync from VayuPress.** A new Settings section, "PGP key
+  directory (VayuPress)", lets you point VayuMail at a key-directory URL
+  on your own site and pull every contact's public key in one tap ("Sync
+  keys"). Keys are imported into the keyring and persisted. The client is
+  HTTPS-only and never contacts a directory you have not configured.
+  - Per-address form: `GET {url}?email={addr}` → armored/binary public key.
+  - Bulk form: `GET {url}` → `{"keys":[{"email","armored"}]}`.
+  - New `internal/mail/pgp/keydir.go`, `settings` table (schema v3),
+    end-to-end tests over an HTTPS test server.
+
 ## [1.2.2] — 2026-07-03
 
 ### Fixed
