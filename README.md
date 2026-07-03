@@ -1,7 +1,7 @@
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/vayumail-dark.svg">
-    <img src="assets/logo/vayumail.svg" alt="VayuMail" width="360">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/vayumail-dark.png">
+    <img src="assets/logo/vayumail.png" alt="VayuMail" width="300">
   </picture>
 
   <p><strong>A sovereign mobile email client, written in pure Go.</strong></p>

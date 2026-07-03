@@ -24,11 +24,14 @@ project uses [Semantic Versioning](https://semver.org/).
   miscalculation).
 
 ### Changed
-- **Logo.** Replaced the single-V mark with the final "vy" ligature (a
-  short left arm meeting a longer right arm that curves into a y-tail),
-  updated across the launcher icon, wordmarks, and in-app splash.
-- **Static splash.** The launch splash now shows the logo statically with
-  no draw-on or breathing animation; the animated SVG was removed.
+- **Logo — original artwork.** The app now uses the supplied master logo
+  PNGs verbatim (`assets/logo/vayumail.png` / `vayumail-dark.png`) instead
+  of a redrawn vector. The launcher icon is the mark cropped from that
+  master on an opaque white square, and the in-app splash paints the
+  embedded master directly (`ui/logo-light.png`). The redrawn SVGs and the
+  `tools/genicon` rasterizer were removed.
+- **Static splash.** The launch splash shows the logo statically — no
+  draw-on or breathing animation.
 
 ## [1.2.0] — 2026-07-03
 

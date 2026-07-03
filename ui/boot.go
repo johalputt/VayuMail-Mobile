@@ -1,16 +1,19 @@
 package ui
 
 import (
+	"bytes"
 	"context"
+	_ "embed"
 	"fmt"
 	"image"
+	"image/png"
 	"log/slog"
+	"sync"
 
 	"gioui.org/app"
 	"gioui.org/f32"
 	"gioui.org/layout"
 	"gioui.org/op"
-	"gioui.org/op/clip"
 	"gioui.org/op/paint"
 	"gioui.org/text"
 	"gioui.org/unit"
@@ -20,6 +23,31 @@ import (
 	"github.com/johalputt/VayuMail-Mobile/ui/theme"
 	"github.com/johalputt/VayuMail-Mobile/ui/widgets"
 )
+
+// logoLightPNG is the original VayuMail logo (mark + wordmark, black on
+// transparent), shown on the light splash background. It is the exact
+// artwork from assets/logo/vayumail.png — not a redrawn approximation.
+//
+//go:embed logo-light.png
+var logoLightPNG []byte
+
+var (
+	logoOnce sync.Once
+	logoImg  image.Image
+)
+
+// brandLogo decodes the embedded logo once and returns it.
+func brandLogo() image.Image {
+	logoOnce.Do(func() {
+		img, err := png.Decode(bytes.NewReader(logoLightPNG))
+		if err != nil {
+			slog.Error("decode splash logo", "err", err)
+			return
+		}
+		logoImg = img
+	})
+	return logoImg
+}
 
 // Boot owns the window event loop from the very first frame. On Android
 // the splash screen only clears once a frame is presented, so nothing
@@ -115,11 +143,12 @@ func (b *Boot) Shutdown() {
 	}
 }
 
-// frame draws the splash: the static brand mark with the wordmark below,
-// and a status line ("starting…" or, on failure, the fatal error). No
-// animation — the logo is shown as-is while the engine loads. The single
-// InvalidateCmd only keeps the loop repainting so it can notice when the
-// engine finishes attaching; it produces no visible motion.
+// frame draws the splash: the original logo (mark + wordmark) shown
+// statically, and a status line ("starting…" or, on failure, the fatal
+// error). No animation — the logo is presented exactly as provided while
+// the engine loads. The single InvalidateCmd only keeps the loop
+// repainting so it can notice when the engine finishes attaching; it
+// produces no visible motion.
 func (b *Boot) frame(gtx layout.Context) {
 	widgets.FillMax(gtx, b.th.Palette.Background)
 	gtx.Execute(op.InvalidateCmd{})
@@ -127,11 +156,7 @@ func (b *Boot) frame(gtx layout.Context) {
 	layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Vertical, Alignment: layout.Middle}.Layout(gtx,
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return drawBrandMark(gtx, b.th, 92, 255, 1.0)
-			}),
-			layout.Rigid(layout.Spacer{Height: theme.MD}.Layout),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return b.th.LabelAligned(gtx, theme.Heading, b.th.Palette.OnBackground, "vayumail", text.Middle)
+				return drawBrandLogo(gtx, 200)
 			}),
 			layout.Rigid(layout.Spacer{Height: theme.SM}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -143,28 +168,25 @@ func (b *Boot) frame(gtx layout.Context) {
 	})
 }
 
-// drawBrandMark renders the VayuMail mark (assets/logo/vayumail-icon.svg
-// geometry) at sizeDp, tinted by alpha and scaled about its center. Gio
-// strokes are round-capped, matching the SVG.
-func drawBrandMark(gtx layout.Context, th *theme.Theme, sizeDp int, alpha uint8, scale float32) layout.Dimensions {
-	px := gtx.Dp(unit.Dp(sizeDp))
-	s := float32(px) / 64.0
-	ink := theme.WithAlpha(th.Palette.OnBackground, alpha)
+// drawBrandLogo paints the embedded original logo, scaled to widthDp and
+// centered, preserving its aspect ratio. It draws the real PNG artwork —
+// no vector reconstruction.
+func drawBrandLogo(gtx layout.Context, widthDp int) layout.Dimensions {
+	img := brandLogo()
+	if img == nil {
+		return layout.Dimensions{}
+	}
+	w := gtx.Dp(unit.Dp(widthDp))
+	src := img.Bounds().Dx()
+	if src == 0 {
+		return layout.Dimensions{}
+	}
+	scale := float32(w) / float32(src)
+	h := int(float32(img.Bounds().Dy()) * scale)
 
-	center := f32.Pt(float32(px)/2, float32(px)/2)
-	defer op.Affine(f32.Affine2D{}.Scale(center, f32.Pt(scale, scale))).Push(gtx.Ops).Pop()
-
-	// The mark is a "vy" ligature (assets/logo/vayumail-icon.svg): a short
-	// left arm meets a longer right arm that curves down-left into a
-	// y-tail. Two round-capped strokes, matching the SVG geometry exactly.
-	pt := func(x, y float32) f32.Point { return f32.Pt(x*s, y*s) }
-	var p clip.Path
-	p.Begin(gtx.Ops)
-	p.MoveTo(pt(19, 17))
-	p.LineTo(pt(31, 40))
-	p.MoveTo(pt(45, 17))
-	p.CubeTo(pt(43, 31), pt(37, 44), pt(27, 51))
-	paint.FillShape(gtx.Ops, ink, clip.Stroke{Path: p.End(), Width: 11 * s}.Op())
-
-	return layout.Dimensions{Size: image.Pt(px, px)}
+	defer op.Affine(f32.Affine2D{}.Scale(f32.Pt(0, 0), f32.Pt(scale, scale))).Push(gtx.Ops).Pop()
+	imgOp := paint.NewImageOp(img)
+	imgOp.Add(gtx.Ops)
+	paint.PaintOp{}.Add(gtx.Ops)
+	return layout.Dimensions{Size: image.Pt(w, h)}
 }
