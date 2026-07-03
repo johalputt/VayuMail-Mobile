@@ -80,6 +80,61 @@ func (s *AppState) DiscoverPGPKey(email string) {
 	}()
 }
 
+// SetKeyDirectoryURL persists the VayuPress PGP key-directory base URL
+// (empty clears it) and refreshes the snapshot.
+func (s *AppState) SetKeyDirectoryURL(rawURL string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.db.SetSetting(ctx, store.SettingPGPKeyDirectoryURL, strings.TrimSpace(rawURL)); err != nil {
+			s.notify("Could not save key-directory URL")
+			return
+		}
+		s.notify("Key-directory URL saved")
+		s.Refresh()
+	}()
+}
+
+// SyncPGPFromDirectory pulls the whole VayuPress key directory and imports
+// every public key it returns, persisting each so it survives restarts.
+// User-initiated (Settings → Sync keys). Never contacts a directory the
+// user has not configured.
+func (s *AppState) SyncPGPFromDirectory() {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		baseURL, err := s.db.GetSetting(ctx, store.SettingPGPKeyDirectoryURL)
+		if err != nil || baseURL == "" {
+			s.notify("Set a VayuPress key-directory URL first")
+			return
+		}
+		keys, err := pgp.FetchKeyDirectory(ctx, http.DefaultClient, baseURL)
+		if err != nil {
+			s.notify("Key sync failed: " + err.Error())
+			slog.Info("pgp directory sync failed", "err", err)
+			return
+		}
+		imported := 0
+		for _, dk := range keys {
+			fps, err := s.keyring.ImportArmored([]byte(dk.Armored))
+			if err != nil {
+				slog.Warn("import directory key", "email", dk.Email, "err", err)
+				continue
+			}
+			for _, fp := range fps {
+				armored := dk.Armored
+				if pub, err := s.keyring.ExportPublicArmored(fp); err == nil {
+					armored = string(pub)
+				}
+				s.storeKeyRow(fp, armored, false)
+				imported++
+			}
+		}
+		s.notify("Synced " + plural(imported, "key") + " from VayuPress")
+		s.Refresh()
+	}()
+}
+
 // SetPGPTrust cycles/persists the trust level for a fingerprint.
 func (s *AppState) SetPGPTrust(fingerprint string, level int) {
 	go func() {

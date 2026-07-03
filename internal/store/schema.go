@@ -13,6 +13,7 @@ import (
 var migrations = []string{
 	migrationV1,
 	migrationV2,
+	migrationV3,
 }
 
 const migrationV1 = `
@@ -156,6 +157,15 @@ CREATE TRIGGER messages_fts_au AFTER UPDATE ON messages BEGIN
   VALUES (new.id,new.from_addr,new.from_name,new.subject,new.snippet,new.body_text);
 END;
 INSERT INTO messages_fts(messages_fts) VALUES ('rebuild');
+`
+
+// migrationV3 adds a small key/value settings table for app-wide
+// preferences such as the VayuPress PGP key-directory URL.
+const migrationV3 = `
+CREATE TABLE settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `
 
 // migrate brings the schema to the newest version, applying each pending

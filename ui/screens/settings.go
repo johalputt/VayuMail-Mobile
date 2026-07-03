@@ -27,12 +27,18 @@ type Settings struct {
 	lookupBtn  widget.Clickable
 	trustBtns  []widget.Clickable
 	deleteBtns []widget.Clickable
+
+	keyDirEditor  widget.Editor
+	keyDirSaveBtn widget.Clickable
+	keyDirSyncBtn widget.Clickable
+	keyDirLoaded  bool
 }
 
 // NewSettings constructs the settings screen.
 func NewSettings() *Settings {
 	s := &Settings{list: layout.List{Axis: layout.Vertical}}
 	s.keyEmail.SingleLine = true
+	s.keyDirEditor.SingleLine = true
 	return s
 }
 
@@ -164,6 +170,29 @@ func (s *Settings) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 		return s.keyTools(gtx, env)
 	})
 
+	section("PGP key directory (VayuPress)")
+	// Prefill the editor with the saved URL the first time it is known.
+	if !s.keyDirLoaded && snap.PGPKeyDirURL != "" {
+		s.keyDirEditor.SetText(snap.PGPKeyDirURL)
+		s.keyDirLoaded = true
+	}
+	if s.keyDirSaveBtn.Clicked(gtx) {
+		env.State.SetKeyDirectoryURL(s.keyDirEditor.Text())
+	}
+	if s.keyDirSyncBtn.Clicked(gtx) {
+		env.State.SetKeyDirectoryURL(s.keyDirEditor.Text())
+		env.State.SyncPGPFromDirectory()
+		env.Snack.ShowInfo("Syncing keys from VayuPress…")
+	}
+	status := "Auto-import contacts' public keys from your VayuPress site"
+	if snap.PGPKeyDirURL != "" {
+		status = "Directory: " + snap.PGPKeyDirURL
+	}
+	item("Key directory URL", status, nil)
+	rows = append(rows, func(gtx layout.Context) layout.Dimensions {
+		return s.keyDirTools(gtx, env)
+	})
+
 	section("Appearance")
 	item("Theme", "Follows the system light/dark preference", nil)
 
@@ -193,6 +222,40 @@ func trustLabel(level int) string {
 	default:
 		return "Unverified"
 	}
+}
+
+// keyDirTools renders the VayuPress key-directory URL field with Save and
+// Sync-keys actions.
+func (s *Settings) keyDirTools(gtx layout.Context, env *Env) layout.Dimensions {
+	th := env.Theme
+	return layout.Inset{Left: theme.LG, Right: theme.LG, Top: theme.SM, Bottom: theme.MD}.Layout(gtx,
+		func(gtx layout.Context) layout.Dimensions {
+			return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+					if s.keyDirEditor.Len() == 0 {
+						th.Label(gtx, theme.Caption, th.Palette.Subtle,
+							"https://your-site/wp-json/vayumail/v1/pgpkey", 1)
+					}
+					return s.keyDirEditor.Layout(gtx, th.Shaper,
+						font.Font{Weight: theme.Body.Weight}, theme.Caption.Size,
+						theme.ColorOp(gtx, th.Palette.OnBackground),
+						theme.ColorOp(gtx, th.Palette.AccentSubtle))
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return layout.Inset{Left: theme.MD}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						return s.keyDirSaveBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+							return th.Label(gtx, theme.Caption, th.Palette.Accent, "Save", 1)
+						})
+					})
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return layout.Inset{Left: theme.MD}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						return s.keyDirSyncBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+							return th.Label(gtx, theme.Caption, th.Palette.Accent, "Sync keys", 1)
+						})
+					})
+				}))
+		})
 }
 
 // keyTools renders the WKD lookup field and the armored-key paste box.

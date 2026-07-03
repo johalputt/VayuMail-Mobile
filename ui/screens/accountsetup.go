@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"gioui.org/font"
@@ -24,6 +25,7 @@ type setupMode int
 const (
 	modeWelcome setupMode = iota
 	modeScanning
+	modePasteCode
 	modeManual
 )
 
@@ -34,9 +36,13 @@ type AccountSetup struct {
 	scanner *widgets.QRScanner
 
 	scanBtn   widget.Clickable
+	pasteBtn  widget.Clickable
 	manualBtn widget.Clickable
 	addBtn    widget.Clickable
+	submitBtn widget.Clickable
 	cancelBtn widget.Clickable
+
+	setupCode widget.Editor
 
 	host, imapPort, smtpPort, email, password widget.Editor
 	form                                      layout.List
@@ -52,6 +58,8 @@ func NewAccountSetup(frameSource widgets.FrameSource) *AccountSetup {
 	for _, e := range []*widget.Editor{&s.host, &s.imapPort, &s.smtpPort, &s.email, &s.password} {
 		e.SingleLine = true
 	}
+	// The setup code (the QR's base64url payload) can be long; allow wrap.
+	s.setupCode.SingleLine = false
 	s.imapPort.SetText("993")
 	s.smtpPort.SetText("587")
 	s.password.Mask = '•'
@@ -63,6 +71,8 @@ func (s *AccountSetup) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 	switch s.mode {
 	case modeScanning:
 		return s.layoutScanner(gtx, env)
+	case modePasteCode:
+		return s.layoutPasteCode(gtx, env)
 	case modeManual:
 		return s.layoutManual(gtx, env)
 	default:
@@ -74,6 +84,9 @@ func (s *AccountSetup) layoutWelcome(gtx layout.Context, env *Env) layout.Dimens
 	th := env.Theme
 	if s.scanBtn.Clicked(gtx) {
 		s.mode = modeScanning
+	}
+	if s.pasteBtn.Clicked(gtx) {
+		s.mode = modePasteCode
 	}
 	if s.manualBtn.Clicked(gtx) {
 		s.mode = modeManual
@@ -92,6 +105,12 @@ func (s *AccountSetup) layoutWelcome(gtx layout.Context, env *Env) layout.Dimens
 				layout.Rigid(layout.Spacer{Height: theme.XL}.Layout),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					return widgets.PrimaryButton(gtx, th, &s.scanBtn, "Scan QR Code")
+				}),
+				layout.Rigid(layout.Spacer{Height: theme.MD}.Layout),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return s.pasteBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						return th.Label(gtx, theme.Body, th.Palette.Accent, "Paste setup code", 1)
+					})
 				}),
 				layout.Rigid(layout.Spacer{Height: theme.MD}.Layout),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -118,6 +137,57 @@ func (s *AccountSetup) layoutScanner(gtx layout.Context, env *Env) layout.Dimens
 		return widgets.IconButton(gtx, env.Theme, &s.cancelBtn, widgets.IconBack, env.Theme.Palette.OnBackground)
 	})
 	return layout.Dimensions{Size: gtx.Constraints.Max}
+}
+
+// layoutPasteCode lets the user paste the QR's setup code (its base64url
+// payload) when the camera is unavailable. It runs the identical signed
+// provisioning path as a live scan (Rule 7).
+func (s *AccountSetup) layoutPasteCode(gtx layout.Context, env *Env) layout.Dimensions {
+	th := env.Theme
+	if s.cancelBtn.Clicked(gtx) {
+		s.mode = modeWelcome
+	}
+	if s.submitBtn.Clicked(gtx) {
+		code := strings.TrimSpace(s.setupCode.Text())
+		if code == "" {
+			env.Snack.ShowInfo("Paste the setup code first")
+		} else {
+			s.provision(env, []byte(code))
+			s.setupCode.SetText("")
+			s.mode = modeWelcome
+		}
+	}
+	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return topBar(gtx, th,
+				iconBtn(th, &s.cancelBtn, widgets.IconBack, th.Palette.OnBackground),
+				"Paste setup code")
+		}),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return layout.Inset{Left: theme.LG, Right: theme.LG, Top: theme.MD}.Layout(gtx,
+				func(gtx layout.Context) layout.Dimensions {
+					return th.Label(gtx, theme.Body, th.Palette.OnSurface,
+						"Copy the setup code shown with your VayuMail QR and paste it here.", 0)
+				})
+		}),
+		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+			return layout.Inset{Left: theme.LG, Right: theme.LG, Top: theme.LG}.Layout(gtx,
+				func(gtx layout.Context) layout.Dimensions {
+					if s.setupCode.Len() == 0 {
+						th.Label(gtx, theme.Caption, th.Palette.Subtle, "paste setup code…", 1)
+					}
+					return s.setupCode.Layout(gtx, th.Shaper,
+						font.Font{Weight: theme.Body.Weight}, theme.Body.Size,
+						theme.ColorOp(gtx, th.Palette.OnBackground),
+						theme.ColorOp(gtx, th.Palette.AccentSubtle))
+				})
+		}),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return layout.Inset{Left: theme.LG, Right: theme.LG, Bottom: theme.XL}.Layout(gtx,
+				func(gtx layout.Context) layout.Dimensions {
+					return widgets.PrimaryButton(gtx, th, &s.submitBtn, "Add Account")
+				})
+		}))
 }
 
 // provision verifies and redeems a scanned payload off the UI thread,
