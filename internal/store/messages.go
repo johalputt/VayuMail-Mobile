@@ -188,6 +188,31 @@ func (db *DB) ListThread(ctx context.Context, accountID int64, threadID string) 
 	return collectMessages(rows)
 }
 
+// CorrespondentEmails returns the distinct sender addresses seen in cached
+// mail (most-recent first), up to limit. Used to bulk-discover PGP keys for
+// people you actually correspond with.
+func (db *DB) CorrespondentEmails(ctx context.Context, limit int) ([]string, error) {
+	rows, err := db.sql.QueryContext(ctx, `
+		SELECT from_addr FROM messages
+		WHERE from_addr != ''
+		GROUP BY from_addr
+		ORDER BY MAX(date) DESC
+		LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("store: correspondent emails: %w", err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var addr string
+		if err := rows.Scan(&addr); err != nil {
+			return nil, fmt.Errorf("store: scan correspondent: %w", err)
+		}
+		out = append(out, addr)
+	}
+	return out, rows.Err()
+}
+
 func collectMessages(rows *sql.Rows) ([]Message, error) {
 	defer rows.Close()
 	var out []Message

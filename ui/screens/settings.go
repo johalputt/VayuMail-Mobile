@@ -25,6 +25,7 @@ type Settings struct {
 	keyEmail   widget.Editor
 	importBtn  widget.Clickable
 	lookupBtn  widget.Clickable
+	wkdAllBtn  widget.Clickable
 	trustBtns  []widget.Clickable
 	deleteBtns []widget.Clickable
 
@@ -162,6 +163,10 @@ func (s *Settings) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 	if s.lookupBtn.Clicked(gtx) && strings.Contains(s.keyEmail.Text(), "@") {
 		env.State.DiscoverPGPKey(strings.TrimSpace(s.keyEmail.Text()))
 	}
+	if s.wkdAllBtn.Clicked(gtx) {
+		env.State.DiscoverContactKeysWKD()
+		env.Snack.ShowInfo("Fetching contacts' keys via WKD…")
+	}
 	if s.importBtn.Clicked(gtx) && strings.Contains(s.keyPaste.Text(), "BEGIN PGP") {
 		env.State.ImportPGPKey(s.keyPaste.Text())
 		s.keyPaste.SetText("")
@@ -290,6 +295,13 @@ func (s *Settings) keyTools(gtx layout.Context, env *Env) layout.Dimensions {
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					return s.importBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 						return th.Label(gtx, theme.Caption, th.Palette.Accent, "Import key", 1)
+					})
+				}),
+				layout.Rigid(layout.Spacer{Height: theme.MD}.Layout),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return s.wkdAllBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						return th.Label(gtx, theme.Body, th.Palette.Accent,
+							"Fetch contacts’ keys (WKD)", 1)
 					})
 				}))
 		})

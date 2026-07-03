@@ -5,7 +5,7 @@ package version
 
 const (
 	// Semantic is the human-readable release version.
-	Semantic = "1.2.5"
+	Semantic = "1.2.6"
 	// Code is the platform version code (increments every release).
-	Code = 9
+	Code = 10
 )

@@ -135,6 +135,46 @@ func (s *AppState) SyncPGPFromDirectory() {
 	}()
 }
 
+// DiscoverContactKeysWKD looks up a PGP key for every address you
+// correspond with via Web Key Directory and imports the ones it finds.
+// Because VayuPress publishes its users' keys over WKD, this pulls your
+// VayuPress contacts' keys in one tap — no separate key server needed.
+// User-initiated (Settings button); each lookup honours a short timeout.
+func (s *AppState) DiscoverContactKeysWKD() {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		emails, err := s.db.CorrespondentEmails(ctx, 200)
+		if err != nil {
+			s.notify("Could not read contacts")
+			return
+		}
+		found := 0
+		for _, email := range emails {
+			if ctx.Err() != nil {
+				break
+			}
+			if s.keyring.HasKeyFor(email) {
+				continue
+			}
+			lctx, lcancel := context.WithTimeout(ctx, 15*time.Second)
+			entities, err := pgp.DiscoverWKD(lctx, http.DefaultClient, email)
+			lcancel()
+			if err != nil {
+				continue
+			}
+			for _, fp := range s.keyring.ImportEntities(entities) {
+				if armored, err := s.keyring.ExportPublicArmored(fp); err == nil {
+					s.storeKeyRow(fp, string(armored), false)
+					found++
+				}
+			}
+		}
+		s.notify("Found " + plural(found, "key") + " via WKD")
+		s.Refresh()
+	}()
+}
+
 // SetPGPTrust cycles/persists the trust level for a fingerprint.
 func (s *AppState) SetPGPTrust(fingerprint string, level int) {
 	go func() {

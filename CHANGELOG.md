@@ -6,6 +6,19 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.6] — 2026-07-03
+
+### Added
+- **One-tap contact key discovery via WKD.** Settings → PGP →
+  "Fetch contacts’ keys (WKD)" looks up a public key for every address you
+  correspond with through Web Key Directory and imports the ones it finds.
+  Because VayuPress publishes its users' keys over WKD (ADR-0076), this
+  pulls your VayuPress contacts' keys with no separate key server and no
+  VayuPress change — the two systems interoperate over the open WKD
+  standard. User-initiated, per the no-phone-home rule.
+  - New `store.CorrespondentEmails` (distinct senders, newest first);
+    reuses the existing WKD client.
+
 ## [1.2.5] — 2026-07-03
 
 ### Added
