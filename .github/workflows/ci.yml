@@ -21,6 +21,16 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+      # govulncheck loads every package, including the Gio UI, which binds
+      # to system windowing libraries — install them so package loading
+      # succeeds and the whole tree is scanned.
+      - name: Install Gio system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libwayland-dev libx11-dev \
+            libx11-xcb-dev libxkbcommon-x11-dev libxkbcommon-dev \
+            libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev \
+            libxfixes-dev libvulkan-dev
       - name: govulncheck (known vulnerabilities)
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
