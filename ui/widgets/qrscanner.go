@@ -141,7 +141,7 @@ func (q *QRScanner) drawOverlay(gtx layout.Context, th *theme.Theme) {
 	// Instruction label below the frame.
 	label := "Point at your VayuMail QR code"
 	if q.source == nil {
-		label = "Camera unavailable on this device"
+		label = "Camera unavailable — go back and use “Paste setup code”"
 	}
 	labelGtx := gtx
 	labelGtx.Constraints = layout.Exact(size)

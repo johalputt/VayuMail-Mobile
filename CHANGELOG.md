@@ -6,6 +6,16 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.4] — 2026-07-03
+
+### Added
+- **Paste setup code onboarding.** When the camera is unavailable, you can
+  now add an account by pasting the QR's setup code (its base64url
+  payload, served by the provisioning tool's text endpoint). It runs the
+  identical Ed25519-verified provisioning path as a live scan — no field
+  of an unverified payload is ever used. The scanner screen and the
+  welcome screen both point to this path.
+
 ## [1.2.3] — 2026-07-03
 
 ### Added
