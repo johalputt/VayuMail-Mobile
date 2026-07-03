@@ -192,11 +192,13 @@ func deltaSync(ctx context.Context, client *imapclient.Client, db *store.DB, ev 
 	if err != nil {
 		return err
 	}
-	// The folder is still selected; reuse the stored UIDVALIDITY and let
-	// EXISTS drive the fetch window.
+	// The folder is still selected; reuse the stored sync anchors and let
+	// the UID window drive the fetch. HighestModSeq is preserved so a
+	// delta pass never resets it to zero.
 	selected := &imap.SelectData{
-		UIDValidity: folder.UIDValidity,
-		NumMessages: 1, // non-zero: force the UID range fetch
+		UIDValidity:   folder.UIDValidity,
+		HighestModSeq: folder.HighestModSeq,
+		NumMessages:   1, // non-zero: force the UID range fetch
 	}
 	return SyncFolder(ctx, client, db, ev, accountID, folder, selected)
 }

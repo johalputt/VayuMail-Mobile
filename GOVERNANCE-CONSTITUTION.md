@@ -1,12 +1,19 @@
 # VayuMail-Mobile Governance Constitution
 
-**Version: v1.0**
+**Version: v1.1**
 
 These rules govern all code in this repository without exception. Any
 contribution that violates a rule must resolve the violation before merge.
 No rule may be bypassed by adding an exception — the rule must be revised by
 the maintainer with a documented rationale if it no longer serves the
 project.
+
+Every rule below is enforced mechanically where a machine can decide it,
+and by review where judgement is required. The mechanical half runs in CI
+as its own job on every push and pull request
+(`scripts/constitution.sh`); see the **Enforcement** table at the end for
+the exact check behind each rule. A rule with a machine check cannot be
+merged in violation — the pipeline goes red.
 
 ---
 
@@ -101,8 +108,43 @@ focused sub-files. This keeps every file graspable in one reading session.
 
 ---
 
+## Enforcement
+
+The `constitution` CI job (`scripts/constitution.sh`) is a required check.
+Each rule is enforced as follows — "machine" checks fail the build
+automatically; "review" checks are the reviewer's responsibility.
+
+| Rule | Mechanical check (scripts/constitution.sh) | Also |
+|---|---|---|
+| 1 — Pure Go, no cgo | rejects `mattn/go-sqlite3`; builds engine + both CLIs with `CGO_ENABLED=0` | ADR-0006 |
+| 2 — Permissive licenses | greps `go.mod` for AGPL/LGPL/GPL markers | ADR-0006 audit table, review |
+| 3 — Module path / no relative imports | asserts module line; greps for `"./"`/`"../"` imports | — |
+| 4 — Gio-free engine boundary | greps `internal/{mail,store,syncmanager}` for `gioui.org` | `make boundary` |
+| 5 — Async discipline | bans `time.Sleep` in `ui/`; pins eventCh=256 / cmdCh=64 | `-race` + `goleak` tests, review |
+| 6 — Credential sovereignty | bans credential columns in schema; bans `math/rand` in production | sealed-keystore tests, review |
+| 7 — QR signature verification | asserts every rejection error exists in the verifier | fixture tests, ADR-0003 |
+| 8 — Permission honesty | bans forbidden Android permissions under `platform/` | ADR-0005, manifest review |
+| 9 — Honest compliance | requires COMPLIANCE-TRACKER entries for STUBs; bans unmarked TODO/FIXME | review |
+| 10 — File size | fails any `*.go` over 400 lines | — |
+| Telemetry (cross-cutting) | bans analytics/crash SDKs in `go.mod` | review |
+| Docs (cross-cutting) | every referenced `ADR-00NN` must have a `docs/` file | — |
+
+Supply-chain integrity is enforced alongside the constitution: CI runs
+`govulncheck ./...` (known-vulnerability scan) and `staticcheck ./...` on
+every push.
+
 ## Amendment process
 
 A rule is amended only by the maintainer, in a commit that changes this
-document, bumps its version, and records the rationale in a new or updated
-ADR. Code may never lead the constitution; the constitution leads the code.
+document, bumps its version, records the rationale in a new or updated
+ADR, and updates `scripts/constitution.sh` when the mechanical check
+changes. Code may never lead the constitution; the constitution leads the
+code.
+
+### Changelog
+
+- **v1.1** — Added mechanical enforcement for the channel-buffer
+  invariants (Rule 5), `math/rand` ban (Rule 6), QR rejection-path
+  completeness (Rule 7), ADR cross-reference integrity, and supply-chain
+  scanning (`govulncheck`). Documented the Enforcement map.
+- **v1.0** — Initial constitution: the ten rules.

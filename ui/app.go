@@ -6,14 +6,12 @@ package ui
 import (
 	"context"
 	"image"
-	"log/slog"
 
 	"gioui.org/app"
 	"gioui.org/io/key"
 	"gioui.org/io/system"
 	"gioui.org/layout"
 	"gioui.org/op"
-	xtheme "gioui.org/x/pref/theme"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
@@ -40,15 +38,12 @@ type UI struct {
 
 	events <-chan syncmanager.Event
 	notify *mailNotifier
-	ops    op.Ops
 }
 
-// New wires the UI over an already-started sync manager.
-func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Manager) *UI {
-	dark, err := xtheme.IsDarkMode()
-	if err != nil {
-		slog.Debug("dark mode preference unavailable", "err", err)
-	}
+// New wires the UI over an already-started sync manager. dark is the
+// platform theme preference, probed off the UI thread during startup
+// (see cmd/vayumail: the probe must never block the first frame).
+func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Manager, dark bool) *UI {
 	th := theme.New(dark)
 	st := state.New(ctx, db, mgr)
 	st.SetInvalidate(w.Invalidate)
@@ -91,32 +86,24 @@ func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Mana
 	return ui
 }
 
-// Run is the Gio event loop (Section 3 of the architecture): drain sync
-// events non-blockingly before every frame, draw, repeat. It returns when
-// the window is destroyed.
-func (ui *UI) Run() error {
+// Frame renders one UI frame into the boot loop's context (Section 3 of
+// the architecture): it drains sync events non-blockingly, then draws.
+// The window event loop lives in Boot (ui/boot.go), which owns the ops
+// and presents the frame — this keeps startup non-blocking so Android's
+// splash clears on the first frame.
+func (ui *UI) Frame(gtx layout.Context) {
+	// Drain eventCh non-blockingly before drawing.
+drain:
 	for {
-		switch e := ui.window.Event().(type) {
-		case app.FrameEvent:
-			// Drain eventCh non-blockingly before drawing.
-		drain:
-			for {
-				select {
-				case ev := <-ui.events:
-					ui.st.Apply(ev)
-					ui.notify.observe(ev)
-				default:
-					break drain
-				}
-			}
-			gtx := app.NewContext(&ui.ops, e)
-			ui.layout(gtx)
-			e.Frame(&ui.ops)
-
-		case app.DestroyEvent:
-			return e.Err
+		select {
+		case ev := <-ui.events:
+			ui.st.Apply(ev)
+			ui.notify.observe(ev)
+		default:
+			break drain
 		}
 	}
+	ui.layout(gtx)
 }
 
 // layout routes to the active screen, running the push/pop slide

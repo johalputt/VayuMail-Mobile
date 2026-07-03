@@ -1,0 +1,37 @@
+name: Feature request
+description: Propose a capability for VayuMail-Mobile
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        VayuMail is deliberately minimal — fewer elements than
+        competitors, not more. Proposals are weighed against the five
+        pillars (elegance, minimalism, speed, intelligence, lightness) and
+        the constitution. Features that add telemetry, copyleft
+        dependencies, cgo, or a new permission are out of scope by design.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the user need, not a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: constitution
+    attributes:
+      label: Does this need an ADR?
+      description: Anything touching architecture, concurrency, schema, permissions, or dependencies does.
+      options: ["No", "Yes — I will draft one", "Not sure"]
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

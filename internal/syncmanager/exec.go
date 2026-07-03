@@ -85,13 +85,36 @@ func (m *Manager) execMove(ctx context.Context, c MoveCmd) error {
 	if srcFolder == nil || destFolder == nil {
 		return fmt.Errorf("syncmanager: move: unknown folder")
 	}
-	if err := m.db.MoveMessage(ctx, msg.ID, destFolder.ID); err != nil {
-		return err
-	}
+	dest := *destFolder
 	cfg := ConfigFromStore(acct)
 	return imapsync.WithConnection(ctx, cfg, m.credFor(acct.KeystoreAlias),
 		func(client *imapclient.Client) error {
-			return imapsync.MoveUID(client, srcFolder.FullName, msg.UID, destFolder.FullName)
+			// Server move first: if it fails, the local copy is untouched
+			// and the message correctly stays in its source folder.
+			if err := imapsync.MoveUID(client, srcFolder.FullName, msg.UID, dest.FullName); err != nil {
+				return err
+			}
+			// The move succeeded; drop the local source row.
+			if err := m.db.DeleteLocalMessage(ctx, msg.ID); err != nil {
+				return err
+			}
+			// If the destination folder is already cached, pull the moved
+			// message in so it appears there immediately. When the folder
+			// has never synced we skip this to avoid fetching it whole;
+			// it will appear the first time the user opens it.
+			highest, err := m.db.HighestUID(ctx, dest.ID)
+			if err != nil {
+				return err
+			}
+			if highest == 0 {
+				return nil
+			}
+			selected, err := client.Select(dest.FullName, nil).Wait()
+			if err != nil {
+				return err
+			}
+			return imapsync.SyncFolder(ctx, client, m.db,
+				m.eventsFor(acct.ID), acct.ID, dest, selected)
 		})
 }
 
@@ -120,7 +143,8 @@ func (m *Manager) execDelete(ctx context.Context, c DeleteCmd) error {
 	}
 
 	if current.IsTrash || trash == nil {
-		// Permanent delete.
+		// Permanent delete. Hide it locally now (optimistic), expunge on
+		// the server, then drop the local row on success.
 		acct, err := m.db.GetAccount(ctx, msg.AccountID)
 		if err != nil {
 			return err
@@ -131,7 +155,14 @@ func (m *Manager) execDelete(ctx context.Context, c DeleteCmd) error {
 		cfg := ConfigFromStore(acct)
 		return imapsync.WithConnection(ctx, cfg, m.credFor(acct.KeystoreAlias),
 			func(client *imapclient.Client) error {
-				return imapsync.DeleteUID(client, current.FullName, msg.UID)
+				if err := imapsync.DeleteUID(client, current.FullName, msg.UID); err != nil {
+					// Restore visibility: the message is still on the server.
+					if rerr := m.db.SetDeleted(ctx, msg.ID, false); rerr != nil {
+						slog.Warn("restore after failed delete", "err", rerr)
+					}
+					return err
+				}
+				return m.db.DeleteLocalMessage(ctx, msg.ID)
 			})
 	}
 	return m.execMove(ctx, MoveCmd{MessageID: c.MessageID, DestFolder: trash.FullName})

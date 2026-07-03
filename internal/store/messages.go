@@ -264,18 +264,21 @@ func (db *DB) setMessageBool(ctx context.Context, id int64, col string, v bool) 
 	return nil
 }
 
-// MoveMessage reassigns a message to another folder locally. UID is set to
-// 0 until the next sync learns the UID assigned by the server.
-func (db *DB) MoveMessage(ctx context.Context, id, destFolderID int64) error {
-	res, err := db.sql.ExecContext(ctx, `
-		UPDATE messages SET folder_id = ?, uid = 0 WHERE id = ?`,
-		destFolderID, id)
+// DeleteLocalMessage hard-deletes one cached message by local ID. Used
+// after a server-side move or permanent delete succeeds: the message
+// leaves the source folder locally, and the next sync of the destination
+// folder brings it back with its real server UID. This avoids reusing a
+// placeholder UID, which would collide with the UNIQUE(account, folder,
+// uid) constraint when several messages move to the same folder.
+func (db *DB) DeleteLocalMessage(ctx context.Context, id int64) error {
+	res, err := db.sql.ExecContext(ctx,
+		`DELETE FROM messages WHERE id = ?`, id)
 	if err != nil {
-		return fmt.Errorf("store: move message %d: %w", id, err)
+		return fmt.Errorf("store: delete local message %d: %w", id, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("store: move message %d: %w", id, err)
+		return fmt.Errorf("store: delete local message %d: %w", id, err)
 	}
 	if n == 0 {
 		return ErrNotFound

@@ -3,32 +3,50 @@
 This document is normative. Do not deviate from the goroutine topology or
 channel types below without writing a new ADR (CONTRIBUTING.md).
 
+## Startup
+
+On Android the OS keeps showing the splash until the app presents its
+first frame, and `app.DataDir()` blocks until a window event has been
+delivered. So startup must never do blocking work before the frame loop
+runs, or the app deadlocks on its own splash (this was a real bug, fixed
+in v1.2.0).
+
+The sequence (`cmd/vayumail/main.go` + `ui/boot.go`):
+
+1. `main` creates the `app.Window` and calls `Boot.Run`, which begins
+   pumping window events and rendering an **animated brand frame**
+   immediately.
+2. A background goroutine (`initEngine`) does everything that can block —
+   the dark-mode probe (with a 2s timeout), `app.DataDir()`, `store.Open`,
+   keystore selection, `syncmanager.New` + `Start` — off the UI thread.
+3. On success it calls `Boot.Attach(ui, db, mgr)`; from the next frame the
+   boot loop delegates to `UI.Frame`. On failure it calls `Boot.Fail`,
+   and the splash shows the error instead of hanging.
+
+The window event loop lives entirely in `Boot`; `UI.Frame` renders one
+frame (draining `eventCh` first) into the boot loop's context.
+
 ## Goroutine topology
 
 ```
-main goroutine (cmd/vayumail/main.go)
+UI goroutine (Boot.Run)          background init (initEngine)
+│                                 │
+├─ pumps window events           ├─ 1. store.Open(...)   SQLite, WAL, migrations
+│  renders animated splash       ├─ 2. syncmanager.New   eventCh(256) + cmdCh(64)
+│  until Attach                  ├─ 3. mgr.Start(ctx)
+│                                 │      ├─ commandLoop   drains cmdCh, typed commands
+│                                 │      └─ per account:
+│                                 │          ├─ idleLoop  imapsync.RunIDLE — holds IDLE,
+│                                 │          │            syncs deltas, emits Events
+│                                 │          └─ scheduler outbox flush, battery-aware backoff
+│                                 │
+│◄── Boot.Attach(ui, db, mgr) ────┘  (or Boot.Fail on error → shown on splash)
 │
-├─ 1. store.Open(...)                     SQLite, WAL, migrations
-├─ 2. syncmanager.New(db, keystore)       creates eventCh(256) + cmdCh(64)
-├─ 3. mgr.Start(ctx)
-│      │
-│      ├─ commandLoop            drains cmdCh, executes typed commands
-│      │                          (short-lived IMAP/SMTP connections)
-│      │
-│      └─ per account:
-│          ├─ idleLoop           imapsync.RunIDLE — holds the IMAP IDLE
-│          │                      connection, syncs deltas, writes to
-│          │                      SQLite, emits Events (dispatcher role
-│          │                      folded into the Events callbacks)
-│          └─ scheduler          outbox flush every 5m, battery-aware
-│                                 backoff to 30m on repeated failure
+├─ UI.Frame per FrameEvent       single-threaded, never blocks
+│      └─ AppState loader        the only goroutine that reads SQLite for
+│                                 the UI; publishes snapshots + Invalidate()
 │
-├─ 4. Gio event loop (ui.Run)    single-threaded, never blocks
-│      └─ AppState loader        the only goroutine that reads SQLite
-│                                 for the UI; publishes snapshots and
-│                                 calls window.Invalidate()
-│
-└─ 5. window close → cancel ctx → mgr.Shutdown() waits on WaitGroup
+└─ window close → cancel ctx → mgr.Shutdown() waits on WaitGroup
        (goleak-verified: zero leaked goroutines) → db.Close()
 ```
 

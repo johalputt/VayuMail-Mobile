@@ -52,6 +52,9 @@ does not) · **PENDING** (not started, deliberately deferred).
 | Haptic feedback on swipe/scan | PENDING | No cross-platform haptics wired; swipe and scan work without it |
 | Swipe row exit animation | PARTIAL | Reveal follows finger, snap-back animated; committed rows disappear without a slide-out animation |
 | Hardware back button (Android) | COMPLETE | Back/Escape closes the drawer, pops the stack, closes the window at the root |
+| Android startup (non-blocking boot) | COMPLETE | Boot loop presents the first frame immediately; DataDir/SQLite/keystore init off the UI thread with on-screen error reporting (fixes the startup freeze) |
+| Archive/move correctness | COMPLETE | Server move first, then local delete; no reused placeholder UID (fixes UNIQUE collision on multi-archive); regression-tested |
+| Constitution CI enforcement | COMPLETE | v1.1 gate enforces channel invariants, math/rand ban, QR rejection completeness, ADR cross-refs; govulncheck + staticcheck in CI |
 | Server key pinning for QR payloads | PENDING | v0.1 trusts payload-embedded key + HTTPS exchange (ADR-0003) |
 | APK release pipeline | COMPLETE | `.github/workflows/release.yml`: gogio build on GitHub runners, signature verification, artifact + Release upload on `v*` tags; Play-ready when `ANDROID_KEYSTORE_B64`/`ANDROID_KEYSTORE_PASS` secrets are set, test-signed otherwise |
 | iOS IPA pipeline | PENDING | Requires a macOS runner and Apple signing assets |

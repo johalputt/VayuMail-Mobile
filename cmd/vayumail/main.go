@@ -1,10 +1,11 @@
-// Command vayumail is the production entrypoint: it opens the local
-// store, starts the sync manager, and runs the Gio window until close.
+// Command vayumail is the production entrypoint.
 //
-// Startup order (docs/ARCHITECTURE.md):
-//  1. open SQLite  2. create Manager  3. Start Manager (one goroutine set
-//     per account)  4. run the Gio event loop  5. on close: cancel context,
-//     Manager drains and exits, close DB.
+// Startup order matters on Android: the window must exist and present its
+// first frame immediately, or the OS keeps showing the splash forever.
+// Everything that can block — data-dir resolution, SQLite open, keystore,
+// sync manager, the dark-mode probe — runs in a background goroutine and
+// is handed to the UI when ready. The boot loop (ui.Boot) renders an
+// animated brand frame until then. See docs/ARCHITECTURE.md ("Startup").
 package main
 
 import (
@@ -12,8 +13,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"gioui.org/app"
+	xtheme "gioui.org/x/pref/theme"
 
 	appcrypto "github.com/johalputt/VayuMail-Mobile/internal/crypto"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
@@ -23,51 +26,80 @@ import (
 
 func main() {
 	go func() {
-		os.Exit(run())
+		window := new(app.Window)
+		window.Option(app.Title("VayuMail"))
+		os.Exit(run(window))
 	}()
 	app.Main()
 }
 
-func run() int {
+// run pumps frames from the very first event; the engine attaches when
+// its background initialization completes.
+func run(window *app.Window) int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	dbPath, err := databasePath()
+	boot := ui.NewBoot(ctx, window)
+	go initEngine(ctx, window, boot)
+
+	err := boot.Run()
+	cancel()
+	boot.Shutdown()
 	if err != nil {
-		slog.Error("resolve data dir", "err", err)
-		return 1
-	}
-	db, err := store.Open(ctx, dbPath)
-	if err != nil {
-		slog.Error("open store", "err", err)
-		return 1
-	}
-	defer func() {
-		if err := db.Close(); err != nil {
-			slog.Error("close store", "err", err)
-		}
-	}()
-
-	mgr := syncmanager.New(db, keystore())
-	if dir, err := app.DataDir(); err == nil {
-		mgr.SetAttachmentsDir(filepath.Join(dir, "vayumail", "attachments"))
-	}
-	if err := mgr.Start(ctx); err != nil {
-		slog.Error("start sync manager", "err", err)
-		return 1
-	}
-	defer mgr.Shutdown()
-
-	window := new(app.Window)
-	window.Option(app.Title("VayuMail"))
-
-	if err := ui.New(ctx, window, db, mgr).Run(); err != nil {
 		slog.Error("window", "err", err)
 		return 1
 	}
-	// Window closed: cancel sync before the deferred shutdown waits.
-	cancel()
 	return 0
+}
+
+// initEngine performs every blocking startup step off the UI thread and
+// hands the result to the boot screen. Any failure is reported on screen
+// rather than freezing the splash.
+func initEngine(ctx context.Context, window *app.Window, boot *ui.Boot) {
+	dark := probeDarkMode()
+
+	dbPath, err := databasePath()
+	if err != nil {
+		boot.Fail(err, "resolving the data directory")
+		return
+	}
+	db, err := store.Open(ctx, dbPath)
+	if err != nil {
+		boot.Fail(err, "opening the local store")
+		return
+	}
+
+	mgr := syncmanager.New(db, keystore())
+	mgr.SetAttachmentsDir(filepath.Join(filepath.Dir(dbPath), "attachments"))
+	if err := mgr.Start(ctx); err != nil {
+		boot.Fail(err, "starting the sync engine")
+		if cerr := db.Close(); cerr != nil {
+			slog.Error("close store", "err", cerr)
+		}
+		return
+	}
+
+	boot.Attach(ui.New(ctx, window, db, mgr, dark), db, mgr)
+}
+
+// probeDarkMode asks the platform for the theme preference with a hard
+// timeout: a wedged JNI call must never delay startup.
+func probeDarkMode() bool {
+	result := make(chan bool, 1)
+	go func() {
+		dark, err := xtheme.IsDarkMode()
+		if err != nil {
+			slog.Debug("dark mode preference unavailable", "err", err)
+		}
+		result <- dark
+	}()
+	select {
+	case dark := <-result:
+		return dark
+	case <-time.After(2 * time.Second):
+		slog.Warn("dark mode probe timed out; defaulting to light")
+		return false
+	}
 }
 
 // keystore selects the platform keystore when a gomobile bridge is
@@ -93,6 +125,8 @@ func keystore() appcrypto.Keystore {
 }
 
 // databasePath places vayumail.db inside the platform data directory.
+// app.DataDir may block until the OS context is ready — callers run it
+// off the UI thread.
 func databasePath() (string, error) {
 	dir, err := app.DataDir()
 	if err != nil {

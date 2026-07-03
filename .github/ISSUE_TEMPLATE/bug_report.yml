@@ -1,0 +1,56 @@
+name: Bug report
+description: Report a defect in VayuMail-Mobile
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve VayuMail. **Do not report security
+        vulnerabilities here** — use a private
+        [Security Advisory](https://github.com/johalputt/VayuMail-Mobile/security/advisories/new)
+        instead (see SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: App version (Settings → About) or git commit.
+      placeholder: "v1.2.0 or da83886"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [Android, iOS, Linux desktop, macOS, Windows, CLI]
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you saw versus what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (optional)
+      description: Relevant `adb logcat` / console output. Redact any addresses or tokens.
+      render: shell
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I have removed passwords, tokens, and personal email addresses from this report.
+          required: true

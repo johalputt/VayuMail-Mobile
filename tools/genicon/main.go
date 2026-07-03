@@ -16,20 +16,19 @@ import (
 	"os"
 )
 
-// The icon geometry from assets/logo/vayumail-icon.svg, on a 64x64
-// canvas: two cubic arcs converging at a dot. Do not modify (see
-// assets/logo/README.md).
+// Icon geometry mirrors assets/logo/vayumail-icon.svg on a 64x64 canvas:
+// a short left stroke and a long right sweep converging at the base. Do
+// not modify (see assets/logo/README.md). Both strokes are expressed as
+// cubic Béziers; the straight left bar uses collinear control points.
 type cubic struct{ x0, y0, x1, y1, x2, y2, x3, y3 float64 }
 
-var arcs = []cubic{
-	{10, 14, 14, 38, 24, 54, 32, 58}, // left arc
-	{54, 14, 50, 38, 40, 54, 32, 58}, // right arc
+var strokes = []cubic{
+	{20, 16, 23, 24.667, 26, 33.333, 29, 42}, // left bar: M 20 16 L 29 42
+	{46, 13, 42, 26, 36, 37, 29, 44},         // right sweep: M 46 13 C 42 26, 36 37, 29 44
 }
 
 const (
-	strokeWidth = 2.5 // SVG units
-	dotRadius   = 2.5
-	dotX, dotY  = 32, 58
+	strokeWidth = 10.0 // SVG units
 	canvasUnits = 64
 )
 
@@ -52,9 +51,8 @@ func main() {
 	log.Printf("wrote %s (%dx%d)", *out, *size, *size)
 }
 
-// render stamps the stroked arcs and the convergence dot onto a white
-// canvas. Stamping circles along the flattened curve gives round caps
-// and joins for free.
+// render stamps the stroked mark onto a white canvas, centered. Stamping
+// circles along the flattened curve gives round caps and joins for free.
 func render(size int) *image.NRGBA {
 	img := image.NewNRGBA(image.Rect(0, 0, size, size))
 	// Launcher icons need an opaque background: pure white, per the
@@ -67,15 +65,18 @@ func render(size int) *image.NRGBA {
 	ink := color.NRGBA{R: 0x0D, G: 0x0D, B: 0x0D, A: 0xFF}
 	strokeR := strokeWidth / 2 * scale
 
-	for _, c := range arcs {
-		steps := size * 2 // dense sampling: stamp spacing well under 1px
+	// Center the mark's bounding box in the canvas for a balanced icon.
+	const offX = 32.0 - 33.0 // bbox center x ~33 -> canvas center 32
+	const offY = 32.0 - 28.5 // bbox center y ~28.5 -> canvas center 32
+
+	for _, c := range strokes {
+		steps := size * 3 // dense sampling: stamp spacing well under 1px
 		for i := 0; i <= steps; i++ {
 			t := float64(i) / float64(steps)
 			x, y := cubicPoint(c, t)
-			stamp(img, x*scale, y*scale, strokeR, ink)
+			stamp(img, (x+offX)*scale, (y+offY)*scale, strokeR, ink)
 		}
 	}
-	stamp(img, dotX*scale, dotY*scale, dotRadius*scale, ink)
 	return img
 }
 

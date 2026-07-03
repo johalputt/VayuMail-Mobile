@@ -26,13 +26,19 @@ type serviceConfig struct {
 	Key      ed25519.PrivateKey
 }
 
+// pendingToken is one issued, not-yet-redeemed provisioning token.
+type pendingToken struct {
+	email   string
+	expires time.Time
+}
+
 // service issues signed payloads and redeems one-time tokens.
 type service struct {
 	cfg    serviceConfig
 	pubB64 string
 
 	mu     sync.Mutex
-	tokens map[string]string // token -> email, single use
+	tokens map[string]pendingToken // token -> pending, single use
 }
 
 func newService(cfg serviceConfig) *service {
@@ -40,7 +46,17 @@ func newService(cfg serviceConfig) *service {
 	return &service{
 		cfg:    cfg,
 		pubB64: base64.RawURLEncoding.EncodeToString(pub),
-		tokens: make(map[string]string),
+		tokens: make(map[string]pendingToken),
+	}
+}
+
+// pruneExpiredLocked drops tokens past their validity window so the map
+// cannot grow without bound from unredeemed codes. Callers hold s.mu.
+func (s *service) pruneExpiredLocked(now time.Time) {
+	for token, pt := range s.tokens {
+		if now.After(pt.expires) {
+			delete(s.tokens, token)
+		}
 	}
 }
 
@@ -52,8 +68,10 @@ func (s *service) buildPayload(email, endpoint string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	expiresAt := time.Now().Add(time.Duration(s.cfg.TTL) * time.Second)
 	s.mu.Lock()
-	s.tokens[token] = email
+	s.pruneExpiredLocked(time.Now())
+	s.tokens[token] = pendingToken{email: email, expires: expiresAt}
 	s.mu.Unlock()
 
 	fields := map[string]any{
@@ -68,7 +86,7 @@ func (s *service) buildPayload(email, endpoint string) (string, error) {
 		"token":          token,
 		"token_endpoint": endpoint,
 		"server_pubkey":  s.pubB64,
-		"expires_at":     time.Now().Unix() + int64(s.cfg.TTL),
+		"expires_at":     expiresAt.Unix(),
 	}
 	canonical, err := json.Marshal(fields)
 	if err != nil {
@@ -142,18 +160,20 @@ func (s *service) handleExchange(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	now := time.Now()
 	s.mu.Lock()
-	email, ok := s.tokens[req.Token]
+	s.pruneExpiredLocked(now)
+	pt, ok := s.tokens[req.Token]
 	if ok {
 		delete(s.tokens, req.Token) // single use
 	}
 	s.mu.Unlock()
 
-	if !ok || !strings.EqualFold(email, req.Username) {
+	if !ok || now.After(pt.expires) || !strings.EqualFold(pt.email, req.Username) {
 		http.Error(w, "token expired or invalid", http.StatusGone)
 		return
 	}
-	password := s.cfg.Users[email]
+	password := s.cfg.Users[pt.email]
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]string{
 		"imap_password": password,

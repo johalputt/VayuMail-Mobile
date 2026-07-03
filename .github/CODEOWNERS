@@ -1,0 +1,17 @@
+# VayuMail-Mobile code ownership.
+# The maintainer reviews all changes; the governance surface below is
+# especially protected — changes there require deliberate sign-off.
+
+* @johalputt
+
+# Governance and architecture: never merge without maintainer review.
+/GOVERNANCE-CONSTITUTION.md   @johalputt
+/COMPLIANCE-TRACKER.md        @johalputt
+/docs/                        @johalputt
+/scripts/constitution.sh      @johalputt
+/.github/                     @johalputt
+
+# Security-critical engine surfaces.
+/internal/crypto/             @johalputt
+/internal/mail/account/       @johalputt
+/internal/mail/pgp/           @johalputt
