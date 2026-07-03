@@ -3,10 +3,11 @@
 ## Concept
 
 Vayu (वायु) means wind, air, breath in Sanskrit — the invisible carrier
-that moves things without being seen. The mark is a single confident **V**
-drawn as if by a gust: a short left stroke and a long right sweep that
-converge at the base. Rounded caps, one weight, no ornament — it reads as
-motion and arrival at once.
+that moves things without being seen. The mark is a **"vy" ligature**
+drawn as if by a gust: a short left arm meets a longer right arm that
+curves down-left into a y-tail — the initials of *vayu* fused into a
+single glyph. Rounded caps, one weight, no ornament — it reads as motion
+and arrival at once.
 
 The mark deliberately avoids every exhausted mail-app symbol: no envelope,
 no padlock, no paper plane, no speech bubble, no gradient, no skeuomorphic
@@ -23,20 +24,19 @@ semibold `mail` — so the name reads as one word with an internal rhythm.
 | `vayumail-icon.svg` | Icon only — app icon, favicon, badge |
 | `vayumail.svg` | Full wordmark, light backgrounds |
 | `vayumail-dark.svg` | Full wordmark, dark backgrounds |
-| `vayumail-animated.svg` | Wordmark that draws itself on (browsers/direct view) |
 
 The launcher icon `cmd/vayumail/appicon.png` and the in-app splash mark
 (`ui/boot.go`) are both generated from the icon geometry below, so the
 brand is pixel-consistent from the store listing to the running app. The
-splash animates the mark in on every launch — the "live" logo on device.
+splash shows the mark statically — no animation.
 
 ## Geometry (do not alter)
 
-On a 64×64 canvas, stroke width 10, round caps/joins:
+On a 64×64 canvas, stroke width 11, round caps/joins:
 
 ```
-left bar:    M 20 16 L 29 42
-right sweep:  M 46 13 C 42 26, 36 37, 29 44
+left arm:   M 19 17 L 31 40
+right arm:  M 45 17 C 43 31, 37 44, 27 51
 ```
 
 `tools/genicon` rasterizes exactly this into the launcher PNG (pure Go,

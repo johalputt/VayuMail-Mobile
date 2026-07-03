@@ -17,18 +17,19 @@ import (
 )
 
 // Icon geometry mirrors assets/logo/vayumail-icon.svg on a 64x64 canvas:
-// a short left stroke and a long right sweep converging at the base. Do
-// not modify (see assets/logo/README.md). Both strokes are expressed as
-// cubic Béziers; the straight left bar uses collinear control points.
+// a "vy" ligature — a short left arm and a longer right arm curving
+// down-left into a y-tail. Do not modify (see assets/logo/README.md).
+// Both strokes are expressed as cubic Béziers; the straight left arm
+// uses collinear control points.
 type cubic struct{ x0, y0, x1, y1, x2, y2, x3, y3 float64 }
 
 var strokes = []cubic{
-	{20, 16, 23, 24.667, 26, 33.333, 29, 42}, // left bar: M 20 16 L 29 42
-	{46, 13, 42, 26, 36, 37, 29, 44},         // right sweep: M 46 13 C 42 26, 36 37, 29 44
+	{19, 17, 23, 24.667, 27, 32.333, 31, 40}, // left arm: M 19 17 L 31 40
+	{45, 17, 43, 31, 37, 44, 27, 51},         // right arm: M 45 17 C 43 31, 37 44, 27 51
 }
 
 const (
-	strokeWidth = 10.0 // SVG units
+	strokeWidth = 11.0 // SVG units
 	canvasUnits = 64
 )
 
@@ -66,8 +67,8 @@ func render(size int) *image.NRGBA {
 	strokeR := strokeWidth / 2 * scale
 
 	// Center the mark's bounding box in the canvas for a balanced icon.
-	const offX = 32.0 - 33.0 // bbox center x ~33 -> canvas center 32
-	const offY = 32.0 - 28.5 // bbox center y ~28.5 -> canvas center 32
+	const offX = 32.0 - 32.0 // bbox center x ~32 -> canvas center 32
+	const offY = 32.0 - 34.0 // bbox center y ~34 -> canvas center 32
 
 	for _, c := range strokes {
 		steps := size * 3 // dense sampling: stamp spacing well under 1px

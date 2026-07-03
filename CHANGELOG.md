@@ -6,6 +6,30 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.1] — 2026-07-03
+
+### Fixed
+- **First-launch "disk I/O error" crash.** On Android the app failed at
+  startup with `store: migrate: apply migration v2: disk I/O error
+  (6410)`. Extended code 6410 is `SQLITE_IOERR_GETTEMPPATH`: the
+  migration-v2 FTS5 index rebuild needed an on-disk temp directory, which
+  Android does not expose to SQLite. The store now opens with
+  `temp_store=MEMORY`, keeping transient b-trees in memory so no OS temp
+  path is required. The transaction helper also no longer masks the real
+  error with a spurious "cannot rollback" message when SQLite has already
+  auto-aborted the transaction.
+- **Supply-chain vulnerabilities.** Bumped `golang.org/x/image` to v0.41.0
+  and `github.com/cloudflare/circl` to v1.6.3, clearing five reachable
+  advisories `govulncheck` flagged (TIFF OOM/panic and a secp384r1
+  miscalculation).
+
+### Changed
+- **Logo.** Replaced the single-V mark with the final "vy" ligature (a
+  short left arm meeting a longer right arm that curves into a y-tail),
+  updated across the launcher icon, wordmarks, and in-app splash.
+- **Static splash.** The launch splash now shows the logo statically with
+  no draw-on or breathing animation; the animated SVG was removed.
+
 ## [1.2.0] — 2026-07-03
 
 ### Fixed

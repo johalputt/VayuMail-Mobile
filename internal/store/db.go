@@ -15,6 +15,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -36,7 +37,13 @@ type DB struct {
 // connection pragmas, and runs pending schema migrations. Use ":memory:"
 // for an in-memory database in tests.
 func Open(ctx context.Context, path string) (*DB, error) {
-	dsn := path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)"
+	// temp_store=MEMORY keeps SQLite's transient b-trees (FTS5 index
+	// merges, ORDER BY spills) in memory. Without it, operations like the
+	// migration-v2 FTS rebuild ask the OS for a temp directory, which on
+	// Android is not resolvable and fails with SQLITE_IOERR_GETTEMPPATH
+	// (extended code 6410) — the "disk I/O error" seen on first launch.
+	dsn := path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)" +
+		"&_pragma=foreign_keys(ON)&_pragma=temp_store(MEMORY)"
 	sqlDB, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
@@ -73,7 +80,10 @@ func (db *DB) tx(ctx context.Context, fn func(*sql.Tx) error) error {
 		return fmt.Errorf("store: begin tx: %w", err)
 	}
 	if err := fn(t); err != nil {
-		if rbErr := t.Rollback(); rbErr != nil {
+		// A prior error (e.g. an I/O error) may have already aborted the
+		// transaction, in which case Rollback returns sql.ErrTxDone; that
+		// is not a new failure and must not mask the real cause.
+		if rbErr := t.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
 			return fmt.Errorf("%w (rollback: %v)", err, rbErr)
 		}
 		return err
