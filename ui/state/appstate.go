@@ -9,6 +9,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/mail/pgp"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
@@ -31,6 +32,7 @@ type Snapshot struct {
 	AuthError     bool
 	PGPKeys       []store.PGPKey
 	PGPKeyDirURL  string
+	AutoWKD       bool
 }
 
 // AppState mediates between the sync layer and the screens.
@@ -55,6 +57,37 @@ type AppState struct {
 	selThread    string
 	searchQuery  string
 	refreshQueue chan struct{}
+	autoWKD      bool
+	lastAutoWKD  time.Time
+}
+
+// autoWKDInterval throttles auto key discovery so a burst of new mail
+// triggers at most one WKD sweep.
+const autoWKDInterval = 10 * time.Minute
+
+// SetAutoWKD enables/disables auto key discovery on new mail and persists
+// the choice. Turning it on runs one sweep immediately.
+func (s *AppState) SetAutoWKD(on bool) {
+	s.mu.Lock()
+	s.autoWKD = on
+	s.lastAutoWKD = time.Time{}
+	s.mu.Unlock()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		v := ""
+		if on {
+			v = "1"
+		}
+		if err := s.db.SetSetting(ctx, store.SettingAutoWKD, v); err != nil {
+			s.notify("Could not save setting")
+			return
+		}
+		s.Refresh()
+	}()
+	if on {
+		go s.DiscoverContactKeysWKD()
+	}
 }
 
 // New creates the state and starts its single loader goroutine, which
@@ -69,6 +102,11 @@ func New(ctx context.Context, db *store.DB, mgr *syncmanager.Manager) *AppState 
 	}
 	go func() {
 		s.loadPGPKeys(ctx)
+		if v, err := db.GetSetting(ctx, store.SettingAutoWKD); err == nil {
+			s.mu.Lock()
+			s.autoWKD = v == "1"
+			s.mu.Unlock()
+		}
 		s.loaderLoop(ctx)
 	}()
 	return s
@@ -103,6 +141,15 @@ func (s *AppState) Apply(ev syncmanager.Event) {
 		s.snap.SyncDone, s.snap.SyncTotal = e.Done, e.Total
 	case syncmanager.AuthErrorEvent:
 		s.snap.AuthError = true
+	case syncmanager.NewMessageEvent:
+		// New mail: if auto-WKD is on, opportunistically discover keys for
+		// correspondents that still lack one. Throttled so a burst of mail
+		// triggers at most one sweep per interval; the sweep skips known
+		// keys, so it stays cheap.
+		if s.autoWKD && time.Since(s.lastAutoWKD) > autoWKDInterval {
+			s.lastAutoWKD = time.Now()
+			go s.DiscoverContactKeysWKD()
+		}
 	case syncmanager.SendResultEvent:
 		s.mu.Unlock()
 		if e.Err != nil {
@@ -211,6 +258,9 @@ func (s *AppState) reload(ctx context.Context) {
 	if urlStr, err := s.db.GetSetting(ctx, store.SettingPGPKeyDirectoryURL); err == nil {
 		next.PGPKeyDirURL = urlStr
 	}
+	s.mu.Lock()
+	next.AutoWKD = s.autoWKD
+	s.mu.Unlock()
 	if selThread != "" {
 		thread, err := s.db.ListThread(ctx, selAccount, selThread)
 		if err == nil {

@@ -6,13 +6,23 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.7] — 2026-07-03
+
+### Added
+- **Auto-fetch keys on new mail (opt-in).** Settings → PGP → "Auto-fetch
+  keys on new mail (WKD)". When on, new mail triggers a throttled WKD
+  sweep (at most once per 10 minutes) that imports keys for any
+  correspondent still missing one — so VayuPress contacts' keys stay
+  current with no taps. Off by default and user-enabled, honouring the
+  no-phone-home rule; the setting persists (`auto_wkd`).
+
 ## [1.2.6] — 2026-07-03
 
 ### Added
 - **One-tap contact key discovery via WKD.** Settings → PGP →
   "Fetch contacts’ keys (WKD)" looks up a public key for every address you
   correspond with through Web Key Directory and imports the ones it finds.
-  Because VayuPress publishes its users' keys over WKD (ADR-0076), this
+  Because VayuPress publishes its users' keys over WKD, this
   pulls your VayuPress contacts' keys with no separate key server and no
   VayuPress change — the two systems interoperate over the open WKD
   standard. User-initiated, per the no-phone-home rule.

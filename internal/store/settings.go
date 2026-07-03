@@ -12,6 +12,9 @@ const (
 	// SettingPGPKeyDirectoryURL is the VayuPress key-directory base URL used
 	// to auto-import correspondents' PGP public keys.
 	SettingPGPKeyDirectoryURL = "pgp_key_directory_url"
+	// SettingAutoWKD, when "1", auto-discovers correspondents' keys via WKD
+	// when new mail arrives (throttled). Off by default (no phone-home).
+	SettingAutoWKD = "auto_wkd"
 )
 
 // GetSetting returns the stored value for key, or "" if unset.

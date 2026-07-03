@@ -33,6 +33,8 @@ type Settings struct {
 	keyDirSaveBtn widget.Clickable
 	keyDirSyncBtn widget.Clickable
 	keyDirLoaded  bool
+
+	autoWKDBtn widget.Clickable
 }
 
 // NewSettings constructs the settings screen.
@@ -197,6 +199,19 @@ func (s *Settings) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 	rows = append(rows, func(gtx layout.Context) layout.Dimensions {
 		return s.keyDirTools(gtx, env)
 	})
+	if s.autoWKDBtn.Clicked(gtx) {
+		env.State.SetAutoWKD(!snap.AutoWKD)
+	}
+	autoState := "Off"
+	if snap.AutoWKD {
+		autoState = "On"
+	}
+	item("Auto-fetch keys on new mail (WKD)", "Discover new contacts' keys automatically",
+		func(gtx layout.Context) layout.Dimensions {
+			return s.autoWKDBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return th.Label(gtx, theme.Caption, th.Palette.Accent, autoState, 1)
+			})
+		})
 
 	section("Appearance")
 	item("Theme", "Follows the system light/dark preference", nil)
