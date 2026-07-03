@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"image"
 	"log/slog"
-	"math"
-	"time"
 
 	"gioui.org/app"
 	"gioui.org/f32"
@@ -37,7 +35,6 @@ type Boot struct {
 	ops    op.Ops
 
 	ready chan bootResult
-	start time.Time
 
 	ui  *UI
 	db  *store.DB
@@ -77,15 +74,12 @@ func (b *Boot) Fail(err error, stage string) {
 	b.window.Invalidate()
 }
 
-// Run is the single window event loop: it renders the animated brand
+// Run is the single window event loop: it renders the static brand
 // frame until the engine attaches, then delegates every frame to the UI.
 func (b *Boot) Run() error {
 	for {
 		switch e := b.window.Event().(type) {
 		case app.FrameEvent:
-			if b.start.IsZero() {
-				b.start = e.Now
-			}
 			select {
 			case r := <-b.ready:
 				if r.err != nil {
@@ -121,66 +115,35 @@ func (b *Boot) Shutdown() {
 	}
 }
 
-// frame draws the splash: the brand mark animates in and gently breathes
-// while the engine loads; a fatal error replaces the status line.
+// frame draws the splash: the static brand mark with the wordmark below,
+// and a status line ("starting…" or, on failure, the fatal error). No
+// animation — the logo is shown as-is while the engine loads. The single
+// InvalidateCmd only keeps the loop repainting so it can notice when the
+// engine finishes attaching; it produces no visible motion.
 func (b *Boot) frame(gtx layout.Context) {
 	widgets.FillMax(gtx, b.th.Palette.Background)
-
-	elapsed := gtx.Now.Sub(b.start)
-	intro, breathe := bootAnim(elapsed)
-	// Keep animating until the engine attaches.
 	gtx.Execute(op.InvalidateCmd{})
-
-	markAlpha := uint8(255 * intro * breathe)
-	textAlpha := uint8(255 * clamp((float32(elapsed.Milliseconds())-250)/350))
 
 	layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Vertical, Alignment: layout.Middle}.Layout(gtx,
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return drawBrandMark(gtx, b.th, 92, markAlpha, 0.82+0.18*intro)
+				return drawBrandMark(gtx, b.th, 92, 255, 1.0)
 			}),
 			layout.Rigid(layout.Spacer{Height: theme.MD}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				c := theme.WithAlpha(b.th.Palette.OnBackground, textAlpha)
-				return b.th.LabelAligned(gtx, theme.Heading, c, "vayumail", text.Middle)
+				return b.th.LabelAligned(gtx, theme.Heading, b.th.Palette.OnBackground, "vayumail", text.Middle)
 			}),
 			layout.Rigid(layout.Spacer{Height: theme.SM}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				if b.err != "" {
 					return b.th.Label(gtx, theme.Caption, b.th.Palette.Destructive, b.err, 0)
 				}
-				c := theme.WithAlpha(b.th.Palette.Subtle, textAlpha)
-				return b.th.LabelAligned(gtx, theme.Caption, c, "starting…", text.Middle)
+				return b.th.LabelAligned(gtx, theme.Caption, b.th.Palette.Subtle, "starting…", text.Middle)
 			}))
 	})
 }
 
-// bootAnim returns the intro progress (0→1, ease-out over 450ms) and a
-// breathing multiplier (0.72↔1 sine, ~1.7s period) applied once the intro
-// settles.
-func bootAnim(elapsed time.Duration) (intro, breathe float32) {
-	ms := float32(elapsed.Milliseconds())
-	t := clamp(ms / 450)
-	intro = 1 - (1-t)*(1-t)*(1-t)
-	breathe = 1
-	if t >= 1 {
-		phase := float64(ms-450) / 1700 * 2 * math.Pi
-		breathe = 0.86 + 0.14*float32(math.Sin(phase))
-	}
-	return intro, breathe
-}
-
-func clamp(v float32) float32 {
-	if v < 0 {
-		return 0
-	}
-	if v > 1 {
-		return 1
-	}
-	return v
-}
-
-// drawBrandMark renders the VayuMail V (assets/logo/vayumail-icon.svg
+// drawBrandMark renders the VayuMail mark (assets/logo/vayumail-icon.svg
 // geometry) at sizeDp, tinted by alpha and scaled about its center. Gio
 // strokes are round-capped, matching the SVG.
 func drawBrandMark(gtx layout.Context, th *theme.Theme, sizeDp int, alpha uint8, scale float32) layout.Dimensions {
@@ -191,14 +154,17 @@ func drawBrandMark(gtx layout.Context, th *theme.Theme, sizeDp int, alpha uint8,
 	center := f32.Pt(float32(px)/2, float32(px)/2)
 	defer op.Affine(f32.Affine2D{}.Scale(center, f32.Pt(scale, scale))).Push(gtx.Ops).Pop()
 
+	// The mark is a "vy" ligature (assets/logo/vayumail-icon.svg): a short
+	// left arm meets a longer right arm that curves down-left into a
+	// y-tail. Two round-capped strokes, matching the SVG geometry exactly.
 	pt := func(x, y float32) f32.Point { return f32.Pt(x*s, y*s) }
 	var p clip.Path
 	p.Begin(gtx.Ops)
-	p.MoveTo(pt(20, 16))
-	p.LineTo(pt(29, 42))
-	p.MoveTo(pt(46, 13))
-	p.CubeTo(pt(42, 26), pt(36, 37), pt(29, 44))
-	paint.FillShape(gtx.Ops, ink, clip.Stroke{Path: p.End(), Width: 10 * s}.Op())
+	p.MoveTo(pt(19, 17))
+	p.LineTo(pt(31, 40))
+	p.MoveTo(pt(45, 17))
+	p.CubeTo(pt(43, 31), pt(37, 44), pt(27, 51))
+	paint.FillShape(gtx.Ops, ink, clip.Stroke{Path: p.End(), Width: 11 * s}.Op())
 
 	return layout.Dimensions{Size: image.Pt(px, px)}
 }
