@@ -45,7 +45,11 @@ func Send(ctx context.Context, cfg account.Config, password, from string, recipi
 		_ = client.Close()
 	}()
 
-	if err := client.Auth(sasl.NewPlainClient("", cfg.Username, password)); err != nil {
+	saslClient, err := authClient(cfg, password)
+	if err != nil {
+		return fmt.Errorf("smtpsend: auth: %w", err)
+	}
+	if err := client.Auth(saslClient); err != nil {
 		if isPermanentSMTPError(err) {
 			return fmt.Errorf("%w: %v", ErrAuth, err)
 		}
@@ -62,6 +66,15 @@ func Send(ctx context.Context, cfg account.Config, password, from string, recipi
 		return fmt.Errorf("smtpsend: quit: %w", err)
 	}
 	return nil
+}
+
+// authClient builds the SASL client for the account's mechanism: a bearer
+// token (OAUTHBEARER/XOAUTH2) when configured, otherwise AUTH PLAIN.
+func authClient(cfg account.Config, secret string) (sasl.Client, error) {
+	if account.IsTokenAuth(cfg.AuthMech) {
+		return account.SASLClient(cfg.AuthMech, cfg.Username, secret, cfg.SMTPHost, cfg.SMTPPort)
+	}
+	return sasl.NewPlainClient("", cfg.Username, secret), nil
 }
 
 // isPermanentSMTPError reports whether err is a 5xx SMTP status — a

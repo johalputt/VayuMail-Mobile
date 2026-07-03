@@ -14,6 +14,7 @@ var migrations = []string{
 	migrationV1,
 	migrationV2,
 	migrationV3,
+	migrationV4,
 }
 
 const migrationV1 = `
@@ -166,6 +167,14 @@ CREATE TABLE settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+`
+
+// migrationV4 adds the per-account authentication mechanism name — one of
+// "" (classic), "oauthbearer", or "xoauth2". It records only which SASL
+// mechanism to use; the secret itself always lives in the platform
+// keystore, never in this column (Rule 6).
+const migrationV4 = `
+ALTER TABLE accounts ADD COLUMN auth_mech TEXT NOT NULL DEFAULT '';
 `
 
 // migrate brings the schema to the newest version, applying each pending

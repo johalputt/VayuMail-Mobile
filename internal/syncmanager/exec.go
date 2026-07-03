@@ -320,6 +320,8 @@ func (m *Manager) execAddAccount(ctx context.Context, c AddAccountCmd) error {
 		SMTPTLS:       string(c.Config.SMTPTLS),
 		Username:      c.Config.Username,
 		KeystoreAlias: c.Config.KeystoreAlias,
+		PinnedSPKI:    c.Config.PinnedSPKI,
+		AuthMech:      c.Config.AuthMech,
 	}
 	if _, err := m.db.InsertAccount(ctx, &row); err != nil {
 		return err
