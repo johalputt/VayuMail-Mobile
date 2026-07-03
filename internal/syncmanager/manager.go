@@ -198,5 +198,6 @@ func ConfigFromStore(a store.Account) account.Config {
 		Username:      a.Username,
 		KeystoreAlias: a.KeystoreAlias,
 		PinnedSPKI:    a.PinnedSPKI,
+		AuthMech:      a.AuthMech,
 	}
 }

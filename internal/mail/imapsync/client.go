@@ -99,15 +99,15 @@ func Dial(ctx context.Context, cfg account.Config, password string) (*imapclient
 		return nil, nil, fmt.Errorf("imapsync: dial %s: %w", cfg.IMAPAddr(), err)
 	}
 
-	if err := client.Login(cfg.Username, password).Wait(); err != nil {
+	if authErr := authenticate(client, cfg, password); authErr != nil {
 		logoutErr := client.Close()
-		if isNoResponse(err) {
-			return nil, nil, fmt.Errorf("%w: %v", ErrAuth, err)
+		if isNoResponse(authErr) {
+			return nil, nil, fmt.Errorf("%w: %v", ErrAuth, authErr)
 		}
 		if logoutErr != nil {
-			return nil, nil, fmt.Errorf("imapsync: login: %w (close: %v)", err, logoutErr)
+			return nil, nil, fmt.Errorf("imapsync: login: %w (close: %v)", authErr, logoutErr)
 		}
-		return nil, nil, fmt.Errorf("imapsync: login: %w", err)
+		return nil, nil, fmt.Errorf("imapsync: login: %w", authErr)
 	}
 
 	if !client.Caps().Has(imap.CapIdle) {
@@ -116,6 +116,21 @@ func Dial(ctx context.Context, cfg account.Config, password string) (*imapclient
 		return client, notify, nil
 	}
 	return client, notify, nil
+}
+
+// authenticate logs the client in with the account's mechanism: a bearer
+// token via SASL (OAUTHBEARER/XOAUTH2) when configured, otherwise a classic
+// password via LOGIN. The secret is the value fetched from the keystore —
+// a token for token mechanisms, a password otherwise.
+func authenticate(client *imapclient.Client, cfg account.Config, secret string) error {
+	if account.IsTokenAuth(cfg.AuthMech) {
+		saslClient, err := account.SASLClient(cfg.AuthMech, cfg.Username, secret, cfg.IMAPHost, cfg.IMAPPort)
+		if err != nil {
+			return err
+		}
+		return client.Authenticate(saslClient)
+	}
+	return client.Login(cfg.Username, secret).Wait()
 }
 
 // pushNotification delivers without ever blocking the client read loop.

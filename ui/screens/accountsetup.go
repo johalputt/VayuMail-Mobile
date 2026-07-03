@@ -209,12 +209,19 @@ func (s *AccountSetup) provision(env *Env, raw []byte) {
 			return
 		}
 		alias := fmt.Sprintf("vayumail-%s-%d", payload.Username, time.Now().Unix())
+		cfg := payload.Config(alias)
 		secret := creds.IMAPPassword
 		if secret == "" {
+			// Token-based (modern auth / 2FA): store the bearer token and
+			// authenticate with SASL rather than a password.
 			secret = creds.OAuthToken
+			cfg.AuthMech = account.AuthOAuthBearer
+			if strings.EqualFold(creds.TokenType, "xoauth2") {
+				cfg.AuthMech = account.AuthXOAuth2
+			}
 		}
 		env.State.Send(syncmanager.AddAccountCmd{
-			Config:     payload.Config(alias),
+			Config:     cfg,
 			Credential: []byte(secret),
 		})
 		env.Snack.ShowInfo("Account added")

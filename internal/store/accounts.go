@@ -30,18 +30,21 @@ type Account struct {
 	// PinnedSPKI is an optional base64 SHA-256 hash of the server's TLS
 	// public key; when set, connections require a match (ADR-0008).
 	PinnedSPKI string
+	// AuthMech is the authentication mechanism: "" (password),
+	// "oauthbearer", or "xoauth2".
+	AuthMech string
 }
 
 const accountCols = `id, display_name, email_address, imap_host, imap_port,
 	imap_tls, smtp_host, smtp_port, smtp_tls, username, keystore_alias,
-	created_at, COALESCE(pinned_spki,'')`
+	created_at, COALESCE(pinned_spki,''), COALESCE(auth_mech,'')`
 
 func scanAccount(row interface{ Scan(...any) error }) (Account, error) {
 	var a Account
 	var created int64
 	err := row.Scan(&a.ID, &a.DisplayName, &a.EmailAddress, &a.IMAPHost,
 		&a.IMAPPort, &a.IMAPTLS, &a.SMTPHost, &a.SMTPPort, &a.SMTPTLS,
-		&a.Username, &a.KeystoreAlias, &created, &a.PinnedSPKI)
+		&a.Username, &a.KeystoreAlias, &created, &a.PinnedSPKI, &a.AuthMech)
 	if err != nil {
 		return Account{}, err
 	}
@@ -59,11 +62,11 @@ func (db *DB) InsertAccount(ctx context.Context, a *Account) (int64, error) {
 	res, err := db.sql.ExecContext(ctx, `
 		INSERT INTO accounts (display_name, email_address, imap_host,
 			imap_port, imap_tls, smtp_host, smtp_port, smtp_tls, username,
-			keystore_alias, created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+			keystore_alias, created_at, auth_mech)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
 		a.DisplayName, a.EmailAddress, a.IMAPHost, a.IMAPPort, a.IMAPTLS,
 		a.SMTPHost, a.SMTPPort, a.SMTPTLS, a.Username, a.KeystoreAlias,
-		a.CreatedAt.Unix())
+		a.CreatedAt.Unix(), a.AuthMech)
 	if err != nil {
 		return 0, fmt.Errorf("store: insert account: %w", err)
 	}

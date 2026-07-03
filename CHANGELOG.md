@@ -6,6 +6,20 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.5] — 2026-07-03
+
+### Added
+- **Token-based authentication (modern auth / 2FA).** Accounts can now log
+  in with a bearer token instead of a mail password, via SASL
+  **OAUTHBEARER** (RFC 7628) or **XOAUTH2** (Google/Microsoft style), for
+  both IMAP and SMTP. The mechanism is stored per account (`auth_mech`,
+  schema v4); the token itself stays in the platform keystore (Rule 6).
+  When a provisioned account returns an OAuth token, VayuMail selects the
+  token mechanism automatically (XOAUTH2 when the token type says so, else
+  OAUTHBEARER). Interactive 2FA is not part of IMAP/SMTP — this is the
+  standards path a 2FA-protected account uses to authenticate.
+  - New `internal/mail/account/oauth.go` with a tested XOAUTH2 SASL client.
+
 ## [1.2.4] — 2026-07-03
 
 ### Added

@@ -41,6 +41,10 @@ type Config struct {
 	KeystoreAlias string
 	// PinnedSPKI optionally pins the server TLS key (see pin.go).
 	PinnedSPKI string
+	// AuthMech selects the authentication mechanism: "" (password),
+	// "oauthbearer", or "xoauth2". Token mechanisms store a bearer token in
+	// the keystore instead of a password.
+	AuthMech string
 }
 
 // Validate checks that the configuration is complete and secure enough to
