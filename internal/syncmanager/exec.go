@@ -43,6 +43,8 @@ func (m *Manager) handleCmd(ctx context.Context, cmd Cmd) error {
 		return m.execSend(ctx, c)
 	case SyncNowCmd:
 		return m.execSyncNow(ctx, c)
+	case SyncFolderCmd:
+		return m.execSyncFolder(ctx, c)
 	case AddAccountCmd:
 		return m.execAddAccount(ctx, c)
 	case FetchAttachmentCmd:
@@ -237,8 +239,10 @@ func (m *Manager) execSend(ctx context.Context, c SendCmd) error {
 	return nil
 }
 
-// execSyncNow runs one full folder-discovery plus INBOX sync over a
-// short-lived connection.
+// execSyncNow runs one full folder-discovery and then syncs every folder
+// over a short-lived connection. Syncing all folders (not just INBOX)
+// means Sent, Archive, and mail moved on the server or sent from another
+// client show up here too.
 func (m *Manager) execSyncNow(ctx context.Context, c SyncNowCmd) error {
 	acct, err := m.db.GetAccount(ctx, c.AccountID)
 	if err != nil {
@@ -247,14 +251,44 @@ func (m *Manager) execSyncNow(ctx context.Context, c SyncNowCmd) error {
 	cfg := ConfigFromStore(acct)
 	return imapsync.WithConnection(ctx, cfg, m.credFor(acct.KeystoreAlias),
 		func(client *imapclient.Client) error {
-			if _, err := imapsync.SyncFolders(ctx, client, m.db, acct.ID); err != nil {
-				return err
-			}
-			folder, err := m.db.GetFolderByFullName(ctx, acct.ID, "INBOX")
+			folders, err := imapsync.SyncFolders(ctx, client, m.db, acct.ID)
 			if err != nil {
 				return err
 			}
-			selected, err := client.Select("INBOX", nil).Wait()
+			for _, folder := range folders {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				selected, err := client.Select(folder.FullName, nil).Wait()
+				if err != nil {
+					slog.Warn("sync-now: select folder failed",
+						"folder", folder.FullName, "err", err)
+					continue
+				}
+				if err := imapsync.SyncFolder(ctx, client, m.db,
+					m.eventsFor(acct.ID), acct.ID, folder, selected); err != nil {
+					slog.Warn("sync-now: sync folder failed",
+						"folder", folder.FullName, "err", err)
+				}
+			}
+			return nil
+		})
+}
+
+// execSyncFolder syncs a single folder over a short-lived connection.
+func (m *Manager) execSyncFolder(ctx context.Context, c SyncFolderCmd) error {
+	acct, err := m.db.GetAccount(ctx, c.AccountID)
+	if err != nil {
+		return err
+	}
+	folder, err := m.db.GetFolder(ctx, c.FolderID)
+	if err != nil {
+		return err
+	}
+	cfg := ConfigFromStore(acct)
+	return imapsync.WithConnection(ctx, cfg, m.credFor(acct.KeystoreAlias),
+		func(client *imapclient.Client) error {
+			selected, err := client.Select(folder.FullName, nil).Wait()
 			if err != nil {
 				return err
 			}

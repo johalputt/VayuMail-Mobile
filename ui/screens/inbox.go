@@ -22,6 +22,7 @@ type Inbox struct {
 	menuBtn    widget.Clickable
 	searchBtn  widget.Clickable
 	composeBtn widget.Clickable
+	refreshBtn widget.Clickable
 
 	// pendingHidden holds message IDs swiped away but not yet committed;
 	// they are hidden immediately and restored on undo.
@@ -62,6 +63,10 @@ func (s *Inbox) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 		env.Composer.Reset()
 		env.Nav.Push(state.ScreenCompose, gtx.Now)
 	}
+	if s.refreshBtn.Clicked(gtx) {
+		env.State.SyncNow()
+		env.Snack.ShowInfo("Syncing…")
+	}
 
 	title := snap.CurrentFolder.Name
 	if title == "" {
@@ -75,6 +80,7 @@ func (s *Inbox) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 			return topBar(gtx, th,
 				iconBtn(th, &s.menuBtn, widgets.IconMenu, th.Palette.OnBackground),
 				title,
+				iconBtn(th, &s.refreshBtn, widgets.IconRefresh, th.Palette.OnBackground),
 				iconBtn(th, &s.searchBtn, widgets.IconSearch, th.Palette.OnBackground),
 				iconBtn(th, &s.composeBtn, widgets.IconCompose, th.Palette.OnBackground),
 			)

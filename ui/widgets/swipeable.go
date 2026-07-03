@@ -24,10 +24,17 @@ const (
 	SwipeArchive
 	// SwipeDelete: left swipe past 40% width — delete the row.
 	SwipeDelete
+	// SwipeTap: the row was pressed and released without a real drag — a
+	// plain tap. The drag gesture sits above the row's Clickable and eats
+	// its pointer events, so the Swipeable must surface taps itself.
+	SwipeTap
 )
 
 // swipeThreshold is the fraction of row width that commits the action.
 const swipeThreshold = 0.4
+
+// tapSlop is the max finger travel (px) still treated as a tap, not a drag.
+const tapSlop = 12
 
 // snapBackDuration animates an uncommitted swipe back to rest.
 const snapBackDuration = 120 * time.Millisecond
@@ -40,6 +47,7 @@ type Swipeable struct {
 	pressX float32
 	offset float32
 	active bool
+	moved  bool
 	// snap-back animation
 	snapFrom  float32
 	snapStart time.Time
@@ -61,10 +69,14 @@ func (s *Swipeable) Layout(gtx layout.Context, th *theme.Theme, row layout.Widge
 		case pointer.Press:
 			s.pressX = ev.Position.X
 			s.active = true
+			s.moved = false
 			s.snapping = false
 		case pointer.Drag:
 			if s.active {
 				s.offset = ev.Position.X - s.pressX
+				if s.offset > tapSlop || s.offset < -tapSlop {
+					s.moved = true
+				}
 			}
 		case pointer.Release:
 			if s.active {
@@ -74,6 +86,10 @@ func (s *Swipeable) Layout(gtx layout.Context, th *theme.Theme, row layout.Widge
 					s.offset = 0
 				case s.offset < -width*swipeThreshold:
 					result = SwipeDelete
+					s.offset = 0
+				case !s.moved:
+					// Pressed and released in place: it's a tap, not a swipe.
+					result = SwipeTap
 					s.offset = 0
 				default:
 					s.beginSnapBack(gtx.Now)

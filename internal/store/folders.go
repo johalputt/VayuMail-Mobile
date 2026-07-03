@@ -105,6 +105,20 @@ func (db *DB) GetFolderByFullName(ctx context.Context, accountID int64, fullName
 	return f, nil
 }
 
+// GetFolder returns a single folder by its local id.
+func (db *DB) GetFolder(ctx context.Context, id int64) (Folder, error) {
+	row := db.sql.QueryRowContext(ctx, `
+		SELECT `+folderCols+` FROM folders WHERE id = ?`, id)
+	f, err := scanFolder(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Folder{}, ErrNotFound
+	}
+	if err != nil {
+		return Folder{}, fmt.Errorf("store: get folder %d: %w", id, err)
+	}
+	return f, nil
+}
+
 // SetFolderSyncState records the UIDVALIDITY and HIGHESTMODSEQ anchors
 // after a sync pass. If UIDVALIDITY changed on the server, the caller must
 // clear cached messages first (see ClearFolderMessages).
