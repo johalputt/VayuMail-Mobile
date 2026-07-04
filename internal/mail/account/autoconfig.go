@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 )
 
@@ -55,6 +56,15 @@ func DiscoverAutoconfig(ctx context.Context, client *http.Client, email string) 
 	if client == nil {
 		client = http.DefaultClient
 	}
+	// Do NOT follow redirects during discovery: publicMailDomain vets only the
+	// initial host, so a mail domain that 3xx-redirects to a private/loopback or
+	// cloud-metadata address must not be chased (SSRF, CWE-918). A shallow copy
+	// keeps the caller's transport (and any test injection) but refuses to follow
+	// a redirect — a 3xx then surfaces as a non-200 and the lookup fails safely.
+	noFollow := *client
+	noFollow.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	client = &noFollow
+
 	at := strings.LastIndex(email, "@")
 	if at <= 0 || at == len(email)-1 {
 		return nil, fmt.Errorf("account: autoconfig: invalid address %q", email)
@@ -188,9 +198,17 @@ func tlsModeFromWire(s string) (TLSMode, error) {
 	}
 }
 
+// mailHostRe matches a syntactically valid multi-label public DNS hostname. It
+// deliberately excludes anything carrying a port, path, userinfo or scheme, so a
+// crafted address part (e.g. "evil.com:9999" or "evil.com/x") cannot inject a
+// port or path into the discovery URL.
+var mailHostRe = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$`)
+
 // publicMailDomain reports whether domain is a routable public DNS name safe to
-// fetch autoconfig from. It rejects empty input, IP literals and localhost so a
-// hostile address cannot steer discovery at internal/loopback hosts (SSRF).
+// fetch autoconfig from. It rejects empty input, IP literals, localhost, and
+// anything that is not a clean multi-label hostname (no port/path/userinfo) so a
+// hostile address cannot steer discovery at internal/loopback hosts or arbitrary
+// ports (SSRF, CWE-918).
 func publicMailDomain(domain string) bool {
 	if domain == "" || len(domain) > 253 || strings.EqualFold(domain, "localhost") {
 		return false
@@ -198,8 +216,5 @@ func publicMailDomain(domain string) bool {
 	if net.ParseIP(domain) != nil {
 		return false
 	}
-	if !strings.Contains(domain, ".") || strings.HasPrefix(domain, ".") || strings.HasSuffix(domain, ".") {
-		return false
-	}
-	return true
+	return mailHostRe.MatchString(domain)
 }
