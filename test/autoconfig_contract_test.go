@@ -58,6 +58,11 @@ func TestAutoconfigContractParsesServerDocument(t *testing.T) {
 	if cfg.DisplayName != "example.com Mail" {
 		t.Errorf("DisplayName = %q, want %q", cfg.DisplayName, "example.com Mail")
 	}
+	// The canonical server document declares password auth, so the discovered
+	// account must use the password mechanism (no bearer token).
+	if cfg.AuthMech != account.AuthPassword {
+		t.Errorf("AuthMech = %q, want password (empty)", cfg.AuthMech)
+	}
 	// A draft Config is complete except for the keystore alias the setup flow
 	// assigns; filling it must yield a valid, connectable account.
 	cfg.KeystoreAlias = "vaultkey"
@@ -74,6 +79,40 @@ func TestAutoconfigSchemaMatchesServer(t *testing.T) {
 	}
 	if !strings.Contains(canonicalAutoconfigJSON, `"schema":"`+account.AutoconfigSchema+`"`) {
 		t.Error("canonical document schema does not match the client AutoconfigSchema constant")
+	}
+}
+
+// serveAutoconfigDoc stands up a TLS test server returning the given document
+// body and a client whose requests for any host are routed to it.
+func serveAutoconfigDoc(t *testing.T, body string) *http.Client {
+	t.Helper()
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	c := srv.Client()
+	c.Transport = rewriteHost(c.Transport, srv.Listener.Addr().String())
+	return c
+}
+
+// TestAutoconfigHonorsAuthMech verifies the discovery client maps the server's
+// declared auth field to the account mechanism: a token mechanism is selected
+// when advertised, and an unrecognised value is rejected rather than silently
+// mis-configured.
+func TestAutoconfigHonorsAuthMech(t *testing.T) {
+	tokenDoc := `{"schema":"vayumail-autoconfig/1","domain":"example.com","displayName":"X","imap":{"host":"m.example.com","port":993,"tls":"tls"},"pop3":{"host":"m.example.com","port":995,"tls":"tls"},"smtp":{"host":"m.example.com","port":587,"tls":"starttls"},"usernameIsEmail":true,"auth":"xoauth2","wkd":true}`
+	cfg, err := account.DiscoverAutoconfig(context.Background(), serveAutoconfigDoc(t, tokenDoc), "u@example.com")
+	if err != nil {
+		t.Fatalf("token doc: %v", err)
+	}
+	if cfg.AuthMech != account.AuthXOAuth2 {
+		t.Errorf("AuthMech = %q, want %q", cfg.AuthMech, account.AuthXOAuth2)
+	}
+
+	badDoc := `{"schema":"vayumail-autoconfig/1","domain":"example.com","displayName":"X","imap":{"host":"m.example.com","port":993,"tls":"tls"},"smtp":{"host":"m.example.com","port":587,"tls":"starttls"},"usernameIsEmail":true,"auth":"telepathy","wkd":false}`
+	if _, err := account.DiscoverAutoconfig(context.Background(), serveAutoconfigDoc(t, badDoc), "u@example.com"); err == nil {
+		t.Error("expected rejection of an unsupported auth mechanism")
 	}
 }
 

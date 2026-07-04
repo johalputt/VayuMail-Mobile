@@ -130,6 +130,10 @@ func (d *autoconfigDoc) toConfig(email string) (*Config, error) {
 	if !validPort(d.IMAP.Port) || !validPort(d.SMTP.Port) {
 		return nil, fmt.Errorf("account: autoconfig: document has an out-of-range port")
 	}
+	mech, err := authMechFromWire(d.Auth)
+	if err != nil {
+		return nil, fmt.Errorf("account: autoconfig: %w", err)
+	}
 	display := strings.TrimSpace(d.DisplayName)
 	if display == "" {
 		display = email
@@ -147,8 +151,28 @@ func (d *autoconfigDoc) toConfig(email string) (*Config, error) {
 		SMTPPort:     d.SMTP.Port,
 		SMTPTLS:      smtpTLS,
 		Username:     username,
+		AuthMech:     mech,
 		// KeystoreAlias intentionally left blank — assigned by the setup flow.
 	}, nil
+}
+
+// authMechFromWire maps the autoconfig "auth" field to an account AuthMech. An
+// empty or "password" value is the default password mechanism; "oauthbearer"
+// and "xoauth2" select the corresponding token mechanism (so a server that
+// mints bearer tokens is configured correctly without manual entry). An
+// unrecognised value is rejected rather than silently defaulting to a wrong or
+// insecure mechanism.
+func authMechFromWire(s string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "", "password":
+		return AuthPassword, nil
+	case AuthOAuthBearer:
+		return AuthOAuthBearer, nil
+	case AuthXOAuth2:
+		return AuthXOAuth2, nil
+	default:
+		return "", fmt.Errorf("unsupported auth mechanism %q", s)
+	}
 }
 
 // tlsModeFromWire converts the autoconfig "tls"/"starttls" spelling to a
