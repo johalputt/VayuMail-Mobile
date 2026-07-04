@@ -6,6 +6,12 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-07-04
+
+Email-only onboarding via autoconfig discovery, plus PGP/WKD interop hardening
+(address-verified key discovery, SSRF-safe discovery) and the shared WKD
+contract with the VayuPress server.
+
 ### Added
 - **Onboard by email — VayuMail autoconfig discovery.** The manual account
   screen gains an **"Auto-detect from email"** button: enter your address, tap
