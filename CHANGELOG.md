@@ -6,6 +6,16 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **WKD interop contract test (shared with VayuPress).** Froze an expanded
+  set of WKD address-hash known-answer vectors (`test/wkd_contract_test.go`)
+  that is kept byte-for-byte identical to the matching table in the VayuPress
+  server. The app computes the lookup hash and VayuPress computes the publish
+  hash with two independent z-base-32/SHA-1 implementations; the shared table
+  makes any drift between them fail CI on whichever side moved, instead of
+  silently breaking key discovery (server publishes at a path the app never
+  requests). Also pins case-folding of the local part.
+
 ## [1.2.7] — 2026-07-03
 
 ### Added
