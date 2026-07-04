@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gioui.org/font"
@@ -39,6 +40,7 @@ type AccountSetup struct {
 	pasteBtn  widget.Clickable
 	manualBtn widget.Clickable
 	addBtn    widget.Clickable
+	detectBtn widget.Clickable
 	submitBtn widget.Clickable
 	cancelBtn widget.Clickable
 
@@ -46,6 +48,12 @@ type AccountSetup struct {
 
 	host, imapPort, smtpPort, email, password widget.Editor
 	form                                      layout.List
+
+	// pendingCfg carries a completed autodetect result from the lookup
+	// goroutine to the UI thread, which applies it to the editors in
+	// applyPendingDetect. Guarded by mu so the two threads never race.
+	mu         sync.Mutex
+	pendingCfg *account.Config
 }
 
 // NewAccountSetup constructs the onboarding screen. frameSource may be
@@ -231,8 +239,14 @@ func (s *AccountSetup) provision(env *Env, raw []byte) {
 
 func (s *AccountSetup) layoutManual(gtx layout.Context, env *Env) layout.Dimensions {
 	th := env.Theme
+	// Apply any completed autodetect result on the UI thread before laying out
+	// the editors, so their text is never mutated from the lookup goroutine.
+	s.applyPendingDetect()
 	if s.cancelBtn.Clicked(gtx) {
 		s.mode = modeWelcome
+	}
+	if s.detectBtn.Clicked(gtx) {
+		s.autodetect(env)
 	}
 	if s.addBtn.Clicked(gtx) {
 		s.addManual(env)
@@ -256,9 +270,17 @@ func (s *AccountSetup) layoutManual(gtx layout.Context, env *Env) layout.Dimensi
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 			return s.form.Layout(gtx, len(fields)+1, func(gtx layout.Context, i int) layout.Dimensions {
 				if i == len(fields) {
-					return layout.Inset{Left: theme.LG, Top: theme.XL}.Layout(gtx,
+					return layout.Inset{Left: theme.LG, Right: theme.LG, Top: theme.XL}.Layout(gtx,
 						func(gtx layout.Context) layout.Dimensions {
-							return widgets.PrimaryButton(gtx, th, &s.addBtn, "Add Account")
+							return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+									return widgets.PrimaryButton(gtx, th, &s.detectBtn, "Auto-detect from email")
+								}),
+								layout.Rigid(layout.Spacer{Height: theme.MD}.Layout),
+								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+									return widgets.PrimaryButton(gtx, th, &s.addBtn, "Add Account")
+								}),
+							)
 						})
 				}
 				f := fields[i]
@@ -314,6 +336,51 @@ func (s *AccountSetup) addManual(env *Env) {
 	s.password.SetText("")
 	env.Snack.ShowInfo("Account added")
 	env.State.Refresh()
+}
+
+// autodetect fills the server and port fields from the domain's published
+// VayuMail autoconfig document, so the operator types only their email and
+// password. The lookup runs off the UI thread (mirroring provision); the result
+// is handed to the UI thread via pendingCfg and applied on the next frame by
+// applyPendingDetect, so the editors are never mutated from the goroutine.
+func (s *AccountSetup) autodetect(env *Env) {
+	email := strings.TrimSpace(s.email.Text())
+	if email == "" {
+		env.Snack.ShowInfo("Enter your email address first")
+		return
+	}
+	env.Snack.ShowInfo("Detecting settings…")
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		cfg, err := account.DiscoverAutoconfig(ctx, http.DefaultClient, email)
+		if err != nil {
+			env.Snack.ShowInfo("Couldn't detect settings — enter them manually")
+			env.State.Refresh()
+			return
+		}
+		s.mu.Lock()
+		s.pendingCfg = cfg
+		s.mu.Unlock()
+		env.Snack.ShowInfo("Settings detected — add your password")
+		env.State.Refresh()
+	}()
+}
+
+// applyPendingDetect copies a completed autodetect result into the form
+// editors. It runs on the UI thread (from layoutManual) so widget state is
+// never touched concurrently with layout.
+func (s *AccountSetup) applyPendingDetect() {
+	s.mu.Lock()
+	cfg := s.pendingCfg
+	s.pendingCfg = nil
+	s.mu.Unlock()
+	if cfg == nil {
+		return
+	}
+	s.host.SetText(cfg.IMAPHost)
+	s.imapPort.SetText(strconv.Itoa(cfg.IMAPPort))
+	s.smtpPort.SetText(strconv.Itoa(cfg.SMTPPort))
 }
 
 // provisionErrorMessage maps typed provisioning errors onto clear,

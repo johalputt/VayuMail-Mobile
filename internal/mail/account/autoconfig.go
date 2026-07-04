@@ -1,0 +1,181 @@
+package account
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"strings"
+)
+
+// AutoconfigSchema is the version of the first-party VayuMail autoconfig
+// document this client understands. It MUST match the server's
+// VayuMailAutoconfigSchema (VayuPress cmd/vayupress/vayuos_mail.go); the pairing
+// is locked by autoconfig_contract_test.go on both sides. A document announcing
+// a different schema is rejected rather than half-parsed.
+const AutoconfigSchema = "vayumail-autoconfig/1"
+
+// autoconfigDoc mirrors the JSON served at
+// https://<domain>/.well-known/vayumail/autoconfig.json. Field names and the
+// "tls"/"starttls" spellings are the wire contract with the VayuPress server.
+type autoconfigDoc struct {
+	Schema          string             `json:"schema"`
+	Domain          string             `json:"domain"`
+	DisplayName     string             `json:"displayName"`
+	IMAP            autoconfigEndpoint `json:"imap"`
+	POP3            autoconfigEndpoint `json:"pop3"`
+	SMTP            autoconfigEndpoint `json:"smtp"`
+	UsernameIsEmail bool               `json:"usernameIsEmail"`
+	Auth            string             `json:"auth"`
+	WKD             bool               `json:"wkd"`
+}
+
+type autoconfigEndpoint struct {
+	Host string `json:"host"`
+	Port int    `json:"port"`
+	TLS  string `json:"tls"`
+}
+
+// autoconfigMaxBytes caps the discovery response so a hostile or misconfigured
+// server cannot stream an unbounded body into memory.
+const autoconfigMaxBytes = 64 << 10
+
+// DiscoverAutoconfig looks up mail-server settings for an email address via the
+// domain's first-party VayuMail autoconfig document and returns a Config
+// prefilled with the IMAP/SMTP coordinates and username. Discovery is
+// user-initiated only — VayuMail never phones home on its own.
+//
+// The returned Config is a draft: KeystoreAlias is left empty for the setup flow
+// to assign once the operator supplies a credential, so callers should set it
+// (and store the secret) before calling Validate. On success the network
+// identity (hosts, ports, TLS modes, username, display name) is complete.
+func DiscoverAutoconfig(ctx context.Context, client *http.Client, email string) (*Config, error) {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	at := strings.LastIndex(email, "@")
+	if at <= 0 || at == len(email)-1 {
+		return nil, fmt.Errorf("account: autoconfig: invalid address %q", email)
+	}
+	domain := strings.ToLower(strings.TrimSpace(email[at+1:]))
+	if !publicMailDomain(domain) {
+		return nil, fmt.Errorf("account: autoconfig: refusing non-public domain %q", domain)
+	}
+
+	// The domain's own trusted-cert host is where VayuMail publishes; try it,
+	// then the conventional autoconfig subdomain as a fallback.
+	urls := []string{
+		"https://" + domain + "/.well-known/vayumail/autoconfig.json",
+		"https://autoconfig." + domain + "/.well-known/vayumail/autoconfig.json",
+	}
+	var lastErr error
+	for _, u := range urls {
+		doc, err := fetchAutoconfig(ctx, client, u)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		cfg, err := doc.toConfig(email)
+		if err != nil {
+			return nil, err
+		}
+		return cfg, nil
+	}
+	return nil, fmt.Errorf("account: autoconfig lookup for %s: %w", email, lastErr)
+}
+
+func fetchAutoconfig(ctx context.Context, client *http.Client, url string) (*autoconfigDoc, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, autoconfigMaxBytes))
+	if err != nil {
+		return nil, err
+	}
+	var doc autoconfigDoc
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil, fmt.Errorf("parse autoconfig: %w", err)
+	}
+	if doc.Schema != AutoconfigSchema {
+		return nil, fmt.Errorf("unsupported autoconfig schema %q (want %q)", doc.Schema, AutoconfigSchema)
+	}
+	return &doc, nil
+}
+
+// toConfig maps a discovered document to a draft Config for the given address.
+func (d *autoconfigDoc) toConfig(email string) (*Config, error) {
+	imapTLS, err := tlsModeFromWire(d.IMAP.TLS)
+	if err != nil {
+		return nil, fmt.Errorf("account: autoconfig: imap: %w", err)
+	}
+	smtpTLS, err := tlsModeFromWire(d.SMTP.TLS)
+	if err != nil {
+		return nil, fmt.Errorf("account: autoconfig: smtp: %w", err)
+	}
+	if d.IMAP.Host == "" || d.SMTP.Host == "" {
+		return nil, fmt.Errorf("account: autoconfig: document missing imap/smtp host")
+	}
+	if !validPort(d.IMAP.Port) || !validPort(d.SMTP.Port) {
+		return nil, fmt.Errorf("account: autoconfig: document has an out-of-range port")
+	}
+	display := strings.TrimSpace(d.DisplayName)
+	if display == "" {
+		display = email
+	}
+	// The server signals username == email; if it ever says otherwise we still
+	// default to the full address, which every VayuMail mailbox accepts.
+	username := email
+	return &Config{
+		DisplayName:  display,
+		EmailAddress: email,
+		IMAPHost:     d.IMAP.Host,
+		IMAPPort:     d.IMAP.Port,
+		IMAPTLS:      imapTLS,
+		SMTPHost:     d.SMTP.Host,
+		SMTPPort:     d.SMTP.Port,
+		SMTPTLS:      smtpTLS,
+		Username:     username,
+		// KeystoreAlias intentionally left blank — assigned by the setup flow.
+	}, nil
+}
+
+// tlsModeFromWire converts the autoconfig "tls"/"starttls" spelling to a
+// TLSMode. Plaintext is never accepted.
+func tlsModeFromWire(s string) (TLSMode, error) {
+	switch TLSMode(strings.ToLower(strings.TrimSpace(s))) {
+	case TLSModeImplicit:
+		return TLSModeImplicit, nil
+	case TLSModeSTARTTLS:
+		return TLSModeSTARTTLS, nil
+	default:
+		return "", fmt.Errorf("unsupported socket type %q", s)
+	}
+}
+
+// publicMailDomain reports whether domain is a routable public DNS name safe to
+// fetch autoconfig from. It rejects empty input, IP literals and localhost so a
+// hostile address cannot steer discovery at internal/loopback hosts (SSRF).
+func publicMailDomain(domain string) bool {
+	if domain == "" || len(domain) > 253 || strings.EqualFold(domain, "localhost") {
+		return false
+	}
+	if net.ParseIP(domain) != nil {
+		return false
+	}
+	if !strings.Contains(domain, ".") || strings.HasPrefix(domain, ".") || strings.HasSuffix(domain, ".") {
+		return false
+	}
+	return true
+}
