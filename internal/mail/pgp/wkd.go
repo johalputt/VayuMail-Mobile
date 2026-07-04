@@ -40,12 +40,37 @@ func DiscoverWKD(ctx context.Context, client *http.Client, email string) (openpg
 	var lastErr error
 	for _, u := range urls {
 		entities, err := fetchWKD(ctx, client, u)
-		if err == nil {
-			return entities, nil
+		if err != nil {
+			lastErr = err
+			continue
 		}
-		lastErr = err
+		// Only trust a response that actually carries a User ID for the address we
+		// asked about. WKD relies on the domain serving honestly over TLS, but a
+		// misconfigured or hostile endpoint could return a key for a *different*
+		// address; importing it would silently mis-associate a stranger's key with
+		// this contact. Reject the mismatch and keep looking.
+		if !entitiesHaveEmail(entities, email) {
+			lastErr = fmt.Errorf("pgp: wkd: key at %s has no user id for %s", u, email)
+			continue
+		}
+		return entities, nil
 	}
 	return nil, fmt.Errorf("pgp: wkd lookup for %s: %w", email, lastErr)
+}
+
+// entitiesHaveEmail reports whether any entity carries a User ID whose email
+// matches want (case-insensitive) — the WKD response must be for the address
+// that was requested, not some other identity.
+func entitiesHaveEmail(entities openpgp.EntityList, want string) bool {
+	want = strings.ToLower(strings.TrimSpace(want))
+	for _, e := range entities {
+		for _, id := range e.Identities {
+			if id.UserId != nil && strings.ToLower(id.UserId.Email) == want {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func fetchWKD(ctx context.Context, client *http.Client, url string) (openpgp.EntityList, error) {

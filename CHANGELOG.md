@@ -29,6 +29,12 @@ project uses [Semantic Versioning](https://semver.org/).
   silently mis-configuring the account.
 
 ### Security
+- **WKD key discovery verifies the address matches.** `DiscoverWKD` now imports
+  a fetched key only if it carries a User ID for the exact address that was
+  requested. A misconfigured or hostile WKD endpoint could otherwise return a
+  key for a *different* identity, which would be silently mis-associated with the
+  contact; such a mismatch is now rejected and discovery falls through to the
+  next candidate URL (or fails) instead of trusting the wrong key.
 - **Autoconfig discovery is hardened against SSRF (CWE-918).** The discovery
   fetch no longer follows HTTP redirects, so a mail domain that 3xx-redirects to
   a private, loopback or cloud-metadata address can never be chased. The domain
