@@ -37,7 +37,7 @@ versus stubbed is always truthfully recorded in
 | **Tracking pixels** | Detected and flagged — *"this sender tracks you"* | Silently loaded |
 | **Remote content** | Never fetched | Fetched by default |
 | **Credentials** | AES-256-GCM sealed store / platform keystore | Often plaintext in a database |
-| **Onboarding** | Scan one Ed25519-signed QR code | Type server settings by hand |
+| **Onboarding** | Scan a QR, paste a setup code, or **auto-detect from your email** | Type server settings by hand |
 | **Encryption** | PGP built in; auto-encrypts when recipients have keys | Plugin or absent |
 | **Real-time mail** | One held IMAP IDLE socket | Battery-hungry polling |
 | **Telemetry** | None. Verifiable — it's open source | "Anonymized analytics" |
