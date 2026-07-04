@@ -7,16 +7,20 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- **Onboard by email — VayuMail autoconfig discovery.** New
-  `account.DiscoverAutoconfig` fetches the server's first-party autoconfig
-  document at `https://<domain>/.well-known/vayumail/autoconfig.json` (with an
+- **Onboard by email — VayuMail autoconfig discovery.** The manual account
+  screen gains an **"Auto-detect from email"** button: enter your address, tap
+  it, and the server/IMAP-port/SMTP-port fields fill themselves from the
+  domain's published autoconfig — you only add your password. Backed by new
+  `account.DiscoverAutoconfig`, which fetches the server's first-party document
+  at `https://<domain>/.well-known/vayumail/autoconfig.json` (with an
   `autoconfig.<domain>` fallback) and returns an account `Config` prefilled with
   the IMAP/SMTP hosts, ports, TLS modes and username — so a VayuPress mailbox can
-  be set up from just an email address, no manual server entry, alongside the
-  existing QR and paste-code onboarding. User-initiated only (no phone-home);
-  SSRF-guarded (public domains only, no IP literals/loopback), size-capped, and
-  it rejects any document whose `schema` it does not recognise. The document
-  shape is locked to the VayuPress server by a shared contract test
+  be set up from just an email address, alongside the existing QR and paste-code
+  onboarding. The lookup runs off the UI thread and applies its result on the
+  next frame (no cross-thread widget mutation). User-initiated only (no
+  phone-home); SSRF-guarded (public domains only, no IP literals/loopback),
+  size-capped, and it rejects any document whose `schema` it does not recognise.
+  The document shape is locked to the VayuPress server by a shared contract test
   (`test/autoconfig_contract_test.go`).
 - **WKD interop contract test (shared with VayuPress).** Froze an expanded
   set of WKD address-hash known-answer vectors (`test/wkd_contract_test.go`)
