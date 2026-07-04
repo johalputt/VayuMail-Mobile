@@ -27,6 +27,15 @@ project uses [Semantic Versioning](https://semver.org/).
   select the matching bearer-token mechanism, so a token-minting server is
   configured from discovery alone; an unrecognised value is rejected rather than
   silently mis-configuring the account.
+
+### Security
+- **Autoconfig discovery is hardened against SSRF (CWE-918).** The discovery
+  fetch no longer follows HTTP redirects, so a mail domain that 3xx-redirects to
+  a private, loopback or cloud-metadata address can never be chased. The domain
+  guard now requires a clean multi-label DNS hostname (rejecting IP literals,
+  `localhost`, and any value carrying a port or path such as `evil.com:9999`),
+  so a crafted address cannot inject a port or path into the lookup URL.
+
 - **WKD interop contract test (shared with VayuPress).** Froze an expanded
   set of WKD address-hash known-answer vectors (`test/wkd_contract_test.go`)
   that is kept byte-for-byte identical to the matching table in the VayuPress

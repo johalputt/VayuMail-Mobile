@@ -119,7 +119,7 @@ func TestAutoconfigHonorsAuthMech(t *testing.T) {
 // TestAutoconfigRejectsNonPublicDomain verifies the SSRF guard blocks loopback
 // and IP-literal targets before any request is made.
 func TestAutoconfigRejectsNonPublicDomain(t *testing.T) {
-	for _, addr := range []string{"root@localhost", "x@127.0.0.1", "y@[::1]", "z@nodot"} {
+	for _, addr := range []string{"root@localhost", "x@127.0.0.1", "y@[::1]", "z@nodot", "p@evil.com:9999", "q@evil.com/x"} {
 		if _, err := account.DiscoverAutoconfig(context.Background(), http.DefaultClient, addr); err == nil {
 			t.Errorf("expected rejection for %q", addr)
 		}
