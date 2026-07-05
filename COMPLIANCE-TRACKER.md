@@ -18,7 +18,7 @@ does not) · **PENDING** (not started, deliberately deferred).
 | SQLite store + FTS5 | COMPLETE | modernc.org/sqlite, WAL, versioned migrations, external-content FTS5 with triggers, injection-safe query builder, tested |
 | QR provisioning decode + verify | COMPLETE | Ed25519 over canonical JSON, all six rejection paths fixture-tested (Rule 7) |
 | QR token exchange | COMPLETE | Client tested against httptest; reference server ships in this repo (`cmd/vayumail-provision`, ADR-0008) — VayuPress embeds the same logic |
-| Camera preview bridge | STUB | `widgets.FrameSource` hook + decode pipeline complete (gozxing); Android/iOS camera feed via gomobile not implemented — scanner shows "Camera unavailable" |
+| Camera preview bridge | PARTIAL | **Android: implemented** — pure-cgo NDK Camera2 bridge (`internal/camera/camera_android.go`) streams the YUV luminance plane into `widgets.FrameSource`; runtime CAMERA permission requested on scanner open (ADR-0005); lazy power-on + idle release; every failure degrades to the paste-code fallback. Compiled only by `make android` and verified on-device (cannot run in CI). **iOS: pending.** Decode + verify pipeline complete (gozxing). |
 | Credential persistence (sealed keystore) | COMPLETE | AES-256-GCM sealed store in the app-private data directory; alias-bound ciphertext, atomic writes, tested incl. plaintext-leak and replay checks (ADR-0004 amendment) |
 | Hardware-backed key wrapping | PENDING | `KeyProvider` seam exists; Android Keystore / iOS Keychain wrapping of the master key lands without a format change (ADR-0004) |
 | Android foreground service | STUB | `internal/push/android_fgservice.go` — engine-side controller registration complete; not wired to an OS service |

@@ -24,13 +24,16 @@ const (
 	qrFlashFor     = 200 * time.Millisecond
 )
 
-// FrameSource supplies camera frames for decoding. It is registered by
-// platform code; returning nil means no frame is available.
+// FrameSource supplies camera frames for decoding. It is provided by
+// platform code (internal/camera); returning nil means no frame is
+// available yet, in which case the scanner shows its paste-code fallback.
 //
-// STUB: the Android/iOS camera bridge that feeds frames here is not
-// implemented at v0.1.0 (COMPLIANCE-TRACKER.md: "Camera preview bridge").
-// The scanner UI, the decode pipeline, and the payload verification are
-// complete and tested; only the live camera feed is missing.
+// Android now has a real frame source: a pure-cgo NDK Camera2 bridge
+// (internal/camera, camera_android.go) that streams the luminance plane
+// here. It is compiled only by the Android toolchain and verified
+// on-device; desktop/CI builds get the no-op source, so the UI, decode
+// pipeline, and payload verification remain fully testable here. iOS is
+// still pending (COMPLIANCE-TRACKER.md: "Camera preview bridge").
 type FrameSource func() image.Image
 
 // QRScanner is the full-screen scanning surface: camera preview (when a
