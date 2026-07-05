@@ -43,7 +43,10 @@ type UI struct {
 // New wires the UI over an already-started sync manager. dark is the
 // platform theme preference, probed off the UI thread during startup
 // (see cmd/vayumail: the probe must never block the first frame).
-func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Manager, dark bool) *UI {
+// frameSource feeds the onboarding QR scanner; it is nil on platforms
+// without a camera bridge, in which case the scanner shows its paste-code
+// fallback (internal/camera selects the implementation by build tag).
+func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Manager, dark bool, frameSource widgets.FrameSource) *UI {
 	th := theme.New(dark)
 	st := state.New(ctx, db, mgr)
 	st.SetInvalidate(w.Invalidate)
@@ -76,7 +79,7 @@ func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Mana
 		inbox:    screens.NewInbox(),
 		thread:   screens.NewThread(),
 		compose:  screens.NewCompose(),
-		setup:    screens.NewAccountSetup(nil), // camera bridge: see COMPLIANCE-TRACKER.md
+		setup:    screens.NewAccountSetup(frameSource),
 		settings: screens.NewSettings(),
 		search:   screens.NewSearch(),
 		events:   mgr.Events(),

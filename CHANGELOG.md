@@ -6,6 +6,34 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-07-05
+
+Live camera QR scanning on Android — the onboarding scanner now sees through the
+phone's camera instead of only accepting a pasted setup code.
+
+### Added
+- **Android camera QR scanning — NDK Camera2 bridge.** The QR scanner's
+  `widgets.FrameSource` is now backed by a real camera feed on Android via a new
+  `internal/camera` package. The Android implementation
+  (`camera_android.go`) is a **pure-cgo bridge over the NDK Camera2 API** — no
+  Java or Kotlin source, so it builds with the existing `make android` (gogio)
+  flow and adds no new manifest permission (CAMERA is already declared,
+  ADR-0005). It opens the back camera, streams `YUV_420_888`, and hands the
+  **luminance (Y) plane** straight to the gozxing decoder (QR decoding needs only
+  luminance, so no YUV→RGB conversion). The camera powers on lazily when the
+  scanner opens and is released automatically after a short idle period, so
+  leaving the scan screen frees the device with no extra wiring. Runtime CAMERA
+  permission is checked and requested over JNI on scanner open (ADR-0005); until
+  it is granted — or on any camera error — the scanner cleanly falls back to
+  "Paste setup code", so the app is never left in a broken state.
+
+### Notes
+- The camera bridge is compiled only by the Android toolchain and can only be
+  exercised on a physical device; the desktop/CI build uses the no-op source
+  (`camera_other.go`) via build tags, so the scanner UI, decode pipeline, and
+  payload verification remain fully covered by the existing tests. iOS camera
+  capture remains pending (COMPLIANCE-TRACKER.md: "Camera preview bridge").
+
 ## [1.3.0] — 2026-07-04
 
 Email-only onboarding via autoconfig discovery, plus PGP/WKD interop hardening

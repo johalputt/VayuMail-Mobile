@@ -21,6 +21,7 @@ import (
 	appcrypto "github.com/johalputt/VayuMail-Mobile/internal/crypto"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
+	"github.com/johalputt/VayuMail-Mobile/platform/camera"
 	"github.com/johalputt/VayuMail-Mobile/ui"
 )
 
@@ -39,8 +40,14 @@ func run(window *app.Window) int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// The camera (QR scanner frame source) is platform-selected: a real
+	// NDK bridge on Android, a no-op elsewhere. Released on shutdown so the
+	// device is never held past app exit.
+	cam := camera.New()
+	defer cam.Stop()
+
 	boot := ui.NewBoot(ctx, window)
-	go initEngine(ctx, window, boot)
+	go initEngine(ctx, window, boot, cam)
 
 	err := boot.Run()
 	cancel()
@@ -55,7 +62,7 @@ func run(window *app.Window) int {
 // initEngine performs every blocking startup step off the UI thread and
 // hands the result to the boot screen. Any failure is reported on screen
 // rather than freezing the splash.
-func initEngine(ctx context.Context, window *app.Window, boot *ui.Boot) {
+func initEngine(ctx context.Context, window *app.Window, boot *ui.Boot, cam camera.Camera) {
 	dark := probeDarkMode()
 
 	dbPath, err := databasePath()
@@ -79,7 +86,7 @@ func initEngine(ctx context.Context, window *app.Window, boot *ui.Boot) {
 		return
 	}
 
-	boot.Attach(ui.New(ctx, window, db, mgr, dark), db, mgr)
+	boot.Attach(ui.New(ctx, window, db, mgr, dark, cam.Frame), db, mgr)
 }
 
 // probeDarkMode asks the platform for the theme preference with a hard
