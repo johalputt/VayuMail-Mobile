@@ -158,7 +158,7 @@ int vm_camera_start(int width, int height) {
 	ACaptureSessionOutputContainer_create(&vm_outputs);
 	ACaptureSessionOutput_create(vm_window, &vm_output);
 	ACaptureSessionOutputContainer_add(vm_outputs, vm_output);
-	ACameraCaptureSession_StateCallbacks sesCbs;
+	ACameraCaptureSession_stateCallbacks sesCbs;
 	memset(&sesCbs, 0, sizeof(sesCbs));
 	sesCbs.onReady = vm_ses_ready;
 	sesCbs.onActive = vm_ses_active;
