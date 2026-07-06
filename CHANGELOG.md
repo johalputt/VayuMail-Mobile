@@ -6,6 +6,23 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.2] — 2026-07-06
+
+### Fixed
+- **CAMERA permission is now actually in the APK — the scanner can finally get
+  the camera.** The manifest never declared `android.permission.CAMERA`, so
+  Android showed **no camera permission to grant and no request dialog could ever
+  appear** (the app's only listed capability was network access). Root cause:
+  gogio only adds a permission when the app imports the matching
+  `gioui.org/app/permission/*` package, and the camera one was never imported.
+  Added a blank import of `gioui.org/app/permission/camera`, which injects
+  `<uses-permission android:name="android.permission.CAMERA"/>` and the camera
+  hardware feature. After installing this build the Camera permission appears
+  under Settings → Apps → VayuMail → Permissions — grant it and the QR scanner
+  works. (Gio's app context is the Application, not an Activity, so the app
+  cannot pop the request dialog itself yet; granting once in Settings is the
+  path until an Activity-based request is added.)
+
 ## [1.4.1] — 2026-07-06
 
 ### Changed

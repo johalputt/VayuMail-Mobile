@@ -16,6 +16,12 @@ import (
 	"time"
 
 	"gioui.org/app"
+	// Declares the Android CAMERA permission (+ camera hardware feature) in the
+	// gogio-generated manifest, so the QR scanner can request and use the camera.
+	// Without this blank import the permission is absent from the APK entirely —
+	// Android then shows no camera permission to grant and no request dialog can
+	// appear (gioui.org/app/permission/camera).
+	_ "gioui.org/app/permission/camera"
 	xtheme "gioui.org/x/pref/theme"
 
 	appcrypto "github.com/johalputt/VayuMail-Mobile/internal/crypto"
