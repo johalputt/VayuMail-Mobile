@@ -6,6 +6,24 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.3] — 2026-07-06
+
+### Fixed
+- **QR scanner now shows the live camera preview.** The camera was opening and
+  streaming (permission granted), but the scanner only fed frames to the decoder
+  and never drew them — so the screen stayed black and looked broken. The most
+  recent frame is now painted to fill the surface behind the framing overlay, so
+  you can see what the camera sees and aim at the code. (Preview is drawn in the
+  sensor's orientation; QR decoding is rotation-tolerant, so a code still reads
+  even if the image looks turned — an orientation-correct transform can follow.)
+- **Camera frames are now copied per frame** so the live GPU preview cannot tear
+  or freeze on a stale texture from the shared decode buffer.
+
+### Changed
+- **QR decoding is throttled to ~8×/second instead of every rendered frame.**
+  Decoding a full frame at 60fps needlessly pegged the CPU (lag + heat); the
+  scanner still catches a code the instant it is framed but the UI stays smooth.
+
 ## [1.4.2] — 2026-07-06
 
 ### Fixed
