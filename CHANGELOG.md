@@ -6,6 +6,22 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-07-06
+
+### Added
+- **Attachments in the composer — real file picking.** The compose attach button
+  was a stub that showed "arrive in a later release"; it now opens the platform
+  file picker (Android Storage Access Framework, native dialogs elsewhere) via
+  `gioui.org/x/explorer`. Chosen files appear as chips above the send bar with
+  name and size — **tap a chip to remove it** — and are sent through the
+  composer's existing MIME attachment path (which already supported
+  `multipart/mixed`). Each file is read up to a generous **50 MB** cap (matching
+  the VayuPress server default). The picker is wired to the window event loop so
+  it can observe the Android activity result. On platforms with no picker the
+  button reports that cleanly instead of pretending. (Android/iOS file picking is
+  verifiable only on-device; where the OS content stream carries no filename, a
+  type-derived name is used.)
+
 ## [1.4.3] — 2026-07-06
 
 ### Fixed

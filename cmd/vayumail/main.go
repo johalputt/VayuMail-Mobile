@@ -10,12 +10,14 @@ package main
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
 
 	"gioui.org/app"
+	"gioui.org/x/explorer"
 	// Declares the Android CAMERA permission (+ camera hardware feature) in the
 	// gogio-generated manifest, so the QR scanner can request and use the camera.
 	// Without this blank import the permission is absent from the APK entirely —
@@ -52,8 +54,14 @@ func run(window *app.Window) int {
 	cam := camera.New()
 	defer cam.Stop()
 
+	// Platform file picker for composer attachments (SAF on Android, native
+	// dialogs elsewhere). It must observe every window event, so it is wired to
+	// the boot loop before Run starts.
+	exp := explorer.NewExplorer(window)
+
 	boot := ui.NewBoot(ctx, window)
-	go initEngine(ctx, window, boot, cam)
+	boot.SetEventListener(exp.ListenEvents)
+	go initEngine(ctx, window, boot, cam, func() (io.ReadCloser, error) { return exp.ChooseFile() })
 
 	err := boot.Run()
 	cancel()
@@ -68,7 +76,7 @@ func run(window *app.Window) int {
 // initEngine performs every blocking startup step off the UI thread and
 // hands the result to the boot screen. Any failure is reported on screen
 // rather than freezing the splash.
-func initEngine(ctx context.Context, window *app.Window, boot *ui.Boot, cam camera.Camera) {
+func initEngine(ctx context.Context, window *app.Window, boot *ui.Boot, cam camera.Camera, pickFile func() (io.ReadCloser, error)) {
 	dark := probeDarkMode()
 
 	dbPath, err := databasePath()
@@ -92,7 +100,7 @@ func initEngine(ctx context.Context, window *app.Window, boot *ui.Boot, cam came
 		return
 	}
 
-	boot.Attach(ui.New(ctx, window, db, mgr, dark, cam.Frame), db, mgr)
+	boot.Attach(ui.New(ctx, window, db, mgr, dark, cam.Frame, pickFile), db, mgr)
 }
 
 // probeDarkMode asks the platform for the theme preference with a hard

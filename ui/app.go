@@ -6,6 +6,7 @@ package ui
 import (
 	"context"
 	"image"
+	"io"
 
 	"gioui.org/app"
 	"gioui.org/io/key"
@@ -46,7 +47,9 @@ type UI struct {
 // frameSource feeds the onboarding QR scanner; it is nil on platforms
 // without a camera bridge, in which case the scanner shows its paste-code
 // fallback (internal/camera selects the implementation by build tag).
-func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Manager, dark bool, frameSource widgets.FrameSource) *UI {
+// pickFile opens the platform file picker for composer attachments; nil when
+// no picker is available.
+func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Manager, dark bool, frameSource widgets.FrameSource, pickFile func() (io.ReadCloser, error)) *UI {
 	th := theme.New(dark)
 	st := state.New(ctx, db, mgr)
 	st.SetInvalidate(w.Invalidate)
@@ -62,12 +65,14 @@ func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Mana
 	}
 
 	env := &screens.Env{
-		Theme:    th,
-		State:    st,
-		Nav:      state.NewNav(state.ScreenInbox),
-		Snack:    snack,
-		Composer: widgets.NewComposer(),
-		Keyring:  st.Keyring(),
+		Theme:      th,
+		State:      st,
+		Nav:        state.NewNav(state.ScreenInbox),
+		Snack:      snack,
+		Composer:   widgets.NewComposer(),
+		Keyring:    st.Keyring(),
+		PickFile:   pickFile,
+		Invalidate: w.Invalidate,
 	}
 
 	ui := &UI{

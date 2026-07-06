@@ -12,6 +12,7 @@ import (
 
 	"gioui.org/app"
 	"gioui.org/f32"
+	"gioui.org/io/event"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/paint"
@@ -68,7 +69,16 @@ type Boot struct {
 	db  *store.DB
 	mgr *syncmanager.Manager
 	err string
+
+	// listenEvents, if set, is forwarded every window event before the boot
+	// loop handles it — used by the file-picker (explorer) to observe the
+	// view lifecycle and activity results.
+	listenEvents func(event.Event)
 }
+
+// SetEventListener registers a callback that receives every window event (in
+// addition to the boot loop's own handling). Must be called before Run.
+func (b *Boot) SetEventListener(fn func(event.Event)) { b.listenEvents = fn }
 
 type bootResult struct {
 	ui    *UI
@@ -106,7 +116,11 @@ func (b *Boot) Fail(err error, stage string) {
 // frame until the engine attaches, then delegates every frame to the UI.
 func (b *Boot) Run() error {
 	for {
-		switch e := b.window.Event().(type) {
+		evt := b.window.Event()
+		if b.listenEvents != nil {
+			b.listenEvents(evt)
+		}
+		switch e := evt.(type) {
 		case app.FrameEvent:
 			select {
 			case r := <-b.ready:

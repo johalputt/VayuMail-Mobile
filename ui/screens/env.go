@@ -5,6 +5,7 @@ package screens
 
 import (
 	"image/color"
+	"io"
 
 	"gioui.org/layout"
 	"gioui.org/widget"
@@ -24,6 +25,13 @@ type Env struct {
 	Snack    *widgets.Snackbar
 	Composer *widgets.Composer
 	Keyring  *pgp.Keyring
+	// PickFile opens the platform file picker and returns a reader for the
+	// chosen file. It blocks, so callers run it on a goroutine. Nil when the
+	// platform has no picker (the composer then reports it is unavailable).
+	PickFile func() (io.ReadCloser, error)
+	// Invalidate wakes the window after an async update (e.g. a picked file
+	// added to the composer from a goroutine).
+	Invalidate func()
 }
 
 // topBar lays out the standard screen header: optional leading icon,

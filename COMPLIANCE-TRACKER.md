@@ -46,7 +46,7 @@ does not) · **PENDING** (not started, deliberately deferred).
 | OAuth2 token refresh | PENDING | Static password (or one-shot OAuth token from provisioning) only |
 | JMAP protocol | PENDING | Deliberate own milestone — protocol-scale work, tracked for v2 |
 | F-Droid distribution | PENDING | Reproducible builds land the prerequisite; submission is an external process |
-| Attachment picker | STUB | Composer attach button present; platform document-picker bridge not implemented — shows a snackbar |
+| Attachment picker | PARTIAL | Composer attach button opens the platform file picker via `gioui.org/x/explorer` (SAF on Android); picked files are added as chips (tap to remove), read up to 50 MB, and sent via the existing MIME attachment path. Android/iOS pickers verified on-device only; filename falls back to a type-derived name where the OS stream carries none. |
 | On-demand body fetch in UI | PARTIAL | Messages > 512 KiB sync envelope-only; `imapsync.FetchBody` exists but no UI command triggers it yet (thread view shows a "not downloaded" notice) |
 | New-mail notifications | COMPLETE | gioui.org/x/notify (Android tray, desktop DBus); bursts coalesced into a summary, suppressed during the initial-sync window |
 | Haptic feedback on swipe/scan | PENDING | No cross-platform haptics wired; swipe and scan work without it |
