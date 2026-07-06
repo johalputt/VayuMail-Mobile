@@ -20,6 +20,7 @@
 
 #define VM_TAG "vayumail-camera"
 #define VM_LOGE(...) __android_log_print(ANDROID_LOG_ERROR, VM_TAG, __VA_ARGS__)
+#define VM_LOGI(...) __android_log_print(ANDROID_LOG_INFO, VM_TAG, __VA_ARGS__)
 
 // ---- latest-frame buffer: Y/luminance plane, tightly packed w*h bytes ----
 static pthread_mutex_t vm_mu = PTHREAD_MUTEX_INITIALIZER;
@@ -127,14 +128,18 @@ int vm_camera_start(int width, int height) {
 	if (vm_running) {
 		return 0;
 	}
+	VM_LOGI("starting camera (%dx%d)", width, height);
 	vm_mgr = ACameraManager_create();
 	if (vm_mgr == NULL) {
+		VM_LOGE("start -1: ACameraManager_create returned NULL");
 		return -1;
 	}
 	char *id = vm_pick_camera(vm_mgr);
 	if (id == NULL) {
+		VM_LOGE("start -2: no camera id available (getCameraIdList empty?)");
 		return -2;
 	}
+	VM_LOGI("opening camera id=%s", id);
 	ACameraDevice_StateCallbacks devCbs;
 	memset(&devCbs, 0, sizeof(devCbs));
 	devCbs.onDisconnected = vm_dev_disconnected;
@@ -142,9 +147,13 @@ int vm_camera_start(int width, int height) {
 	camera_status_t st = ACameraManager_openCamera(vm_mgr, id, &devCbs, &vm_dev);
 	free(id);
 	if (st != ACAMERA_OK || vm_dev == NULL) {
+		// A permission denial surfaces here as a non-OK status (often
+		// ACAMERA_ERROR_PERMISSION_DENIED == -10005).
+		VM_LOGE("start -3: openCamera failed status=%d (permission denied is -10005)", (int)st);
 		return -3;
 	}
 	if (AImageReader_new(width, height, AIMAGE_FORMAT_YUV_420_888, 2, &vm_reader) != AMEDIA_OK) {
+		VM_LOGE("start -4: AImageReader_new failed");
 		return -4;
 	}
 	AImageReader_ImageListener listener;
@@ -152,6 +161,7 @@ int vm_camera_start(int width, int height) {
 	listener.onImageAvailable = vm_on_image;
 	AImageReader_setImageListener(vm_reader, &listener);
 	if (AImageReader_getWindow(vm_reader, &vm_window) != AMEDIA_OK || vm_window == NULL) {
+		VM_LOGE("start -5: AImageReader_getWindow failed");
 		return -5;
 	}
 	ANativeWindow_acquire(vm_window);
@@ -164,17 +174,21 @@ int vm_camera_start(int width, int height) {
 	sesCbs.onActive = vm_ses_active;
 	sesCbs.onClosed = vm_ses_closed;
 	if (ACameraDevice_createCaptureSession(vm_dev, vm_outputs, &sesCbs, &vm_session) != ACAMERA_OK) {
+		VM_LOGE("start -6: createCaptureSession failed");
 		return -6;
 	}
 	if (ACameraDevice_createCaptureRequest(vm_dev, TEMPLATE_PREVIEW, &vm_request) != ACAMERA_OK) {
+		VM_LOGE("start -7: createCaptureRequest failed");
 		return -7;
 	}
 	ACameraOutputTarget_create(vm_window, &vm_target);
 	ACaptureRequest_addTarget(vm_request, vm_target);
 	if (ACameraCaptureSession_setRepeatingRequest(vm_session, NULL, 1, &vm_request, NULL) != ACAMERA_OK) {
+		VM_LOGE("start -8: setRepeatingRequest failed");
 		return -8;
 	}
 	vm_running = 1;
+	VM_LOGI("camera running; streaming frames");
 	return 0;
 }
 
@@ -270,9 +284,15 @@ int vm_camera_permission(JavaVM *jvm, jobject ctx) {
 		jint granted = (*env)->CallIntMethod(env, ctx, checkPerm, perm); // PERMISSION_GRANTED == 0
 		if (granted == 0) {
 			result = 1;
+			VM_LOGI("CAMERA permission already granted");
 		} else {
 			result = 0;
 			jclass actCls = (*env)->FindClass(env, "android/app/Activity");
+			int isActivity = (actCls != NULL && (*env)->IsInstanceOf(env, ctx, actCls));
+			VM_LOGI("CAMERA permission not granted; context is Activity=%d (requesting=%d)", isActivity, isActivity);
+			if (!isActivity) {
+				VM_LOGE("cannot show permission dialog: app context is not an Activity — grant Camera in Settings > Apps > VayuMail > Permissions");
+			}
 			if (actCls != NULL && (*env)->IsInstanceOf(env, ctx, actCls)) {
 				jmethodID reqPerm = (*env)->GetMethodID(env, actCls, "requestPermissions", "([Ljava/lang/String;I)V");
 				jclass strCls = (*env)->FindClass(env, "java/lang/String");
