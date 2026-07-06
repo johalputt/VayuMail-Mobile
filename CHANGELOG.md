@@ -6,6 +6,19 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.1] — 2026-07-06
+
+### Changed
+- **Camera bridge now logs why it fails to start.** The NDK Camera2 bridge emits
+  diagnostic lines under the `vayumail-camera` logcat tag: the CAMERA permission
+  decision (granted / not granted / whether a request dialog can even be shown),
+  and, on failure to open, the exact step and status code (e.g. an
+  `ACAMERA_ERROR_PERMISSION_DENIED` at `openCamera`). This turns a silent black
+  preview into an actionable log. Inspect on-device with
+  `adb logcat -s vayumail-camera`. In particular, if the app context is not an
+  Activity the bridge cannot pop the permission dialog and says so — grant Camera
+  once in Settings → Apps → VayuMail → Permissions and scanning will work.
+
 ## [1.4.0] — 2026-07-05
 
 Live camera QR scanning on Android — the onboarding scanner now sees through the
