@@ -1,7 +1,9 @@
 package widgets
 
 import (
+	"fmt"
 	"strings"
+	"sync"
 
 	"gioui.org/font"
 	"gioui.org/layout"
@@ -36,6 +38,45 @@ type Composer struct {
 	// Encrypt and Sign are the PGP toggles (off = Subtle, on = Accent).
 	Encrypt bool
 	Sign    bool
+
+	// attachments is guarded because AddAttachment is called from the file-
+	// picker goroutine while the UI thread reads/removes on layout. attachDel
+	// holds one tap-target per attachment (UI thread only); tapping a chip
+	// removes that file.
+	mu          sync.Mutex
+	attachments []smtpsend.Attachment
+	attachDel   []widget.Clickable
+}
+
+// AddAttachment appends a file to the draft. Safe to call from any goroutine.
+func (c *Composer) AddAttachment(filename, contentType string, data []byte) {
+	c.mu.Lock()
+	c.attachments = append(c.attachments, smtpsend.Attachment{
+		Filename:    filename,
+		ContentType: contentType,
+		Data:        data,
+	})
+	c.mu.Unlock()
+}
+
+// attachmentsCopy returns a snapshot of the current attachments.
+func (c *Composer) attachmentsCopy() []smtpsend.Attachment {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]smtpsend.Attachment, len(c.attachments))
+	copy(out, c.attachments)
+	return out
+}
+
+func (c *Composer) removeAttachment(i int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if i >= 0 && i < len(c.attachments) {
+		c.attachments = append(c.attachments[:i], c.attachments[i+1:]...)
+	}
+	if i >= 0 && i < len(c.attachDel) {
+		c.attachDel = append(c.attachDel[:i], c.attachDel[i+1:]...)
+	}
 }
 
 // NewComposer constructs an empty composer.
@@ -55,6 +96,10 @@ func (c *Composer) Reset() {
 	c.showCcBcc = false
 	c.Encrypt = false
 	c.Sign = false
+	c.mu.Lock()
+	c.attachments = nil
+	c.attachDel = nil
+	c.mu.Unlock()
 }
 
 // PrefillReply seeds the composer for a reply.
@@ -70,13 +115,14 @@ func (c *Composer) PrefillReply(to, subject string) {
 // Draft builds the outbound draft from the current fields.
 func (c *Composer) Draft(fromName, fromAddr string) smtpsend.Draft {
 	return smtpsend.Draft{
-		FromName: fromName,
-		FromAddr: fromAddr,
-		To:       splitAddrs(c.to.Text()),
-		Cc:       splitAddrs(c.cc.Text()),
-		Bcc:      splitAddrs(c.bcc.Text()),
-		Subject:  strings.TrimSpace(c.subject.Text()),
-		TextBody: c.body.Text(),
+		FromName:    fromName,
+		FromAddr:    fromAddr,
+		To:          splitAddrs(c.to.Text()),
+		Cc:          splitAddrs(c.cc.Text()),
+		Bcc:         splitAddrs(c.bcc.Text()),
+		Subject:     strings.TrimSpace(c.subject.Text()),
+		TextBody:    c.body.Text(),
+		Attachments: c.attachmentsCopy(),
 	}
 }
 
@@ -132,11 +178,82 @@ func (c *Composer) Layout(gtx layout.Context, th *theme.Theme) ComposerAction {
 						theme.ColorOp(gtx, th.Palette.AccentSubtle))
 				})
 		}),
+		// Attached files (tap a chip to remove it), above the action row.
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return c.drawAttachments(gtx, th)
+		}),
 		// Action row pinned to the bottom.
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return c.actionRow(gtx, th)
 		}))
 	return action
+}
+
+// drawAttachments renders one chip per attached file; tapping a chip removes
+// it. Returns empty dimensions when there are no attachments.
+func (c *Composer) drawAttachments(gtx layout.Context, th *theme.Theme) layout.Dimensions {
+	c.mu.Lock()
+	n := len(c.attachments)
+	for len(c.attachDel) < n {
+		c.attachDel = append(c.attachDel, widget.Clickable{})
+	}
+	names := make([]string, n)
+	sizes := make([]int, n)
+	for i := range c.attachments {
+		names[i] = c.attachments[i].Filename
+		sizes[i] = len(c.attachments[i].Data)
+	}
+	c.mu.Unlock()
+	if n == 0 {
+		return layout.Dimensions{}
+	}
+
+	remove := -1
+	for i := 0; i < n && i < len(c.attachDel); i++ {
+		if c.attachDel[i].Clicked(gtx) {
+			remove = i
+		}
+	}
+
+	children := make([]layout.FlexChild, 0, n)
+	for i := 0; i < n; i++ {
+		i := i
+		label := names[i] + "  ·  " + humanSize(sizes[i]) + "   ✕"
+		children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return layout.Inset{Left: theme.LG, Right: theme.LG, Top: theme.XS, Bottom: theme.XS}.Layout(gtx,
+				func(gtx layout.Context) layout.Dimensions {
+					return c.attachDel[i].Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								return layout.Inset{Right: theme.SM}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+									return DrawIcon(gtx, IconAttach, th.Palette.Subtle, 18)
+								})
+							}),
+							layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+								return th.Label(gtx, theme.Caption, th.Palette.OnBackground, label, 1)
+							}))
+					})
+				})
+		}))
+	}
+	dims := layout.Flex{Axis: layout.Vertical}.Layout(gtx, children...)
+
+	if remove >= 0 {
+		c.removeAttachment(remove)
+	}
+	return dims
+}
+
+// humanSize renders a byte count as a short human string (e.g. "1.2 MB").
+func humanSize(n int) string {
+	switch {
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.0f KB", float64(n)/(1<<10))
+	default:
+		return fmt.Sprintf("%d B", n)
+	}
 }
 
 // fieldRow draws one labeled single-line field with a hairline below.
