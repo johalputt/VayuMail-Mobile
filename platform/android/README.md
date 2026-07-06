@@ -6,19 +6,24 @@ Build output and manual manifest overrides for the Android target.
 make android    # runs gogio -target android ./cmd/vayumail
 ```
 
-`gogio` generates the base APK; the manifest additions below are applied
-on top and are constitutionally bounded by
-[ADR-0005](../../docs/ADR-0005-android-permissions.md) — exactly four
-permissions, nothing else:
+`gogio` generates the APK manifest. It adds `INTERNET` by default, and it
+adds any other permission **only when the app imports the matching
+`gioui.org/app/permission/*` package** — there is no separate manual
+manifest-merge step. So a permission that is not backed by an import is
+simply absent from the APK (this is exactly why CAMERA was missing until
+v1.4.2: nothing imported `gioui.org/app/permission/camera`).
 
-```xml
-<uses-permission android:name="android.permission.INTERNET"/>
-<uses-permission android:name="android.permission.CAMERA"/>
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
-```
+Declared permissions, constitutionally bounded by
+[ADR-0005](../../docs/ADR-0005-android-permissions.md):
 
-Any manifest diff without a new ADR is a constitutional violation.
+| Permission | How it gets into the manifest |
+|---|---|
+| `INTERNET` | Added by gogio automatically. |
+| `CAMERA` | Blank import `gioui.org/app/permission/camera` in `cmd/vayumail` (v1.4.2). |
+| `FOREGROUND_SERVICE` | Pending — added when the foreground sync service is wired (no Gio permission package; needs a manifest fragment). |
+| `RECEIVE_BOOT_COMPLETED` | Pending — added with the boot receiver. |
+
+Any permission beyond the four in ADR-0005 requires a new ADR.
 
 ## Camera QR scanning (NDK Camera2)
 
