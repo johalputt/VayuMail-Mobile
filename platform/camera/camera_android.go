@@ -50,24 +50,25 @@ func (c *androidCamera) Frame() image.Image {
 	c.lastUsed.set(time.Now())
 	c.ensureStarted()
 
-	var w, h C.int
-	var dst *C.uint8_t
-	if len(c.buf) > 0 {
-		dst = (*C.uint8_t)(unsafe.Pointer(&c.buf[0]))
+	if len(c.buf) == 0 {
+		c.buf = make([]byte, camWidth*camHeight) // reusable staging for the C copy
 	}
-	switch r := C.vm_camera_copy(dst, C.int(len(c.buf)), &w, &h); {
+	var w, h C.int
+	switch r := C.vm_camera_copy((*C.uint8_t)(unsafe.Pointer(&c.buf[0])), C.int(len(c.buf)), &w, &h); {
 	case r == 1:
 		iw, ih := int(w), int(h)
-		if iw <= 0 || ih <= 0 || iw*ih > len(c.buf) {
+		n := iw * ih
+		if iw <= 0 || ih <= 0 || n > len(c.buf) {
 			return nil
 		}
-		// Shares c.buf; the scanner decodes synchronously before the next
-		// Frame() overwrites it (single-threaded UI), so no copy is needed.
-		return &image.Gray{
-			Pix:    c.buf[: iw*ih : iw*ih],
-			Stride: iw,
-			Rect:   image.Rect(0, 0, iw, ih),
-		}
+		// Hand out a FRESH copy each frame. The scanner draws the frame as a
+		// live GPU preview (Gio uploads it asynchronously at frame submission)
+		// and may hold it briefly, so it must not alias the staging buffer that
+		// the next Frame() call overwrites — otherwise the preview tears or
+		// freezes on a cached texture.
+		pix := make([]byte, n)
+		copy(pix, c.buf[:n])
+		return &image.Gray{Pix: pix, Stride: iw, Rect: image.Rect(0, 0, iw, ih)}
 	case r < 0:
 		// Buffer too small: grow to the reported size; a frame arrives next tick.
 		c.buf = make([]byte, int(-r))

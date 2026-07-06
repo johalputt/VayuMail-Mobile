@@ -22,6 +22,10 @@ const (
 	qrCornerLen    = unit.Dp(20)
 	qrCornerStroke = unit.Dp(2)
 	qrFlashFor     = 200 * time.Millisecond
+	// decodeInterval throttles QR decoding: ~8 attempts/sec is more than enough
+	// to catch a code the instant it is framed, while decoding every rendered
+	// frame (60fps) needlessly pegs the CPU and makes the UI feel laggy/hot.
+	decodeInterval = 120 * time.Millisecond
 )
 
 // FrameSource supplies camera frames for decoding. It is provided by
@@ -40,10 +44,12 @@ type FrameSource func() image.Image
 // FrameSource is registered), a 240pt corner-accented frame, a scrim, and
 // a single instruction label.
 type QRScanner struct {
-	source    FrameSource
-	decoded   string
-	decodedAt time.Time
-	reader    gozxing.Reader
+	source     FrameSource
+	decoded    string
+	decodedAt  time.Time
+	reader     gozxing.Reader
+	lastFrame  image.Image // most recent camera frame, drawn as the live preview
+	lastDecode time.Time   // when a decode was last attempted (throttling)
 }
 
 // NewQRScanner constructs a scanner. source may be nil (no camera).
@@ -68,16 +74,24 @@ func DecodeImage(img image.Image) (string, error) {
 // Layout draws the scanner and returns the decoded payload once, right
 // after the success flash completes.
 func (q *QRScanner) Layout(gtx layout.Context, th *theme.Theme) (payload string, done bool) {
-	// Try one decode per frame while scanning.
-	if q.decoded == "" && q.source != nil {
+	if q.source != nil {
+		// Grab the newest frame every render so the preview stays live, but only
+		// run the (expensive) QR decode a few times a second.
 		if img := q.source(); img != nil {
-			if text, err := DecodeImage(img); err == nil && text != "" {
-				q.decoded = text
-				q.decodedAt = gtx.Now
+			q.lastFrame = img
+			if q.decoded == "" && gtx.Now.Sub(q.lastDecode) >= decodeInterval {
+				q.lastDecode = gtx.Now
+				if text, err := DecodeImage(img); err == nil && text != "" {
+					q.decoded = text
+					q.decodedAt = gtx.Now
+				}
 			}
 		}
-		gtx.Execute(op.InvalidateCmd{})
+		gtx.Execute(op.InvalidateCmd{}) // keep the camera preview animating
 	}
+
+	// Live camera preview behind the framing overlay.
+	q.drawPreview(gtx)
 
 	// Success flash, then hand off.
 	if q.decoded != "" {
@@ -91,6 +105,41 @@ func (q *QRScanner) Layout(gtx layout.Context, th *theme.Theme) (payload string,
 
 	q.drawOverlay(gtx, th)
 	return payload, done
+}
+
+// drawPreview paints the most recent camera frame to fill the surface (cover
+// scale, centered). Orientation is left as the sensor delivers it; QR decoding
+// is rotation-tolerant, so a code is still read even if the preview is turned.
+func (q *QRScanner) drawPreview(gtx layout.Context) {
+	if q.lastFrame == nil {
+		return
+	}
+	size := gtx.Constraints.Max
+	b := q.lastFrame.Bounds()
+	iw, ih := b.Dx(), b.Dy()
+	if iw == 0 || ih == 0 || size.X == 0 || size.Y == 0 {
+		return
+	}
+	// Cover-scale: fill the surface, cropping the overflow.
+	s := float32(size.X) / float32(iw)
+	if v := float32(size.Y) / float32(ih); v > s {
+		s = v
+	}
+	dx := (float32(size.X) - float32(iw)*s) / 2
+	dy := (float32(size.Y) - float32(ih)*s) / 2
+
+	area := clip.Rect{Max: size}.Push(gtx.Ops)
+	off := op.Offset(image.Pt(int(dx), int(dy))).Push(gtx.Ops)
+	scale := op.Affine(f32.Affine2D{}.Scale(f32.Pt(0, 0), f32.Pt(s, s))).Push(gtx.Ops)
+
+	imgOp := paint.NewImageOp(q.lastFrame)
+	imgOp.Filter = paint.FilterLinear
+	imgOp.Add(gtx.Ops)
+	paint.PaintOp{}.Add(gtx.Ops)
+
+	scale.Pop()
+	off.Pop()
+	area.Pop()
 }
 
 // drawOverlay renders the scrim, the corner-accented frame, and the
