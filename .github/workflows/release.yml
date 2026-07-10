@@ -93,16 +93,37 @@ jobs:
           name: vayumail-apk
           path: vayumail-*.apk
 
-      - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/')
+      # Release notes come from the version's CHANGELOG section, so the
+      # release page always says what actually changed. Falls back to a
+      # one-line description if the section is missing.
+      - name: Extract release notes from CHANGELOG
+        run: |
+          SEMVER='${{ steps.ver.outputs.semver }}'
+          awk -v ver="$SEMVER" '
+            $0 ~ "^## \\[" ver "\\]" {grab=1; next}
+            grab && /^## \[/ {exit}
+            grab {print}
+          ' CHANGELOG.md > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "VayuMail-Mobile $SEMVER — pure-Go sovereign email client." > release-notes.md
+          fi
+          {
+            echo ""
+            echo "---"
+            echo "Signed with the ${SIGN_KIND} key. Test-key builds are for"
+            echo "sideloading only; set ANDROID_KEYSTORE_B64 /"
+            echo "ANDROID_KEYSTORE_PASS repository secrets to produce Play"
+            echo "Store-ready builds."
+          } >> release-notes.md
+
+      # Publishes on tag pushes AND on manual dispatch: the tag is derived
+      # from the source version (internal/version/version.go), so a
+      # dispatch from main cuts exactly the release the source declares —
+      # and a mistagged push can no longer ship a wrongly named release.
+      - name: Publish release
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: v${{ steps.ver.outputs.semver }}
+          name: VayuMail ${{ steps.ver.outputs.semver }}
           files: vayumail-*.apk
-          body: |
-            VayuMail-Mobile ${{ steps.ver.outputs.semver }} — pure-Go
-            sovereign email client.
-
-            Signed with the ${{ env.SIGN_KIND }} key. Test-key builds are
-            for sideloading only; set ANDROID_KEYSTORE_B64 /
-            ANDROID_KEYSTORE_PASS repository secrets to produce Play
-            Store-ready builds.
+          body_path: release-notes.md
