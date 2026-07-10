@@ -7,13 +7,18 @@ import (
 	"context"
 	"image"
 	"io"
+	"time"
 
 	"gioui.org/app"
 	"gioui.org/io/key"
 	"gioui.org/io/system"
 	"gioui.org/layout"
 	"gioui.org/op"
+	"gioui.org/op/clip"
+	"gioui.org/op/paint"
 
+	"github.com/johalputt/VayuMail-Mobile/internal/applock"
+	appcrypto "github.com/johalputt/VayuMail-Mobile/internal/crypto"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
 	"github.com/johalputt/VayuMail-Mobile/ui/screens"
@@ -30,28 +35,29 @@ type UI struct {
 	nav    *state.Nav
 	env    *screens.Env
 
-	inbox    *screens.Inbox
-	thread   *screens.Thread
-	compose  *screens.Compose
-	setup    *screens.AccountSetup
-	settings *screens.Settings
-	search   *screens.Search
+	inbox     *screens.Inbox
+	thread    *screens.Thread
+	compose   *screens.Compose
+	setup     *screens.AccountSetup
+	settings  *screens.Settings
+	search    *screens.Search
+	lockSetup *screens.Lock
+	lockGate  *screens.Lock
 
-	events <-chan syncmanager.Event
-	notify *mailNotifier
+	events    <-chan syncmanager.Event
+	notify    *mailNotifier
+	lastFrame time.Time
 }
 
 // New wires the UI over an already-started sync manager. dark is the
 // platform theme preference, probed off the UI thread during startup
-// (see cmd/vayumail: the probe must never block the first frame).
-// frameSource feeds the onboarding QR scanner; it is nil on platforms
-// without a camera bridge, in which case the scanner shows its paste-code
-// fallback (internal/camera selects the implementation by build tag).
-// pickFile opens the platform file picker for composer attachments; nil when
-// no picker is available.
-func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Manager, dark bool, frameSource widgets.FrameSource, pickFile func() (io.ReadCloser, error)) *UI {
+// (see cmd/vayumail: the probe must never block the first frame). ks is
+// the same keystore the sync manager uses — the app-lock verifier lives
+// in it too (Rule 6: never in SQLite). pickFile opens the platform file
+// picker for composer attachments; nil when no picker is available.
+func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Manager, ks appcrypto.Keystore, dark bool, pickFile func() (io.ReadCloser, error)) *UI {
 	th := theme.New(dark)
-	st := state.New(ctx, db, mgr)
+	st := state.New(ctx, db, mgr, applock.New(ks, db))
 	st.SetInvalidate(w.Invalidate)
 
 	snack := &widgets.Snackbar{}
@@ -70,36 +76,46 @@ func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Mana
 		Nav:        state.NewNav(state.ScreenInbox),
 		Snack:      snack,
 		Composer:   widgets.NewComposer(),
+		Dialog:     &widgets.Dialog{},
 		Keyring:    st.Keyring(),
 		PickFile:   pickFile,
 		Invalidate: w.Invalidate,
 	}
+	env.LockSetup = screens.NewLock(screens.LockIntentEnroll)
 
 	ui := &UI{
-		window:   w,
-		th:       th,
-		st:       st,
-		nav:      env.Nav,
-		env:      env,
-		inbox:    screens.NewInbox(),
-		thread:   screens.NewThread(),
-		compose:  screens.NewCompose(),
-		setup:    screens.NewAccountSetup(frameSource),
-		settings: screens.NewSettings(),
-		search:   screens.NewSearch(),
-		events:   mgr.Events(),
-		notify:   newMailNotifier(ctx, db),
+		window:    w,
+		th:        th,
+		st:        st,
+		nav:       env.Nav,
+		env:       env,
+		inbox:     screens.NewInbox(),
+		thread:    screens.NewThread(),
+		compose:   screens.NewCompose(),
+		setup:     screens.NewAccountSetup(),
+		settings:  screens.NewSettings(),
+		search:    screens.NewSearch(),
+		lockSetup: env.LockSetup,
+		lockGate:  screens.NewLock(screens.LockIntentUnlock),
+		events:    mgr.Events(),
+		notify:    newMailNotifier(ctx, db),
 	}
+	ui.notify.enabled = st.NotificationsEnabled
 	st.Refresh() // SQLite on first paint: cached mail renders immediately.
 	return ui
 }
 
 // Frame renders one UI frame into the boot loop's context (Section 3 of
-// the architecture): it drains sync events non-blockingly, then draws.
-// The window event loop lives in Boot (ui/boot.go), which owns the ops
-// and presents the frame — this keeps startup non-blocking so Android's
-// splash clears on the first frame.
+// the architecture): it drains sync events non-blockingly, applies the
+// idle auto-lock, then draws.
 func (ui *UI) Frame(gtx layout.Context) {
+	// A long gap between frames means the app was backgrounded or the
+	// device idle — re-arm the lock before drawing anything.
+	if !ui.lastFrame.IsZero() {
+		ui.st.MaybeAutoLock(gtx.Now.Sub(ui.lastFrame))
+	}
+	ui.lastFrame = gtx.Now
+
 	// Drain eventCh non-blockingly before drawing.
 drain:
 	for {
@@ -115,20 +131,29 @@ drain:
 }
 
 // layout routes to the active screen, running the push/pop slide
-// transitions.
+// transitions, then stacks the lock gate, dialog, and snackbar overlays.
 func (ui *UI) layout(gtx layout.Context) {
 	widgets.FillMax(gtx, ui.th.Palette.Background)
-	ui.handleBackKey(gtx)
 
 	snap := ui.st.Snapshot()
+	if snap.Locked {
+		// The gate replaces the whole frame: no mail pixels render while
+		// locked, so app switchers screenshot nothing sensitive.
+		ui.lockGate.Layout(gtx, ui.env)
+		return
+	}
+
+	ui.handleBackKey(gtx)
 	current := ui.nav.Current()
 
-	// Force onboarding until an account exists.
+	// Force onboarding until an account exists; release the forced setup
+	// root once one does. A setup screen pushed from Settings/drawer
+	// (depth > 1) is user navigation and stays.
 	if len(snap.Accounts) == 0 && current != state.ScreenSetup {
 		ui.nav.Replace(state.ScreenSetup)
 		current = state.ScreenSetup
 	}
-	if len(snap.Accounts) > 0 && current == state.ScreenSetup {
+	if len(snap.Accounts) > 0 && current == state.ScreenSetup && ui.nav.Depth() == 1 {
 		ui.nav.Replace(state.ScreenInbox)
 		current = state.ScreenInbox
 	}
@@ -140,28 +165,31 @@ func (ui *UI) layout(gtx layout.Context) {
 	case done:
 		ui.layoutScreen(gtx, current)
 	case entering:
-		// Push: the new screen slides in from the right over its parent.
+		// Push: the parent recedes with a slight parallax and dim while
+		// the new screen slides in from the right.
 		offset := int(float32(width) * (1 - progress))
-		ui.drawOffset(gtx, 0, func(gtx layout.Context) { ui.layoutScreen(gtx, ui.nav.Under()) })
+		ui.drawParallaxUnder(gtx, progress, func(gtx layout.Context) { ui.layoutScreen(gtx, ui.nav.Under()) })
 		ui.drawOffset(gtx, offset, func(gtx layout.Context) { ui.layoutScreen(gtx, current) })
 		gtx.Execute(op.InvalidateCmd{})
 	default:
-		// Pop: the old screen slides out to the right, revealing the new top.
+		// Pop: the old screen slides out to the right, revealing the new
+		// top as it returns from its receded position.
 		offset := int(float32(width) * progress)
-		ui.drawOffset(gtx, 0, func(gtx layout.Context) { ui.layoutScreen(gtx, current) })
+		ui.drawParallaxUnder(gtx, 1-progress, func(gtx layout.Context) { ui.layoutScreen(gtx, current) })
 		ui.drawOffset(gtx, offset, func(gtx layout.Context) { ui.layoutScreen(gtx, leaving) })
 		gtx.Execute(op.InvalidateCmd{})
 	}
 
-	// Snackbar stacks above every screen.
-	snackGtx := gtx
-	snackGtx.Constraints.Min = gtx.Constraints.Max
-	ui.env.Snack.Layout(snackGtx, ui.th)
+	// Dialog and snackbar stack above every screen.
+	overlayGtx := gtx
+	overlayGtx.Constraints.Min = gtx.Constraints.Max
+	ui.env.Dialog.Layout(overlayGtx, ui.th)
+	ui.env.Snack.Layout(overlayGtx, ui.th)
 }
 
 // handleBackKey maps the Android back button (and Escape on desktop)
-// onto the navigation stack: close the drawer first, then pop; at the
-// stack root it closes the window, matching platform convention.
+// onto the navigation stack: dialog first, then the drawer, then pop; at
+// the stack root it closes the window, matching platform convention.
 func (ui *UI) handleBackKey(gtx layout.Context) {
 	for {
 		ev, ok := gtx.Event(
@@ -172,6 +200,10 @@ func (ui *UI) handleBackKey(gtx layout.Context) {
 		}
 		e, ok := ev.(key.Event)
 		if !ok || e.State != key.Press {
+			continue
+		}
+		if ui.env.Dialog.Visible() {
+			ui.env.Dialog.Dismiss()
 			continue
 		}
 		if ui.inbox.CloseDrawer(gtx.Now) {
@@ -188,6 +220,21 @@ func (ui *UI) drawOffset(gtx layout.Context, x int, f func(layout.Context)) {
 	f(gtx)
 }
 
+// drawParallaxUnder draws the screen beneath a transition, shifted left
+// by up to 18% and dimmed as the top screen covers it (t = coverage).
+func (ui *UI) drawParallaxUnder(gtx layout.Context, t float32, f func(layout.Context)) {
+	shift := -int(0.18 * t * float32(gtx.Constraints.Max.X))
+	func() {
+		defer op.Offset(image.Pt(shift, 0)).Push(gtx.Ops).Pop()
+		f(gtx)
+	}()
+	if t > 0 {
+		paint.FillShape(gtx.Ops,
+			theme.WithAlpha(ui.th.Palette.Shadow, uint8(t*float32(ui.th.Palette.Shadow.A))),
+			clip.Rect{Max: gtx.Constraints.Max}.Op())
+	}
+}
+
 // layoutScreen draws one screen by ID.
 func (ui *UI) layoutScreen(gtx layout.Context, s state.Screen) {
 	gtx.Constraints.Min = gtx.Constraints.Max
@@ -202,6 +249,8 @@ func (ui *UI) layoutScreen(gtx layout.Context, s state.Screen) {
 		ui.settings.Layout(gtx, ui.env)
 	case state.ScreenSearch:
 		ui.search.Layout(gtx, ui.env)
+	case state.ScreenLock:
+		ui.lockSetup.Layout(gtx, ui.env)
 	default:
 		ui.inbox.Layout(gtx, ui.env)
 	}

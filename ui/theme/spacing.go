@@ -33,6 +33,14 @@ const (
 	SeparatorInset = unit.Dp(64)
 	// TouchTarget is the minimum tappable square.
 	TouchTarget = unit.Dp(48)
-	// CornerRadius is the app-wide button radius.
+	// CornerRadius is the app-wide control radius.
 	CornerRadius = unit.Dp(8)
+	// CardRadius rounds raised surfaces: cards, dialogs, sheets.
+	CardRadius = unit.Dp(16)
+	// PillRadius makes a full pill of any control up to 48dp tall.
+	PillRadius = unit.Dp(24)
+	// FABSize is the floating compose button diameter.
+	FABSize = unit.Dp(56)
+	// FABMargin is the FAB's inset from the screen corner.
+	FABMargin = unit.Dp(20)
 )

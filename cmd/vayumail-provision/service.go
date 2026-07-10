@@ -6,14 +6,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"image/png"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/makiuchi-d/gozxing"
-	"github.com/makiuchi-d/gozxing/qrcode"
 )
 
 // serviceConfig is the static configuration of the provisioning service.
@@ -101,33 +97,15 @@ func (s *service) buildPayload(email, endpoint string) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(full), nil
 }
 
-// handleQRText serves the payload as text — pipe into any QR generator,
-// or use /qr.png directly.
-func (s *service) handleQRText(w http.ResponseWriter, r *http.Request) {
+// handleSetupCode serves the signed payload as text — the setup code
+// the user pastes into VayuMail's onboarding.
+func (s *service) handleSetupCode(w http.ResponseWriter, r *http.Request) {
 	payload, ok := s.payloadFor(w, r)
 	if !ok {
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	fmt.Fprintln(w, payload)
-}
-
-// handleQRImage renders the payload as a scannable QR PNG.
-func (s *service) handleQRImage(w http.ResponseWriter, r *http.Request) {
-	payload, ok := s.payloadFor(w, r)
-	if !ok {
-		return
-	}
-	writer := qrcode.NewQRCodeWriter()
-	matrix, err := writer.Encode(payload, gozxing.BarcodeFormat_QR_CODE, 512, 512, nil)
-	if err != nil {
-		http.Error(w, "encode QR", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "image/png")
-	if err := png.Encode(w, matrix); err != nil {
-		http.Error(w, "render QR", http.StatusInternalServerError)
-	}
 }
 
 func (s *service) payloadFor(w http.ResponseWriter, r *http.Request) (string, bool) {

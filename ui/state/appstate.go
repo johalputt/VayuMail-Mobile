@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/johalputt/VayuMail-Mobile/internal/applock"
 	"github.com/johalputt/VayuMail-Mobile/internal/mail/pgp"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
@@ -33,12 +34,25 @@ type Snapshot struct {
 	PGPKeys       []store.PGPKey
 	PGPKeyDirURL  string
 	AutoWKD       bool
+
+	// Locked gates the whole UI behind the PIN screen.
+	Locked bool
+	// AppLockEnabled reports whether a PIN is set.
+	AppLockEnabled bool
+	// AppLockTimeout is the auto-lock idle window in seconds (0 = every
+	// time the app is left).
+	AppLockTimeout int
+	// NotificationsOn mirrors the notifications setting (default on).
+	NotificationsOn bool
+	// SelectedAccount is the account the folder list belongs to.
+	SelectedAccount int64
 }
 
 // AppState mediates between the sync layer and the screens.
 type AppState struct {
-	db  *store.DB
-	mgr *syncmanager.Manager
+	db   *store.DB
+	mgr  *syncmanager.Manager
+	lock *applock.Manager
 
 	// invalidate wakes the window after an async snapshot update.
 	invalidate func()
@@ -59,52 +73,41 @@ type AppState struct {
 	refreshQueue chan struct{}
 	autoWKD      bool
 	lastAutoWKD  time.Time
+	locked       bool
 }
 
 // autoWKDInterval throttles auto key discovery so a burst of new mail
 // triggers at most one WKD sweep.
 const autoWKDInterval = 10 * time.Minute
 
-// SetAutoWKD enables/disables auto key discovery on new mail and persists
-// the choice. Turning it on runs one sweep immediately.
-func (s *AppState) SetAutoWKD(on bool) {
-	s.mu.Lock()
-	s.autoWKD = on
-	s.lastAutoWKD = time.Time{}
-	s.mu.Unlock()
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		v := ""
-		if on {
-			v = "1"
-		}
-		if err := s.db.SetSetting(ctx, store.SettingAutoWKD, v); err != nil {
-			s.notify("Could not save setting")
-			return
-		}
-		s.Refresh()
-	}()
-	if on {
-		go s.DiscoverContactKeysWKD()
-	}
-}
-
 // New creates the state and starts its single loader goroutine, which
-// serializes all store reads triggered by Refresh.
-func New(ctx context.Context, db *store.DB, mgr *syncmanager.Manager) *AppState {
+// serializes all store reads triggered by Refresh. lock may be nil in
+// headless tests; the UI then never locks.
+func New(ctx context.Context, db *store.DB, mgr *syncmanager.Manager, lock *applock.Manager) *AppState {
 	s := &AppState{
 		db:           db,
 		mgr:          mgr,
+		lock:         lock,
 		keyring:      pgp.NewKeyring(),
 		refreshQueue: make(chan struct{}, 1),
-		snap:         Snapshot{Unread: map[int64]int{}, Online: true},
+		snap:         Snapshot{Unread: map[int64]int{}, Online: true, NotificationsOn: true},
 	}
 	go func() {
 		s.loadPGPKeys(ctx)
+		// Auto key discovery defaults ON: only an explicit "0" disables it,
+		// so fresh installs get zero-touch PGP from their VayuPress server.
 		if v, err := db.GetSetting(ctx, store.SettingAutoWKD); err == nil {
 			s.mu.Lock()
-			s.autoWKD = v == "1"
+			s.autoWKD = v != "0"
+			s.mu.Unlock()
+		}
+		// Start locked when a PIN is set: the lock screen is the first
+		// thing an enrolled user sees.
+		if lock != nil && lock.Enabled(ctx) {
+			s.mu.Lock()
+			s.locked = true
+			s.snap.Locked = true
+			s.snap.AppLockEnabled = true
 			s.mu.Unlock()
 		}
 		s.loaderLoop(ctx)
@@ -167,6 +170,21 @@ func (s *AppState) Apply(ev syncmanager.Event) {
 			s.notify("Saved: " + e.Path)
 		}
 		return
+	case syncmanager.AccountRemovedEvent:
+		s.mu.Unlock()
+		if e.Err != nil {
+			s.notify("Could not sign out — try again")
+		} else {
+			s.notify("Signed out")
+		}
+		s.mu.Lock()
+		if s.selAccount == e.AccountID {
+			s.selAccount = 0
+			s.selFolder = 0
+		}
+		s.mu.Unlock()
+		s.Refresh()
+		return
 	}
 	s.mu.Unlock()
 	s.Refresh()
@@ -210,6 +228,7 @@ func (s *AppState) reload(ctx context.Context) {
 		return
 	}
 	next.Accounts = accounts
+	s.loadPrefs(ctx, &next)
 	if len(accounts) == 0 {
 		s.commit(next)
 		return
@@ -258,6 +277,7 @@ func (s *AppState) reload(ctx context.Context) {
 	if urlStr, err := s.db.GetSetting(ctx, store.SettingPGPKeyDirectoryURL); err == nil {
 		next.PGPKeyDirURL = urlStr
 	}
+	next.SelectedAccount = selAccount
 	s.mu.Lock()
 	next.AutoWKD = s.autoWKD
 	s.mu.Unlock()
@@ -284,6 +304,7 @@ func (s *AppState) commit(next Snapshot) {
 	next.Online = s.snap.Online
 	next.AuthError = s.snap.AuthError
 	next.SyncDone, next.SyncTotal = s.snap.SyncDone, s.snap.SyncTotal
+	next.Locked = s.locked
 	s.snap = next
 	s.mu.Unlock()
 }

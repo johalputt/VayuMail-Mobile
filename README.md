@@ -37,11 +37,13 @@ versus stubbed is always truthfully recorded in
 | **Tracking pixels** | Detected and flagged — *"this sender tracks you"* | Silently loaded |
 | **Remote content** | Never fetched | Fetched by default |
 | **Credentials** | AES-256-GCM sealed store / platform keystore | Often plaintext in a database |
-| **Onboarding** | Scan a QR, paste a setup code, or **auto-detect from your email** | Type server settings by hand |
+| **Onboarding** | Type your email + app password — **everything else auto-discovered** (signed setup codes as fallback) | Type server settings by hand |
 | **Encryption** | PGP built in; auto-encrypts when recipients have keys | Plugin or absent |
 | **Real-time mail** | One held IMAP IDLE socket | Battery-hungry polling |
 | **Telemetry** | None. Verifiable — it's open source | "Anonymized analytics" |
 | **Server key pinning** | Optional per-account SPKI pin | Not offered |
+| **App lock** | PIN gate, idle auto-lock, offline brute-force throttle | Rare or subscription-gated |
+| **Sign out** | One tap: connections closed, credentials wiped from the keystore, local data removed | Often leaves data behind |
 | **Multi-device settings** | Encrypted blob in your own mailbox | Vendor cloud account |
 
 ## The five pillars
@@ -99,20 +101,26 @@ make build && ./dist/vayumail
 go run ./cmd/vayumail-cli --help
 ```
 
-## QR onboarding, end to end
+## Direct connect, end to end
 
-The primary onboarding path is scanning an Ed25519-signed QR code from
-your own mail server — zero keystrokes, MITM-proof (Rule 7: nothing from
-an unverified payload is ever used). This repository ships the reference
-server too:
+Type your email address and an app password — the app fetches your
+server's signed-over-HTTPS autoconfig document
+(`/.well-known/vayumail/autoconfig.json`, served by VayuPress and
+contract-tested in both repositories) and connects. PGP keys then
+auto-sync from the server's WKD directory as mail arrives.
+
+Prefer a handed-out credential? Ed25519-signed **setup codes** run the
+same verified provisioning path (Rule 7: nothing from an unverified
+payload is ever used), and this repository ships the reference issuer:
 
 ```sh
 echo "you@example.com:app-password" > users.txt
 go run ./cmd/vayumail-provision -server mail.example.com -users users.txt
-# open http://localhost:8448/qr.png?user=you@example.com and scan
+# fetch http://localhost:8448/code?user=you@example.com and paste it into the app
 ```
 
-See [docs/ADR-0003-qr-provisioning-protocol.md](docs/ADR-0003-qr-provisioning-protocol.md).
+See [docs/ADR-0003-qr-provisioning-protocol.md](docs/ADR-0003-qr-provisioning-protocol.md)
+and [docs/ADR-0009-retire-qr-scanning-direct-connect.md](docs/ADR-0009-retire-qr-scanning-direct-connect.md).
 
 ## Development
 
@@ -132,9 +140,10 @@ needs no credentials and makes no network calls.
 
 ## Permissions (Android)
 
-`INTERNET` · `CAMERA` · `FOREGROUND_SERVICE` · `RECEIVE_BOOT_COMPLETED` —
-and **no others**, each justified in
+`INTERNET` · `FOREGROUND_SERVICE` · `RECEIVE_BOOT_COMPLETED` — and **no
+others**, each justified in
 [docs/ADR-0005-android-permissions.md](docs/ADR-0005-android-permissions.md).
+(`CAMERA` was withdrawn at v2.0.0 with QR scanning — ADR-0009.)
 A manifest change without a new ADR fails review; forbidden permissions
 fail CI.
 
@@ -142,7 +151,7 @@ fail CI.
 
 - [GOVERNANCE-CONSTITUTION.md](GOVERNANCE-CONSTITUTION.md) — the ten rules, v1.0
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — normative topology
-- [docs/](docs/) — ADR-0001 … ADR-0008 (every architectural decision, recorded)
+- [docs/](docs/) — ADR-0001 … ADR-0010 (every architectural decision, recorded)
 - [COMPLIANCE-TRACKER.md](COMPLIANCE-TRACKER.md) — the honest ledger
 - [CONTRIBUTING.md](CONTRIBUTING.md) — how changes land
 

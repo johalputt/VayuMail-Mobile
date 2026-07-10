@@ -258,3 +258,29 @@ func itoa(n int) string {
 	}
 	return string(b[i:])
 }
+
+// SetAutoWKD enables/disables auto key discovery on new mail and persists
+// the choice ("0" = off; the feature defaults on). Turning it on runs one
+// sweep immediately.
+func (s *AppState) SetAutoWKD(on bool) {
+	s.mu.Lock()
+	s.autoWKD = on
+	s.lastAutoWKD = time.Time{}
+	s.mu.Unlock()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		v := "0"
+		if on {
+			v = "1"
+		}
+		if err := s.db.SetSetting(ctx, store.SettingAutoWKD, v); err != nil {
+			s.notify("Could not save setting")
+			return
+		}
+		s.Refresh()
+	}()
+	if on {
+		go s.DiscoverContactKeysWKD()
+	}
+}

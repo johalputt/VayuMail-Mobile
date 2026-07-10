@@ -33,7 +33,7 @@ type Composer struct {
 	attachBtn widget.Clickable
 	encToggle widget.Clickable
 	sigToggle widget.Clickable
-	sendBtn   widget.Clickable
+	sendBtn   Button
 
 	// Encrypt and Sign are the PGP toggles (off = Subtle, on = Accent).
 	Encrypt bool
@@ -110,6 +110,31 @@ func (c *Composer) PrefillReply(to, subject string) {
 		subject = "Re: " + subject
 	}
 	c.subject.SetText(subject)
+}
+
+// PrefillForward seeds the composer with a quoted copy of a message;
+// the recipient stays empty for the user to fill.
+func (c *Composer) PrefillForward(subject, fromName, fromAddr, date, body string) {
+	c.Reset()
+	if subject != "" && !strings.HasPrefix(strings.ToLower(subject), "fwd:") {
+		subject = "Fwd: " + subject
+	}
+	c.subject.SetText(subject)
+	sender := fromName
+	if sender == "" {
+		sender = fromAddr
+	} else if fromAddr != "" {
+		sender += " <" + fromAddr + ">"
+	}
+	var b strings.Builder
+	b.WriteString("\n\n---------- Forwarded message ----------\n")
+	b.WriteString("From: " + sender + "\n")
+	if date != "" {
+		b.WriteString("Date: " + date + "\n")
+	}
+	b.WriteString("Subject: " + strings.TrimPrefix(subject, "Fwd: ") + "\n\n")
+	b.WriteString(body)
+	c.body.SetText(b.String())
 }
 
 // Draft builds the outbound draft from the current fields.
@@ -288,15 +313,16 @@ func (c *Composer) fieldRow(gtx layout.Context, th *theme.Theme, label string, e
 		}))
 }
 
-// actionRow is the single bottom bar: attach, PGP encrypt, PGP sign,
-// spacer, send. No toolbar anywhere else.
+// actionRow is the single bottom bar: attach, PGP encrypt, PGP sign, a
+// live security readout, and the gradient Send pill. No toolbar
+// anywhere else.
 func (c *Composer) actionRow(gtx layout.Context, th *theme.Theme) layout.Dimensions {
 	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return Separator(gtx, th, 0)
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return layout.Inset{Left: theme.MD, Right: theme.MD, Top: theme.XS, Bottom: theme.XS}.Layout(gtx,
+			return layout.Inset{Left: theme.MD, Right: theme.MD, Top: theme.SM, Bottom: theme.SM}.Layout(gtx,
 				func(gtx layout.Context) layout.Dimensions {
 					return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -305,25 +331,50 @@ func (c *Composer) actionRow(gtx layout.Context, th *theme.Theme) layout.Dimensi
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 							col := th.Palette.Subtle
 							if c.Encrypt {
-								col = th.Palette.Accent
+								col = th.Palette.Success
 							}
 							return IconButton(gtx, th, &c.encToggle, IconShield, col)
 						}),
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 							col := th.Palette.Subtle
 							if c.Sign {
-								col = th.Palette.Accent
+								col = th.Palette.Success
 							}
 							return IconButton(gtx, th, &c.sigToggle, IconSignature, col)
+						}),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							label := securityLabel(c.Encrypt, c.Sign)
+							if label == "" {
+								return layout.Dimensions{}
+							}
+							return layout.Inset{Left: theme.XS}.Layout(gtx,
+								func(gtx layout.Context) layout.Dimensions {
+									return th.Label(gtx, theme.Micro, th.Palette.Success, label, 1)
+								})
 						}),
 						layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 							return layout.Dimensions{Size: gtx.Constraints.Min}
 						}),
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return IconButton(gtx, th, &c.sendBtn, IconSend, th.Palette.Accent)
+							return c.sendBtn.Layout(gtx, th, ButtonPrimary, "Send", false,
+								len(splitAddrs(c.to.Text())) == 0)
 						}))
 				})
 		}))
+}
+
+// securityLabel names the active PGP protections.
+func securityLabel(encrypt, sign bool) string {
+	switch {
+	case encrypt && sign:
+		return "Encrypted · Signed"
+	case encrypt:
+		return "Encrypted"
+	case sign:
+		return "Signed"
+	default:
+		return ""
+	}
 }
 
 // splitAddrs parses a comma- or space-separated recipient list.

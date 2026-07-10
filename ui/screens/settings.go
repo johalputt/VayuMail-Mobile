@@ -2,30 +2,41 @@ package screens
 
 import (
 	"fmt"
-	"strings"
 
-	"gioui.org/font"
 	"gioui.org/layout"
 	"gioui.org/widget"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
 	"github.com/johalputt/VayuMail-Mobile/internal/version"
+	"github.com/johalputt/VayuMail-Mobile/ui/state"
 	"github.com/johalputt/VayuMail-Mobile/ui/theme"
 	"github.com/johalputt/VayuMail-Mobile/ui/widgets"
 )
 
-// Settings is deliberately short: accounts, sync, PGP, appearance.
-// Fewer options is the feature.
+// Settings is deliberately curated: accounts, security, sync &
+// notifications, PGP, appearance. Fewer options is the feature.
 type Settings struct {
-	backBtn  widget.Clickable
-	syncBtns []widget.Clickable
-	list     layout.List
+	backBtn widget.Clickable
+	list    layout.List
 
-	keyPaste   widget.Editor
-	keyEmail   widget.Editor
-	importBtn  widget.Clickable
-	lookupBtn  widget.Clickable
-	wkdAllBtn  widget.Clickable
+	syncBtns    []widget.Clickable
+	signOutBtns []widget.Clickable
+	addAcctBtn  widget.Clickable
+
+	lockSwitch    widgets.Switch
+	changePinBtn  widget.Clickable
+	autoLockBtn   widget.Clickable
+	lockNowBtn    widget.Clickable
+	notifySwitch  widgets.Switch
+	syncAllBtn    widget.Clickable
+	autoWKDSwitch widgets.Switch
+
+	keyPaste  widget.Editor
+	keyEmail  widget.Editor
+	importBtn widget.Clickable
+	lookupBtn widget.Clickable
+	wkdAllBtn widget.Clickable
+
 	trustBtns  []widget.Clickable
 	deleteBtns []widget.Clickable
 
@@ -33,8 +44,6 @@ type Settings struct {
 	keyDirSaveBtn widget.Clickable
 	keyDirSyncBtn widget.Clickable
 	keyDirLoaded  bool
-
-	autoWKDBtn widget.Clickable
 }
 
 // NewSettings constructs the settings screen.
@@ -45,6 +54,9 @@ func NewSettings() *Settings {
 	return s
 }
 
+// row is one settings line, built ahead of the virtualized list.
+type row func(gtx layout.Context) layout.Dimensions
+
 // Layout renders the settings sections.
 func (s *Settings) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 	th := env.Theme
@@ -53,171 +65,19 @@ func (s *Settings) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 	if s.backBtn.Clicked(gtx) {
 		env.Nav.Pop(gtx.Now)
 	}
-	if len(s.syncBtns) < len(snap.Accounts) {
-		s.syncBtns = append(s.syncBtns, make([]widget.Clickable, len(snap.Accounts)-len(s.syncBtns))...)
-	}
 
-	type row func(gtx layout.Context) layout.Dimensions
 	var rows []row
+	rows = append(rows, s.accountRows(gtx, env, snap)...)
+	rows = append(rows, s.securityRows(gtx, env, snap)...)
+	rows = append(rows, s.syncRows(gtx, env, snap)...)
+	rows = append(rows, s.pgpRows(gtx, env, snap)...)
 
-	section := func(title string) {
-		rows = append(rows, func(gtx layout.Context) layout.Dimensions {
-			return layout.Inset{Left: theme.LG, Top: theme.XL, Bottom: theme.SM}.Layout(gtx,
-				func(gtx layout.Context) layout.Dimensions {
-					return th.Label(gtx, theme.Caption, th.Palette.Subtle, title, 1)
-				})
-		})
-	}
-	item := func(primary, secondary string, trailing layout.Widget) {
-		rows = append(rows, func(gtx layout.Context) layout.Dimensions {
-			return layout.Inset{Left: theme.LG, Right: theme.LG, Top: theme.SM, Bottom: theme.SM}.Layout(gtx,
-				func(gtx layout.Context) layout.Dimensions {
-					return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle, Spacing: layout.SpaceBetween}.Layout(gtx,
-						layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-							return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-									return th.Label(gtx, theme.Body, th.Palette.OnBackground, primary, 1)
-								}),
-								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-									if secondary == "" {
-										return layout.Dimensions{}
-									}
-									return th.Label(gtx, theme.Caption, th.Palette.Subtle, secondary, 1)
-								}))
-						}),
-						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							if trailing == nil {
-								return layout.Dimensions{}
-							}
-							return trailing(gtx)
-						}))
-				})
-		})
-	}
+	rows = append(rows, s.section(th, "Appearance"))
+	rows = append(rows, s.item(th, "Theme", "Follows the system light/dark preference", nil))
 
-	section("Accounts")
-	for i, acct := range snap.Accounts {
-		acct := acct
-		i := i
-		if s.syncBtns[i].Clicked(gtx) {
-			env.State.Send(syncmanager.SyncNowCmd{AccountID: acct.ID})
-			env.Snack.ShowInfo("Syncing " + acct.EmailAddress)
-		}
-		item(acct.EmailAddress,
-			fmt.Sprintf("%s · IMAP %s:%d", acct.DisplayName, acct.IMAPHost, acct.IMAPPort),
-			func(gtx layout.Context) layout.Dimensions {
-				return s.syncBtns[i].Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-					return th.Label(gtx, theme.Caption, th.Palette.Accent, "Sync now", 1)
-				})
-			})
-	}
-	if len(snap.Accounts) == 0 {
-		item("No accounts", "Add one from the welcome screen", nil)
-	}
-
-	section("Sync")
-	item("Real-time delivery", "IMAP IDLE — new mail arrives as it lands", nil)
-	item("Outbox retries", "Failed sends retry with backoff, then surface here", nil)
-
-	section("PGP")
-	if len(s.trustBtns) < len(snap.PGPKeys) {
-		s.trustBtns = append(s.trustBtns, make([]widget.Clickable, len(snap.PGPKeys)-len(s.trustBtns))...)
-		s.deleteBtns = append(s.deleteBtns, make([]widget.Clickable, len(snap.PGPKeys)-len(s.deleteBtns))...)
-	}
-	for i, k := range snap.PGPKeys {
-		i, k := i, k
-		if s.trustBtns[i].Clicked(gtx) {
-			env.State.SetPGPTrust(k.Fingerprint, (k.TrustLevel+1)%3)
-		}
-		if s.deleteBtns[i].Clicked(gtx) {
-			env.State.DeletePGPKey(k.Fingerprint)
-		}
-		fp := k.Fingerprint
-		if len(fp) > 16 {
-			fp = fp[:16]
-		}
-		kind := "public"
-		if k.IsPrivate {
-			kind = "private"
-		}
-		item(k.Email, fp+" · "+kind,
-			func(gtx layout.Context) layout.Dimensions {
-				return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						return s.trustBtns[i].Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-							return layout.Inset{Right: theme.MD}.Layout(gtx,
-								func(gtx layout.Context) layout.Dimensions {
-									return th.Label(gtx, theme.Caption, th.Palette.Accent,
-										trustLabel(k.TrustLevel), 1)
-								})
-						})
-					}),
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						return s.deleteBtns[i].Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-							return th.Label(gtx, theme.Caption, th.Palette.Destructive, "Remove", 1)
-						})
-					}))
-			})
-	}
-	if len(snap.PGPKeys) == 0 {
-		item("No keys yet", "Paste an armored key below, or look one up by address", nil)
-	}
-	if s.lookupBtn.Clicked(gtx) && strings.Contains(s.keyEmail.Text(), "@") {
-		env.State.DiscoverPGPKey(strings.TrimSpace(s.keyEmail.Text()))
-	}
-	if s.wkdAllBtn.Clicked(gtx) {
-		env.State.DiscoverContactKeysWKD()
-		env.Snack.ShowInfo("Fetching contacts' keys via WKD…")
-	}
-	if s.importBtn.Clicked(gtx) && strings.Contains(s.keyPaste.Text(), "BEGIN PGP") {
-		env.State.ImportPGPKey(s.keyPaste.Text())
-		s.keyPaste.SetText("")
-	}
-	rows = append(rows, func(gtx layout.Context) layout.Dimensions {
-		return s.keyTools(gtx, env)
-	})
-
-	section("PGP key directory (VayuPress)")
-	// Prefill the editor with the saved URL the first time it is known.
-	if !s.keyDirLoaded && snap.PGPKeyDirURL != "" {
-		s.keyDirEditor.SetText(snap.PGPKeyDirURL)
-		s.keyDirLoaded = true
-	}
-	if s.keyDirSaveBtn.Clicked(gtx) {
-		env.State.SetKeyDirectoryURL(s.keyDirEditor.Text())
-	}
-	if s.keyDirSyncBtn.Clicked(gtx) {
-		env.State.SetKeyDirectoryURL(s.keyDirEditor.Text())
-		env.State.SyncPGPFromDirectory()
-		env.Snack.ShowInfo("Syncing keys from VayuPress…")
-	}
-	status := "Auto-import contacts' public keys from your VayuPress site"
-	if snap.PGPKeyDirURL != "" {
-		status = "Directory: " + snap.PGPKeyDirURL
-	}
-	item("Key directory URL", status, nil)
-	rows = append(rows, func(gtx layout.Context) layout.Dimensions {
-		return s.keyDirTools(gtx, env)
-	})
-	if s.autoWKDBtn.Clicked(gtx) {
-		env.State.SetAutoWKD(!snap.AutoWKD)
-	}
-	autoState := "Off"
-	if snap.AutoWKD {
-		autoState = "On"
-	}
-	item("Auto-fetch keys on new mail (WKD)", "Discover new contacts' keys automatically",
-		func(gtx layout.Context) layout.Dimensions {
-			return s.autoWKDBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return th.Label(gtx, theme.Caption, th.Palette.Accent, autoState, 1)
-			})
-		})
-
-	section("Appearance")
-	item("Theme", "Follows the system light/dark preference", nil)
-
-	section("About")
-	item("VayuMail v"+version.Semantic, "Pure Go · no telemetry · Apache-2.0", nil)
+	rows = append(rows, s.section(th, "About"))
+	rows = append(rows, s.item(th, "VayuMail v"+version.Semantic,
+		"Pure Go · no telemetry · Apache-2.0", nil))
 
 	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -232,92 +92,137 @@ func (s *Settings) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 		}))
 }
 
-// trustLabel names a stored trust level.
-func trustLabel(level int) string {
-	switch level {
-	case 1:
-		return "Marginal"
-	case 2:
-		return "Trusted"
-	default:
-		return "Unverified"
+// section renders a category header.
+func (s *Settings) section(th *theme.Theme, title string) row {
+	return func(gtx layout.Context) layout.Dimensions {
+		return layout.Inset{Left: theme.LG, Top: theme.XL, Bottom: theme.SM}.Layout(gtx,
+			func(gtx layout.Context) layout.Dimensions {
+				return th.Label(gtx, theme.Caption, th.Palette.Accent, title, 1)
+			})
 	}
 }
 
-// keyDirTools renders the VayuPress key-directory URL field with Save and
-// Sync-keys actions.
-func (s *Settings) keyDirTools(gtx layout.Context, env *Env) layout.Dimensions {
-	th := env.Theme
-	return layout.Inset{Left: theme.LG, Right: theme.LG, Top: theme.SM, Bottom: theme.MD}.Layout(gtx,
-		func(gtx layout.Context) layout.Dimensions {
-			return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
-				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-					if s.keyDirEditor.Len() == 0 {
-						th.Label(gtx, theme.Caption, th.Palette.Subtle,
-							"https://your-site/wp-json/vayumail/v1/pgpkey", 1)
-					}
-					return s.keyDirEditor.Layout(gtx, th.Shaper,
-						font.Font{Weight: theme.Body.Weight}, theme.Caption.Size,
-						theme.ColorOp(gtx, th.Palette.OnBackground),
-						theme.ColorOp(gtx, th.Palette.AccentSubtle))
-				}),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return layout.Inset{Left: theme.MD}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-						return s.keyDirSaveBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-							return th.Label(gtx, theme.Caption, th.Palette.Accent, "Save", 1)
-						})
-					})
-				}),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return layout.Inset{Left: theme.MD}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-						return s.keyDirSyncBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-							return th.Label(gtx, theme.Caption, th.Palette.Accent, "Sync keys", 1)
-						})
-					})
-				}))
-		})
+// item renders one two-line row with an optional trailing widget.
+func (s *Settings) item(th *theme.Theme, primary, secondary string, trailing layout.Widget) row {
+	return func(gtx layout.Context) layout.Dimensions {
+		return layout.Inset{Left: theme.LG, Right: theme.LG, Top: theme.SM, Bottom: theme.SM}.Layout(gtx,
+			func(gtx layout.Context) layout.Dimensions {
+				return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle, Spacing: layout.SpaceBetween}.Layout(gtx,
+					layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+						return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								return th.Label(gtx, theme.Body, th.Palette.OnBackground, primary, 1)
+							}),
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								if secondary == "" {
+									return layout.Dimensions{}
+								}
+								return th.Label(gtx, theme.Caption, th.Palette.Subtle, secondary, 2)
+							}))
+					}),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						if trailing == nil {
+							return layout.Dimensions{}
+						}
+						return trailing(gtx)
+					}))
+			})
+	}
 }
 
-// keyTools renders the WKD lookup field and the armored-key paste box.
-func (s *Settings) keyTools(gtx layout.Context, env *Env) layout.Dimensions {
+// tapItem is an item whose whole row is tappable.
+func (s *Settings) tapItem(th *theme.Theme, click *widget.Clickable, primary, secondary string, trailing layout.Widget) row {
+	inner := s.item(th, primary, secondary, trailing)
+	return func(gtx layout.Context) layout.Dimensions {
+		return click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			gtx.Constraints.Min.X = gtx.Constraints.Max.X
+			return inner(gtx)
+		})
+	}
+}
+
+// accountRows: one card per account with sync/sign-out, plus add.
+func (s *Settings) accountRows(gtx layout.Context, env *Env, snap state.Snapshot) []row {
 	th := env.Theme
-	editor := func(e *widget.Editor, hint string) layout.Widget {
-		return func(gtx layout.Context) layout.Dimensions {
-			if e.Len() == 0 {
-				th.Label(gtx, theme.Caption, th.Palette.Subtle, hint, 1)
-			}
-			return e.Layout(gtx, th.Shaper,
-				font.Font{Weight: theme.Body.Weight}, theme.Caption.Size,
-				theme.ColorOp(gtx, th.Palette.OnBackground),
-				theme.ColorOp(gtx, th.Palette.AccentSubtle))
+	p := th.Palette
+	if len(s.syncBtns) < len(snap.Accounts) {
+		grow := len(snap.Accounts) - len(s.syncBtns)
+		s.syncBtns = append(s.syncBtns, make([]widget.Clickable, grow)...)
+		s.signOutBtns = append(s.signOutBtns, make([]widget.Clickable, grow)...)
+	}
+	rows := []row{s.section(th, "Accounts")}
+	for i, acct := range snap.Accounts {
+		acct := acct
+		i := i
+		if s.syncBtns[i].Clicked(gtx) {
+			env.State.Send(syncmanager.SyncNowCmd{AccountID: acct.ID})
+			env.Snack.ShowInfo("Syncing " + acct.EmailAddress)
 		}
+		if s.signOutBtns[i].Clicked(gtx) {
+			id := acct.ID
+			env.Dialog.Show(gtx.Now, "Sign out?",
+				acct.EmailAddress+" and its mail are removed from this device. Nothing changes on the server.",
+				"Sign out", true, func() { env.State.RemoveAccount(id) })
+		}
+		rows = append(rows, s.item(th, acct.EmailAddress,
+			fmt.Sprintf("IMAP %s:%d", acct.IMAPHost, acct.IMAPPort),
+			func(gtx layout.Context) layout.Dimensions {
+				return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return s.syncBtns[i].Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+							return layout.Inset{Right: theme.MD}.Layout(gtx,
+								func(gtx layout.Context) layout.Dimensions {
+									return th.Label(gtx, theme.Caption, p.Accent, "Sync now", 1)
+								})
+						})
+					}),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return s.signOutBtns[i].Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+							return th.Label(gtx, theme.Caption, p.Destructive, "Sign out", 1)
+						})
+					}))
+			}))
 	}
-	return layout.Inset{Left: theme.LG, Right: theme.LG, Top: theme.SM, Bottom: theme.MD}.Layout(gtx,
+	if len(snap.Accounts) == 0 {
+		rows = append(rows, s.item(th, "No accounts", "Connect one below", nil))
+	}
+	if s.addAcctBtn.Clicked(gtx) {
+		env.Nav.Push(state.ScreenSetup, gtx.Now)
+	}
+	rows = append(rows, s.tapItem(th, &s.addAcctBtn, "Add account",
+		"Connect another mailbox", func(gtx layout.Context) layout.Dimensions {
+			return widgets.DrawIcon(gtx, widgets.IconAdd, p.Accent, 20)
+		}))
+	return rows
+}
+
+// syncRows: quick sync and notification preferences.
+func (s *Settings) syncRows(gtx layout.Context, env *Env, snap state.Snapshot) []row {
+	th := env.Theme
+	if s.syncAllBtn.Clicked(gtx) {
+		for _, a := range snap.Accounts {
+			env.State.Send(syncmanager.SyncNowCmd{AccountID: a.ID})
+		}
+		env.Snack.ShowInfo("Syncing all accounts…")
+	}
+	rows := []row{
+		s.section(th, "Sync & notifications"),
+		s.tapItem(th, &s.syncAllBtn, "Sync all accounts now",
+			"Full refresh of every folder", func(gtx layout.Context) layout.Dimensions {
+				return widgets.DrawIcon(gtx, widgets.IconRefresh, th.Palette.Accent, 20)
+			}),
 		func(gtx layout.Context) layout.Dimensions {
-			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
-						layout.Flexed(1, editor(&s.keyEmail, "address for key lookup (WKD)")),
-						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return s.lookupBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-								return th.Label(gtx, theme.Caption, th.Palette.Accent, "Look up", 1)
-							})
-						}))
-				}),
-				layout.Rigid(layout.Spacer{Height: theme.SM}.Layout),
-				layout.Rigid(editor(&s.keyPaste, "paste armored PGP key…")),
-				layout.Rigid(layout.Spacer{Height: theme.XS}.Layout),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return s.importBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-						return th.Label(gtx, theme.Caption, th.Palette.Accent, "Import key", 1)
-					})
-				}),
-				layout.Rigid(layout.Spacer{Height: theme.MD}.Layout),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return s.wkdAllBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-						return th.Label(gtx, theme.Body, th.Palette.Accent,
-							"Fetch contacts’ keys (WKD)", 1)
-					})
-				}))
-		})
+			inner := s.item(th, "New-mail notifications", "Coalesced — bursts become one summary",
+				func(gtx layout.Context) layout.Dimensions {
+					dims, toggled := s.notifySwitch.Layout(gtx, th, snap.NotificationsOn)
+					if toggled {
+						env.State.SetNotifications(!snap.NotificationsOn)
+					}
+					return dims
+				})
+			return inner(gtx)
+		},
+		s.item(th, "Real-time delivery", "One held IMAP IDLE connection — no polling", nil),
+	}
+	return rows
 }

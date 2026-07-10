@@ -55,24 +55,14 @@ func IconButton(gtx layout.Context, th *theme.Theme, click *widget.Clickable, ic
 	})
 }
 
-// PrimaryButton is the single filled button style in the app: Accent
-// background, white label, 8pt corner radius.
-func PrimaryButton(gtx layout.Context, th *theme.Theme, click *widget.Clickable, label string) layout.Dimensions {
-	return click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		r := gtx.Dp(theme.CornerRadius)
-		return layout.Background{}.Layout(gtx,
-			func(gtx layout.Context) layout.Dimensions {
-				defer clip.UniformRRect(image.Rectangle{Max: gtx.Constraints.Min}, r).Push(gtx.Ops).Pop()
-				return Fill(gtx, th.Palette.Accent)
-			},
-			func(gtx layout.Context) layout.Dimensions {
-				return layout.Inset{
-					Top: theme.SM + theme.XS, Bottom: theme.SM + theme.XS,
-					Left: theme.LG, Right: theme.LG,
-				}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-					white := color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
-					return th.Label(gtx, theme.BodyStrong, white, label, 1)
-				})
-			})
-	})
+// Card wraps content on a raised, rounded surface with a soft shadow —
+// the container for thread messages, settings sections, and dialogs.
+func Card(gtx layout.Context, th *theme.Theme, content layout.Widget) layout.Dimensions {
+	return layout.Background{}.Layout(gtx,
+		func(gtx layout.Context) layout.Dimensions {
+			Shadow(gtx, th, gtx.Constraints.Min, theme.CardRadius)
+			defer clip.UniformRRect(image.Rectangle{Max: gtx.Constraints.Min}, gtx.Dp(theme.CardRadius)).Push(gtx.Ops).Pop()
+			return Fill(gtx, th.Palette.SurfaceRaised)
+		},
+		content)
 }

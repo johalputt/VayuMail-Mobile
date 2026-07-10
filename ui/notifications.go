@@ -29,6 +29,9 @@ type mailNotifier struct {
 	notifier  notify.Notifier
 	events    chan syncmanager.NewMessageEvent
 	startedAt time.Time
+	// enabled gates posting on the user's notifications setting; it must
+	// be a cheap, non-blocking read (a snapshot field). Nil means on.
+	enabled func() bool
 }
 
 // newMailNotifier starts the notifier. On platforms without a
@@ -59,6 +62,9 @@ func (n *mailNotifier) observe(ev syncmanager.Event) {
 		return
 	}
 	if time.Since(n.startedAt) < notifyStartupGrace {
+		return
+	}
+	if n.enabled != nil && !n.enabled() {
 		return
 	}
 	select {

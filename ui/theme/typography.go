@@ -22,10 +22,14 @@ type TextStyle struct {
 // platform (SF Pro on iOS, Roboto on Android) — no embedded fonts, no
 // remote fonts.
 var (
-	// Display is for empty-state headings only.
+	// Display is for empty-state headings and the welcome hero.
 	Display = TextStyle{Size: 28, Weight: font.Light}
+	// Hero is the onboarding wordmark size.
+	Hero = TextStyle{Size: 34, Weight: font.SemiBold}
 	// Heading is for screen titles and folder names.
 	Heading = TextStyle{Size: 20, Weight: font.Medium}
+	// Title is for thread subjects and dialog titles.
+	Title = TextStyle{Size: 17, Weight: font.SemiBold}
 	// Body is for message bodies and settings labels.
 	Body = TextStyle{Size: 15, Weight: font.Normal}
 	// BodyStrong is for sender names in the message list.
@@ -33,7 +37,9 @@ var (
 	// Caption is for timestamps and metadata.
 	Caption = TextStyle{Size: 12, Weight: font.Normal}
 	// Micro is for unread counts and badges.
-	Micro = TextStyle{Size: 10, Weight: font.Normal}
+	Micro = TextStyle{Size: 10, Weight: font.Medium}
+	// Numeral is for the PIN pad keys.
+	Numeral = TextStyle{Size: 24, Weight: font.Light}
 )
 
 // Theme bundles the palette, shaper, and mode flag that every widget

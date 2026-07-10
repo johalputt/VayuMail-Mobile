@@ -53,6 +53,13 @@ type AddAccountCmd struct {
 	Credential []byte
 }
 
+// RemoveAccountCmd signs an account out: its sync goroutines stop, its
+// credential is deleted from the keystore, and its local rows (folders,
+// messages, outbox) are removed. Completion arrives as AccountRemovedEvent.
+type RemoveAccountCmd struct {
+	AccountID int64
+}
+
 // FetchAttachmentCmd downloads one attachment (0-based part order) and
 // saves it into the attachments directory; completion arrives as an
 // AttachmentSavedEvent (ADR-0007).
@@ -89,6 +96,7 @@ func (SendCmd) isCmd()            {}
 func (SyncNowCmd) isCmd()         {}
 func (SyncFolderCmd) isCmd()      {}
 func (AddAccountCmd) isCmd()      {}
+func (RemoveAccountCmd) isCmd()   {}
 func (FetchAttachmentCmd) isCmd() {}
 func (SaveDraftCmd) isCmd()       {}
 func (SnoozeCmd) isCmd()          {}

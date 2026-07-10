@@ -1,10 +1,12 @@
 // Command vayumail-provision is the reference implementation of the
-// VayuMail QR provisioning service (ADR-0003) — the server-side
-// counterpart to internal/mail/account. VayuPress embeds this logic; any
-// mail server operator can also run it standalone.
+// VayuMail setup-code provisioning service (ADR-0003, amended by
+// ADR-0009) — the server-side counterpart to internal/mail/account.
+// VayuPress embeds this logic; any mail server operator can also run it
+// standalone.
 //
-// It generates Ed25519-signed provisioning payloads (printable as QR
-// codes) and serves the one-time token exchange endpoint:
+// It generates Ed25519-signed provisioning payloads (setup codes the
+// user pastes into the app) and serves the one-time token exchange
+// endpoint:
 //
 //	vayumail-provision -addr :8448 -server mail.example.com \
 //	    -users users.txt [-key ed25519.seed]
@@ -14,8 +16,8 @@
 //
 // Endpoints:
 //
-//	GET  /qr?user=email      base64url payload (text/plain) + QR PNG link
-//	GET  /qr.png?user=email  scannable QR code image
+//	GET  /code?user=email    base64url setup code (text/plain)
+//	GET  /qr?user=email      same payload (legacy path, kept for old tooling)
 //	POST /provision          {"token","username"} -> credentials JSON
 package main
 
@@ -66,8 +68,8 @@ func main() {
 	})
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /qr", svc.handleQRText)
-	mux.HandleFunc("GET /qr.png", svc.handleQRImage)
+	mux.HandleFunc("GET /code", svc.handleSetupCode)
+	mux.HandleFunc("GET /qr", svc.handleSetupCode) // legacy path
 	mux.HandleFunc("POST /provision", svc.handleExchange)
 
 	slog.Info("vayumail-provision listening",

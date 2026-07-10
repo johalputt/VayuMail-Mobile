@@ -11,9 +11,12 @@ The Android manifest requests exactly these permissions, and no others:
 | Permission | Justification |
 |---|---|
 | `INTERNET` | Required for IMAP and SMTP. Self-evident for a mail client. |
-| `CAMERA` | QR provisioning is the primary onboarding path (ADR-0003). Requested at the moment the scanner opens, never at install. |
 | `FOREGROUND_SERVICE` | Hosts the background IMAP IDLE connections so mail arrives in real time without polling (battery honesty: one held socket beats scheduled wakeups). |
 | `RECEIVE_BOOT_COMPLETED` | Restarts the sync service after reboot so the user does not silently stop receiving mail. |
+
+Withdrawn: `CAMERA` (v0.1.0–v1.5.0) existed solely for QR onboarding
+and left the manifest with it at v2.0.0 (ADR-0009) — direct connect and
+pasted setup codes need no permission at all.
 
 Explicitly refused, permanently unless a future ADR argues otherwise:
 `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `READ_CONTACTS`,

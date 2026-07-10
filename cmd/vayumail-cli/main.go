@@ -10,7 +10,7 @@
 //
 //	vayumail-cli [-db PATH] <command> [flags]
 //
-// Commands: accounts, add-account, sync, watch, search, qr-verify
+// Commands: accounts, add-account, sync, watch, search, code-verify
 package main
 
 import (
@@ -45,9 +45,9 @@ func run(args []string) int {
 		os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// qr-verify needs no database.
-	if rest[0] == "qr-verify" {
-		return cmdQRVerify(rest[1:])
+	// code-verify needs no database (qr-verify is the legacy alias).
+	if rest[0] == "code-verify" || rest[0] == "qr-verify" {
+		return cmdCodeVerify(rest[1:])
 	}
 
 	db, err := store.Open(ctx, *dbPath)
@@ -91,7 +91,7 @@ func usage() {
   vayumail-cli [-db PATH] pin    -account ID [-save|-clear]
   vayumail-cli [-db PATH] settings-push -account ID -file settings.json
   vayumail-cli [-db PATH] settings-pull -account ID
-  vayumail-cli qr-verify -file payload.b64
+  vayumail-cli code-verify -file payload.b64
 
   Env: VAYUMAIL_PASSWORD (mail password), VAYUMAIL_SYNC_KEY (32B base64,
   settings sync).

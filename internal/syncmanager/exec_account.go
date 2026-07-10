@@ -1,0 +1,76 @@
+package syncmanager
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/johalputt/VayuMail-Mobile/internal/store"
+)
+
+// stopAccountWait bounds how long removal waits for an account's sync
+// goroutines to exit before proceeding with the delete.
+const stopAccountWait = 5 * time.Second
+
+// execAddAccount stores the credential in the platform keystore, wipes
+// the in-memory copy, persists the account row, and starts sync.
+func (m *Manager) execAddAccount(ctx context.Context, c AddAccountCmd) error {
+	if err := c.Config.Validate(); err != nil {
+		return err
+	}
+	if err := m.ks.Store(c.Config.KeystoreAlias, c.Credential); err != nil {
+		return fmt.Errorf("syncmanager: store credential: %w", err)
+	}
+	for i := range c.Credential {
+		c.Credential[i] = 0
+	}
+	row := store.Account{
+		DisplayName:   c.Config.DisplayName,
+		EmailAddress:  c.Config.EmailAddress,
+		IMAPHost:      c.Config.IMAPHost,
+		IMAPPort:      c.Config.IMAPPort,
+		IMAPTLS:       string(c.Config.IMAPTLS),
+		SMTPHost:      c.Config.SMTPHost,
+		SMTPPort:      c.Config.SMTPPort,
+		SMTPTLS:       string(c.Config.SMTPTLS),
+		Username:      c.Config.Username,
+		KeystoreAlias: c.Config.KeystoreAlias,
+		PinnedSPKI:    c.Config.PinnedSPKI,
+		AuthMech:      c.Config.AuthMech,
+	}
+	if _, err := m.db.InsertAccount(ctx, &row); err != nil {
+		return err
+	}
+	m.startAccount(row)
+	return nil
+}
+
+// execRemoveAccount signs an account out. Order matters: the sync
+// goroutines stop first so no in-flight sync resurrects rows mid-delete,
+// then the credential leaves the keystore, then the account row goes and
+// its folders, messages, and outbox entries cascade away. The outcome —
+// success or failure — is always reported as an AccountRemovedEvent.
+func (m *Manager) execRemoveAccount(ctx context.Context, c RemoveAccountCmd) error {
+	acct, err := m.db.GetAccount(ctx, c.AccountID)
+	if err != nil {
+		err = fmt.Errorf("syncmanager: remove account %d: %w", c.AccountID, err)
+		m.emit(AccountRemovedEvent{AccountID: c.AccountID, Err: err})
+		return err
+	}
+	m.stopAccount(c.AccountID, stopAccountWait)
+	// A keystore miss must not strand the removal: the goal state — no
+	// stored credential — already holds. Other failures are logged and
+	// removal continues, or the row naming the alias would linger forever.
+	if err := m.ks.Delete(acct.KeystoreAlias); err != nil {
+		slog.Warn("remove account: keystore delete failed",
+			"account", c.AccountID, "err", err)
+	}
+	if err := m.db.DeleteAccount(ctx, c.AccountID); err != nil {
+		err = fmt.Errorf("syncmanager: remove account %d: %w", c.AccountID, err)
+		m.emit(AccountRemovedEvent{AccountID: c.AccountID, Err: err})
+		return err
+	}
+	m.emit(AccountRemovedEvent{AccountID: c.AccountID})
+	return nil
+}

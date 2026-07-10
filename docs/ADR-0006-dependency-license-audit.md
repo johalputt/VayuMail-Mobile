@@ -31,7 +31,6 @@ rationale required by the constitution's amendment clause.
 | github.com/emersion/go-message | v0.18.2 | MIT | ✅ | MIME parse/build |
 | github.com/emersion/go-sasl | v0.0.0-2024… | MIT | ✅ | SASL PLAIN for SMTP auth |
 | github.com/emersion/go-smtp | v0.24.0 | MIT | ✅ | SMTP client |
-| github.com/makiuchi-d/gozxing | v0.1.1 | MIT | ✅ | Pure-Go QR decoder (ZXing port; LICENSE verified MIT) |
 | golang.org/x/net | v0.56.0 | BSD-3-Clause | ✅ | HTML tokenizer for sanitized text rendering |
 | modernc.org/sqlite | v1.53.0 | BSD-3-Clause | ✅ | Pure-Go SQLite with FTS5; the only permitted driver (Rule 1) |
 | go.uber.org/goleak | v1.3.0 | MIT | ✅ | Tests only — goroutine leak detection |
@@ -56,7 +55,6 @@ rationale required by the constitution's amendment clause.
 | golang.org/x/image | BSD-3-Clause | ✅ | gioui.org |
 | golang.org/x/sys | BSD-3-Clause | ✅ | multiple |
 | golang.org/x/text | BSD-3-Clause | ✅ | go-message charset decoding |
-| golang.org/x/xerrors | BSD-3-Clause | ✅ | gozxing |
 | modernc.org/libc | BSD-3-Clause | ✅ | modernc.org/sqlite (pure-Go libc, **not** cgo) |
 | modernc.org/mathutil | BSD-3-Clause | ✅ | modernc.org/sqlite |
 | modernc.org/memory | BSD-3-Clause | ✅ | modernc.org/sqlite |

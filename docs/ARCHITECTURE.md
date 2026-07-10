@@ -149,21 +149,49 @@ Rules encoded in the graph:
 4. The scheduler retries due entries every 5 minutes independently of
    the UI.
 
-## Data flow: provisioning an account via QR
+## Data flow: connecting an account
 
-1. The scanner decodes the QR into a base64url payload (gozxing,
-   pure Go).
-2. `account.ParseAndVerify` — version check, expiry check, Ed25519
+**Direct connect (primary).** The user types an email address and an
+app password:
+
+1. `account.DiscoverAutoconfig` fetches
+   `https://<domain>/.well-known/vayumail/autoconfig.json` (then the
+   `autoconfig.` subdomain) over HTTPS — schema-checked, size-capped,
+   redirect-refusing, SSRF-vetted. Runs in a goroutine, never on the
+   frame loop.
+2. The resulting `Config` plus the typed password become an
+   `AddAccountCmd`.
+
+**Setup code (fallback).** The user pastes an Ed25519-signed payload
+(ADR-0003, transport retired to paste-only by ADR-0009):
+
+1. `account.ParseAndVerify` — version check, expiry check, Ed25519
    signature over canonical JSON, TLS-mode check, port check. Any
    failure returns a typed error and a clear user-facing message;
    **no field of an unverified payload is ever used** (Rule 7).
-3. `account.ExchangeToken` POSTs the one-time token to the payload's
-   endpoint and receives the mail credential. Runs in a goroutine, never
-   on the frame loop.
-4. `AddAccountCmd` stores the credential in the platform keystore,
-   zeroes the in-memory copy, inserts the account row (which carries
-   only the keystore alias — Rule 6), and starts the account's IDLE loop
-   and scheduler.
+2. `account.ExchangeToken` POSTs the one-time token to the payload's
+   endpoint and receives the mail credential. Runs in a goroutine.
+
+Either way, `AddAccountCmd` stores the credential in the platform
+keystore, zeroes the in-memory copy, inserts the account row (which
+carries only the keystore alias — Rule 6), and starts the account's
+IDLE loop and scheduler.
+
+## Data flow: signing out
+
+`RemoveAccountCmd` stops the account's IDLE and scheduler goroutines
+(bounded wait), deletes its credential from the keystore, deletes the
+account row (folders, messages, and outbox cascade), and emits
+`AccountRemovedEvent`. The last account's removal drops the UI back to
+onboarding.
+
+## App lock
+
+`internal/applock` derives a PBKDF2-SHA-256 verifier from the PIN and
+keeps it in the keystore — never SQLite (ADR-0010). The UI root gates
+every frame behind the PIN screen while locked and re-locks on idle by
+measuring the gap between rendered frames; verification runs off the
+frame loop with an outcome mailbox folded in on the next frame.
 
 ## Concurrency invariants
 

@@ -2,6 +2,8 @@ module github.com/johalputt/VayuMail-Mobile
 
 go 1.25.0
 
+toolchain go1.25.12
+
 require (
 	gioui.org v0.10.1
 	gioui.org/x v0.10.1
@@ -10,7 +12,6 @@ require (
 	github.com/emersion/go-message v0.18.2
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
 	github.com/emersion/go-smtp v0.24.0
-	github.com/makiuchi-d/gozxing v0.1.1
 	go.uber.org/goleak v1.3.0
 	golang.org/x/net v0.57.0
 	modernc.org/sqlite v1.53.0
@@ -35,7 +36,6 @@ require (
 	golang.org/x/image v0.43.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	modernc.org/libc v1.73.4 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
