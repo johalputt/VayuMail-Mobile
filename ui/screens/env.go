@@ -4,20 +4,26 @@
 package screens
 
 import (
+	"image"
 	"image/color"
 	"io"
 
+	"gioui.org/font"
 	"gioui.org/layout"
+	"gioui.org/op"
+	"gioui.org/op/paint"
 	"gioui.org/widget"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/mail/pgp"
+	"github.com/johalputt/VayuMail-Mobile/ui/anim"
 	"github.com/johalputt/VayuMail-Mobile/ui/state"
 	"github.com/johalputt/VayuMail-Mobile/ui/theme"
 	"github.com/johalputt/VayuMail-Mobile/ui/widgets"
 )
 
 // Env bundles everything a screen needs: theme, state, navigation, the
-// shared snackbar, the shared composer, and the PGP keyring.
+// shared snackbar, the shared composer, the confirm dialog, and the PGP
+// keyring.
 type Env struct {
 	Theme    *theme.Theme
 	State    *state.AppState
@@ -25,6 +31,12 @@ type Env struct {
 	Snack    *widgets.Snackbar
 	Composer *widgets.Composer
 	Keyring  *pgp.Keyring
+	// Dialog is the app-wide confirm modal, drawn above the active screen
+	// by the root.
+	Dialog *widgets.Dialog
+	// LockSetup is the shared PIN screen instance behind ScreenLock;
+	// callers Begin() it with an intent before pushing.
+	LockSetup *Lock
 	// PickFile opens the platform file picker and returns a reader for the
 	// chosen file. It blocks, so callers run it on a goroutine. Nil when the
 	// platform has no picker (the composer then reports it is unavailable).
@@ -32,6 +44,27 @@ type Env struct {
 	// Invalidate wakes the window after an async update (e.g. a picked file
 	// added to the composer from a goroutine).
 	Invalidate func()
+}
+
+// fadeRise draws w fading in and rising as t goes 0→1 — the standard
+// entrance treatment for whole-screen content.
+func fadeRise(gtx layout.Context, t float32, w layout.Widget) layout.Dimensions {
+	if t >= 1 {
+		return w(gtx)
+	}
+	macro := op.Record(gtx.Ops)
+	dims := w(gtx)
+	call := macro.Stop()
+	rise := int((1 - t) * float32(gtx.Dp(theme.LG)))
+	defer op.Offset(image.Pt(0, rise)).Push(gtx.Ops).Pop()
+	defer paint.PushOpacity(gtx.Ops, anim.Clamp01(t)).Pop()
+	call.Add(gtx.Ops)
+	return dims
+}
+
+// fontFor maps a theme text style onto a Gio font.
+func fontFor(style theme.TextStyle) font.Font {
+	return font.Font{Weight: style.Weight}
 }
 
 // topBar lays out the standard screen header: optional leading icon,

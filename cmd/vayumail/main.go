@@ -18,18 +18,11 @@ import (
 
 	"gioui.org/app"
 	"gioui.org/x/explorer"
-	// Declares the Android CAMERA permission (+ camera hardware feature) in the
-	// gogio-generated manifest, so the QR scanner can request and use the camera.
-	// Without this blank import the permission is absent from the APK entirely —
-	// Android then shows no camera permission to grant and no request dialog can
-	// appear (gioui.org/app/permission/camera).
-	_ "gioui.org/app/permission/camera"
 	xtheme "gioui.org/x/pref/theme"
 
 	appcrypto "github.com/johalputt/VayuMail-Mobile/internal/crypto"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
-	"github.com/johalputt/VayuMail-Mobile/platform/camera"
 	"github.com/johalputt/VayuMail-Mobile/ui"
 )
 
@@ -48,12 +41,6 @@ func run(window *app.Window) int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// The camera (QR scanner frame source) is platform-selected: a real
-	// NDK bridge on Android, a no-op elsewhere. Released on shutdown so the
-	// device is never held past app exit.
-	cam := camera.New()
-	defer cam.Stop()
-
 	// Platform file picker for composer attachments (SAF on Android, native
 	// dialogs elsewhere). It must observe every window event, so it is wired to
 	// the boot loop before Run starts.
@@ -61,7 +48,7 @@ func run(window *app.Window) int {
 
 	boot := ui.NewBoot(ctx, window)
 	boot.SetEventListener(exp.ListenEvents)
-	go initEngine(ctx, window, boot, cam, func() (io.ReadCloser, error) { return exp.ChooseFile() })
+	go initEngine(ctx, window, boot, func() (io.ReadCloser, error) { return exp.ChooseFile() })
 
 	err := boot.Run()
 	cancel()
@@ -76,7 +63,7 @@ func run(window *app.Window) int {
 // initEngine performs every blocking startup step off the UI thread and
 // hands the result to the boot screen. Any failure is reported on screen
 // rather than freezing the splash.
-func initEngine(ctx context.Context, window *app.Window, boot *ui.Boot, cam camera.Camera, pickFile func() (io.ReadCloser, error)) {
+func initEngine(ctx context.Context, window *app.Window, boot *ui.Boot, pickFile func() (io.ReadCloser, error)) {
 	dark := probeDarkMode()
 
 	dbPath, err := databasePath()
@@ -90,7 +77,11 @@ func initEngine(ctx context.Context, window *app.Window, boot *ui.Boot, cam came
 		return
 	}
 
-	mgr := syncmanager.New(db, keystore())
+	// One keystore instance serves both the sync engine (credentials) and
+	// the UI's app lock (PIN verifier): two instances over the same sealed
+	// file could lose writes to each other.
+	ks := keystore()
+	mgr := syncmanager.New(db, ks)
 	mgr.SetAttachmentsDir(filepath.Join(filepath.Dir(dbPath), "attachments"))
 	if err := mgr.Start(ctx); err != nil {
 		boot.Fail(err, "starting the sync engine")
@@ -100,7 +91,7 @@ func initEngine(ctx context.Context, window *app.Window, boot *ui.Boot, cam came
 		return
 	}
 
-	boot.Attach(ui.New(ctx, window, db, mgr, dark, cam.Frame, pickFile), db, mgr)
+	boot.Attach(ui.New(ctx, window, db, mgr, ks, dark, pickFile), db, mgr)
 }
 
 // probeDarkMode asks the platform for the theme preference with a hard

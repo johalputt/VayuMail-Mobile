@@ -15,6 +15,10 @@ const (
 	ScreenSetup
 	ScreenSettings
 	ScreenSearch
+	// ScreenLock hosts PIN enrollment/change/disable flows pushed from
+	// Settings. The launch/idle unlock gate is drawn by the root instead
+	// and never enters this stack.
+	ScreenLock
 )
 
 // Motion constants from the design spec: push 200ms ease-out cubic,

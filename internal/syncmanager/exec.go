@@ -47,6 +47,8 @@ func (m *Manager) handleCmd(ctx context.Context, cmd Cmd) error {
 		return m.execSyncFolder(ctx, c)
 	case AddAccountCmd:
 		return m.execAddAccount(ctx, c)
+	case RemoveAccountCmd:
+		return m.execRemoveAccount(ctx, c)
 	case FetchAttachmentCmd:
 		return m.execFetchAttachment(ctx, c)
 	case SaveDraftCmd:
@@ -295,37 +297,4 @@ func (m *Manager) execSyncFolder(ctx context.Context, c SyncFolderCmd) error {
 			return imapsync.SyncFolder(ctx, client, m.db,
 				m.eventsFor(acct.ID), acct.ID, folder, selected)
 		})
-}
-
-// execAddAccount stores the credential in the platform keystore, wipes
-// the in-memory copy, persists the account row, and starts sync.
-func (m *Manager) execAddAccount(ctx context.Context, c AddAccountCmd) error {
-	if err := c.Config.Validate(); err != nil {
-		return err
-	}
-	if err := m.ks.Store(c.Config.KeystoreAlias, c.Credential); err != nil {
-		return fmt.Errorf("syncmanager: store credential: %w", err)
-	}
-	for i := range c.Credential {
-		c.Credential[i] = 0
-	}
-	row := store.Account{
-		DisplayName:   c.Config.DisplayName,
-		EmailAddress:  c.Config.EmailAddress,
-		IMAPHost:      c.Config.IMAPHost,
-		IMAPPort:      c.Config.IMAPPort,
-		IMAPTLS:       string(c.Config.IMAPTLS),
-		SMTPHost:      c.Config.SMTPHost,
-		SMTPPort:      c.Config.SMTPPort,
-		SMTPTLS:       string(c.Config.SMTPTLS),
-		Username:      c.Config.Username,
-		KeystoreAlias: c.Config.KeystoreAlias,
-		PinnedSPKI:    c.Config.PinnedSPKI,
-		AuthMech:      c.Config.AuthMech,
-	}
-	if _, err := m.db.InsertAccount(ctx, &row); err != nil {
-		return err
-	}
-	m.startAccount(row)
-	return nil
 }

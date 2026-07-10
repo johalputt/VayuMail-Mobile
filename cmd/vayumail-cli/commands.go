@@ -197,11 +197,11 @@ func cmdSearch(ctx context.Context, db *store.DB, args []string) int {
 	return 0
 }
 
-// cmdQRVerify parses and verifies a provisioning payload file, printing
-// the outcome. It never contacts the network.
-func cmdQRVerify(args []string) int {
-	fs := flag.NewFlagSet("qr-verify", flag.ContinueOnError)
-	file := fs.String("file", "", "file containing the base64url QR payload")
+// cmdCodeVerify parses and verifies a provisioning setup-code file,
+// printing the outcome. It never contacts the network.
+func cmdCodeVerify(args []string) int {
+	fs := flag.NewFlagSet("code-verify", flag.ContinueOnError)
+	file := fs.String("file", "", "file containing the base64url setup code")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}

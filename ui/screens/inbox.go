@@ -1,9 +1,13 @@
 package screens
 
 import (
+	"fmt"
+	"image"
 	"time"
 
+	"gioui.org/f32"
 	"gioui.org/layout"
+	"gioui.org/op"
 	"gioui.org/widget"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
@@ -14,14 +18,16 @@ import (
 )
 
 // Inbox is the primary view: the virtualized message list with swipe
-// actions, the folder drawer, and the top bar.
+// actions, the folder drawer with the account switcher, the sync
+// progress hairline, and the floating compose button.
 type Inbox struct {
-	list   *widgets.MessageList
-	drawer *widgets.FolderDrawer
+	list    *widgets.MessageList
+	drawer  *widgets.FolderDrawer
+	fab     *widgets.FAB
+	syncBar widgets.SyncBar
 
 	menuBtn    widget.Clickable
 	searchBtn  widget.Clickable
-	composeBtn widget.Clickable
 	refreshBtn widget.Clickable
 
 	// pendingHidden holds message IDs swiped away but not yet committed;
@@ -34,6 +40,7 @@ func NewInbox() *Inbox {
 	return &Inbox{
 		list:          widgets.NewMessageList(),
 		drawer:        widgets.NewFolderDrawer(),
+		fab:           &widgets.FAB{},
 		pendingHidden: make(map[int64]bool),
 	}
 }
@@ -59,7 +66,7 @@ func (s *Inbox) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 	if s.searchBtn.Clicked(gtx) {
 		env.Nav.Push(state.ScreenSearch, gtx.Now)
 	}
-	if s.composeBtn.Clicked(gtx) {
+	if s.fab.Clicked(gtx) {
 		env.Composer.Reset()
 		env.Nav.Push(state.ScreenCompose, gtx.Now)
 	}
@@ -72,27 +79,30 @@ func (s *Inbox) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 	if title == "" {
 		title = "Inbox"
 	}
+	if n := snap.Unread[snap.CurrentFolder.ID]; n > 0 {
+		title = fmt.Sprintf("%s · %d", title, n)
+	}
+
+	// Arm the entrance cascade when the folder identity changes.
+	s.list.BeginEntrance(fmt.Sprintf("%d/%d", snap.SelectedAccount, snap.CurrentFolder.ID), gtx.Now)
 
 	visible := s.visibleMessages(snap.Messages)
+	syncing := snap.SyncTotal > 0 && snap.SyncDone < snap.SyncTotal
 
 	dims := layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return topBar(gtx, th,
 				iconBtn(th, &s.menuBtn, widgets.IconMenu, th.Palette.OnBackground),
 				title,
-				iconBtn(th, &s.refreshBtn, widgets.IconRefresh, th.Palette.OnBackground),
+				s.refreshIcon(th, syncing),
 				iconBtn(th, &s.searchBtn, widgets.IconSearch, th.Palette.OnBackground),
-				iconBtn(th, &s.composeBtn, widgets.IconCompose, th.Palette.OnBackground),
 			)
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			if snap.Online {
-				return layout.Dimensions{}
-			}
-			return layout.Inset{Left: theme.LG, Top: theme.XS, Bottom: theme.XS}.Layout(gtx,
-				func(gtx layout.Context) layout.Dimensions {
-					return th.Label(gtx, theme.Caption, th.Palette.Subtle, "Offline — showing cached mail", 1)
-				})
+			return s.syncBar.Layout(gtx, th, snap.SyncDone, snap.SyncTotal)
+		}),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return statusBanner(gtx, th, snap)
 		}),
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 			if len(visible) == 0 {
@@ -105,15 +115,75 @@ func (s *Inbox) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 			return layout.Dimensions{Size: gtx.Constraints.Max}
 		}))
 
+	// FAB floats bottom-right above the list.
+	layout.SE.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return layout.UniformInset(theme.FABMargin).Layout(gtx,
+			func(gtx layout.Context) layout.Dimensions {
+				return s.fab.Layout(gtx, th, widgets.IconCompose)
+			})
+	})
+
 	// Drawer stacks above everything.
 	drawerGtx := gtx
 	drawerGtx.Constraints = layout.Exact(gtx.Constraints.Max)
-	if a := s.drawer.Layout(drawerGtx, th, snap.Folders, snap.Unread, snap.CurrentFolder.ID); a.FolderID != 0 {
+	a := s.drawer.Layout(drawerGtx, th, snap.Accounts, snap.SelectedAccount,
+		snap.Folders, snap.Unread, snap.CurrentFolder.ID)
+	switch {
+	case a.FolderID != 0:
 		env.State.SelectFolder(a.FolderID)
-	} else if a.Settings {
+	case a.AccountID != 0:
+		env.State.SelectAccount(a.AccountID)
+	case a.AddAccount:
+		env.Nav.Push(state.ScreenSetup, gtx.Now)
+	case a.Settings:
 		env.Nav.Push(state.ScreenSettings, gtx.Now)
 	}
 	return dims
+}
+
+// refreshIcon spins while a counted sync is in flight — the visible
+// "quick sync" affordance. The rotation runs only during the sync.
+func (s *Inbox) refreshIcon(th *theme.Theme, syncing bool) layout.Widget {
+	return func(gtx layout.Context) layout.Dimensions {
+		if !syncing {
+			return widgets.IconButton(gtx, th, &s.refreshBtn, widgets.IconRefresh, th.Palette.OnBackground)
+		}
+		gtx.Execute(op.InvalidateCmd{})
+		angle := float32(gtx.Now.UnixMilli()%1200) / 1200 * 2 * 3.14159
+		return s.refreshBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			target := gtx.Dp(theme.TouchTarget)
+			gtx.Constraints = layout.Exact(image.Pt(target, target))
+			return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				macro := op.Record(gtx.Ops)
+				dims := widgets.DrawIcon(gtx, widgets.IconRefresh, th.Palette.Accent, 24)
+				call := macro.Stop()
+				origin := f32.Pt(float32(dims.Size.X)/2, float32(dims.Size.Y)/2)
+				defer op.Affine(f32.Affine2D{}.Rotate(origin, angle)).Push(gtx.Ops).Pop()
+				call.Add(gtx.Ops)
+				return dims
+			})
+		})
+	}
+}
+
+// statusBanner surfaces offline and auth-failure states inline.
+func statusBanner(gtx layout.Context, th *theme.Theme, snap state.Snapshot) layout.Dimensions {
+	msg := ""
+	c := th.Palette.Subtle
+	switch {
+	case snap.AuthError:
+		msg = "Sign-in failed — check this account's password in Settings"
+		c = th.Palette.Warning
+	case !snap.Online:
+		msg = "Offline — showing cached mail"
+	}
+	if msg == "" {
+		return layout.Dimensions{}
+	}
+	return layout.Inset{Left: theme.LG, Top: theme.XS, Bottom: theme.XS}.Layout(gtx,
+		func(gtx layout.Context) layout.Dimensions {
+			return th.Label(gtx, theme.Caption, c, msg, 1)
+		})
 }
 
 // visibleMessages filters out rows hidden by an uncommitted swipe.

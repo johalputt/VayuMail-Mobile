@@ -17,7 +17,8 @@ import (
 // Icon identifies one of the built-in path icons.
 type Icon int
 
-// The full icon set.
+// The full icon set. Icons past IconRefresh are drawn in
+// icons_extra.go to respect the 400-line file cap (Rule 10).
 const (
 	IconMenu Icon = iota
 	IconSearch
@@ -30,10 +31,26 @@ const (
 	IconEnvelope
 	IconShield
 	IconSignature
-	IconQR
 	IconClock
 	IconDownload
 	IconRefresh
+	IconSettings
+	IconLogout
+	IconLock
+	IconAdd
+	IconChevronRight
+	IconChevronDown
+	IconForward
+	IconReply
+	IconPerson
+	IconBell
+	IconKey
+	IconCheck
+	IconClose
+	IconBackspace
+	IconEye
+	IconEyeOff
+	IconFolder
 )
 
 // DrawIcon renders an icon at the given size, stroked in c. All icons are
@@ -140,16 +157,6 @@ func DrawIcon(gtx layout.Context, icon Icon, c color.NRGBA, size unit.Dp) layout
 		p.LineTo(pt(17, 11))
 		p.MoveTo(pt(5, 20))
 		p.LineTo(pt(19, 20))
-	case IconQR:
-		square(&p, pt(4, 4), 6*s)
-		square(&p, pt(14, 4), 6*s)
-		square(&p, pt(4, 14), 6*s)
-		p.MoveTo(pt(14, 14))
-		p.LineTo(pt(17, 14))
-		p.MoveTo(pt(17, 17))
-		p.LineTo(pt(20, 17))
-		p.MoveTo(pt(14, 20))
-		p.LineTo(pt(17, 20))
 	case IconRefresh:
 		// Three-quarter circular arrow, gap and arrowhead at the top-left.
 		p.MoveTo(pt(12, 5))
@@ -159,6 +166,8 @@ func DrawIcon(gtx layout.Context, icon Icon, c color.NRGBA, size unit.Dp) layout
 		p.MoveTo(pt(2.5, 10))
 		p.LineTo(pt(5, 12))
 		p.LineTo(pt(7.5, 10))
+	default:
+		extraIconPath(&p, icon, pt, s)
 	}
 
 	paint.FillShape(gtx.Ops, c, clip.Stroke{Path: p.End(), Width: stroke}.Op())
@@ -185,13 +194,4 @@ func circle(p *clip.Path, center f32.Point, r float32) {
 		f32.Pt(center.X+k*r, center.Y-r),
 		f32.Pt(center.X+r, center.Y-k*r),
 		f32.Pt(center.X+r, center.Y))
-}
-
-// square appends a closed square subpath with top-left at origin.
-func square(p *clip.Path, origin f32.Point, side float32) {
-	p.MoveTo(origin)
-	p.LineTo(f32.Pt(origin.X+side, origin.Y))
-	p.LineTo(f32.Pt(origin.X+side, origin.Y+side))
-	p.LineTo(f32.Pt(origin.X, origin.Y+side))
-	p.LineTo(origin)
 }

@@ -16,9 +16,8 @@ does not) · **PENDING** (not started, deliberately deferred).
 | PGP encrypt/decrypt | COMPLETE | ProtonMail/go-crypto; encrypt+sign, decrypt+verify, detached signatures, keyring with trust levels, round-trip tested |
 | PGP sign-only outbound (RFC 3156 multipart/signed) | PENDING | Engine signs (detached) but the composer path refuses sign-without-encrypt rather than pretending; needs multipart/signed builder |
 | SQLite store + FTS5 | COMPLETE | modernc.org/sqlite, WAL, versioned migrations, external-content FTS5 with triggers, injection-safe query builder, tested |
-| QR provisioning decode + verify | COMPLETE | Ed25519 over canonical JSON, all six rejection paths fixture-tested (Rule 7) |
-| QR token exchange | COMPLETE | Client tested against httptest; reference server ships in this repo (`cmd/vayumail-provision`, ADR-0008) — VayuPress embeds the same logic |
-| Camera preview bridge | PARTIAL | **Android: implemented** — pure-cgo NDK Camera2 bridge (`internal/camera/camera_android.go`) streams the YUV luminance plane into `widgets.FrameSource`; runtime CAMERA permission requested on scanner open (ADR-0005); lazy power-on + idle release; every failure degrades to the paste-code fallback. Compiled only by `make android` and verified on-device (cannot run in CI). **iOS: pending.** Decode + verify pipeline complete (gozxing). |
+| Setup-code provisioning (decode + verify) | COMPLETE | Ed25519 over canonical JSON, all six rejection paths fixture-tested (Rule 7); arrives by paste since v2.0.0 (ADR-0009) |
+| Setup-code token exchange | COMPLETE | Client tested against httptest; reference issuer ships in this repo (`cmd/vayumail-provision`, `GET /code`, ADR-0008/0009) |
 | Credential persistence (sealed keystore) | COMPLETE | AES-256-GCM sealed store in the app-private data directory; alias-bound ciphertext, atomic writes, tested incl. plaintext-leak and replay checks (ADR-0004 amendment) |
 | Hardware-backed key wrapping | PENDING | `KeyProvider` seam exists; Android Keystore / iOS Keychain wrapping of the master key lands without a format change (ADR-0004) |
 | Android foreground service | STUB | `internal/push/android_fgservice.go` — engine-side controller registration complete; not wired to an OS service |
@@ -34,7 +33,7 @@ does not) · **PENDING** (not started, deliberately deferred).
 | Sent-folder append | COMPLETE | Successful sends are filed to Sent with \Seen |
 | Draft save to IMAP | COMPLETE | SaveDraftCmd appends to Drafts with \Draft |
 | PGP key management UI | COMPLETE | Keys persisted (schema v2), Settings screen: import by paste, WKD lookup, trust cycling, removal |
-| WKD key discovery | COMPLETE | draft-koch advanced+direct endpoints, known-answer tested; user-initiated only |
+| WKD key discovery | COMPLETE | draft-koch advanced+direct endpoints, known-answer tested; auto-discovery on new mail is default-on since v2.0.0 (throttled 10-min sweeps, "0" setting opts out) |
 | Auto-encrypt | COMPLETE | Composer enables encryption automatically when every recipient has a key |
 | TLS key pinning (SPKI) | COMPLETE | Optional per-account pin, CLI managed, WebPKI + pin required (ADR-0008) |
 | Settings sync via mailbox | COMPLETE | Sealed AES-GCM blob in VayuMail.Meta, CLI push/pull, memserver-tested (ADR-0008); in-app UI wiring PENDING |
@@ -49,13 +48,20 @@ does not) · **PENDING** (not started, deliberately deferred).
 | Attachment picker | PARTIAL | Composer attach button opens the platform file picker via `gioui.org/x/explorer` (SAF on Android); picked files are added as chips (tap to remove), read up to 50 MB, and sent via the existing MIME attachment path. Android/iOS pickers verified on-device only; filename falls back to a type-derived name where the OS stream carries none. |
 | On-demand body fetch in UI | PARTIAL | Messages > 512 KiB sync envelope-only; `imapsync.FetchBody` exists but no UI command triggers it yet (thread view shows a "not downloaded" notice) |
 | New-mail notifications | COMPLETE | gioui.org/x/notify (Android tray, desktop DBus); bursts coalesced into a summary, suppressed during the initial-sync window |
-| Haptic feedback on swipe/scan | PENDING | No cross-platform haptics wired; swipe and scan work without it |
+| Haptic feedback on swipe | PENDING | No cross-platform haptics wired; swipe works without it |
 | Swipe row exit animation | PARTIAL | Reveal follows finger, snap-back animated; committed rows disappear without a slide-out animation |
 | Hardware back button (Android) | COMPLETE | Back/Escape closes the drawer, pops the stack, closes the window at the root |
 | Android startup (non-blocking boot) | COMPLETE | Boot loop presents the first frame immediately; DataDir/SQLite/keystore init off the UI thread with on-screen error reporting (fixes the startup freeze) |
 | Archive/move correctness | COMPLETE | Server move first, then local delete; no reused placeholder UID (fixes UNIQUE collision on multi-archive); regression-tested |
 | Constitution CI enforcement | COMPLETE | v1.1 gate enforces channel invariants, math/rand ban, QR rejection completeness, ADR cross-refs; govulncheck + staticcheck in CI |
-| Server key pinning for QR payloads | PENDING | v0.1 trusts payload-embedded key + HTTPS exchange (ADR-0003) |
+| Server key pinning for setup-code payloads | PENDING | Trusts payload-embedded key + HTTPS exchange (ADR-0003); direct connect rides WebPKI |
+| Direct-connect onboarding | COMPLETE | Email + app password → autoconfig discovery over HTTPS (schema-checked, SSRF-vetted, contract-tested against VayuPress); setup-code paste and manual entry as fallbacks; QR scanning/camera removed (ADR-0009) |
+| App lock (PIN + idle auto-lock) | COMPLETE | internal/applock: stdlib PBKDF2-SHA-256 verifier in the keystore, constant-time compare, 5 free attempts then doubling lockout to 15 min; UI gate replaces the frame; idle re-lock via frame-gap; disk-scan test proves the PIN never lands on disk (ADR-0010) |
+| Account sign-out | COMPLETE | RemoveAccountCmd: bounded stop of the account's sync goroutines, keystore credential delete, cascading row delete, AccountRemovedEvent; goleak-tested |
+| Multi-account switcher | COMPLETE | Drawer account header: switch accounts, add account; per-account sync + sign-out in Settings |
+| Notifications toggle | COMPLETE | Settings switch (default on); gates the notifier before posting |
+| Message forward + thread action bar | COMPLETE | Reply / Forward (quoted plain text) / Archive / Delete-with-confirm from the thread screen |
+| Motion system (ui/anim) | COMPLETE | Time-interpolated easings, staggered list entrance, press-scale buttons/FAB, parallax screen transitions, animated switches/dialog/PIN pad; frames requested only while something animates (battery: idle screens render zero frames) |
 | APK release pipeline | COMPLETE | `.github/workflows/release.yml`: gogio build on GitHub runners, signature verification, artifact + Release upload on `v*` tags; Play-ready when `ANDROID_KEYSTORE_B64`/`ANDROID_KEYSTORE_PASS` secrets are set, test-signed otherwise |
 | iOS IPA pipeline | PENDING | Requires a macOS runner and Apple signing assets |
 

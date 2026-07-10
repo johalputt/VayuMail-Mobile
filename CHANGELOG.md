@@ -6,6 +6,95 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-07-10
+
+The enterprise redesign: a new design language, an app lock, real
+sign-out, one-tap onboarding against any VayuPress server — and the
+camera gone for good.
+
+### Added
+- **Direct connect onboarding.** Type your email and an app password;
+  the app discovers your server's settings from its signed-over-HTTPS
+  autoconfig document (`/.well-known/vayumail/autoconfig.json`, served
+  by VayuPress and contract-tested in both repos) and connects. Signed
+  setup codes (the ADR-0003 payload, pasted) and manual entry remain as
+  fallbacks. VayuPress operators mint app passwords in the new VayuOS
+  console card (VayuPress ADR-0126).
+- **App lock.** Optional 4–12 digit PIN gating the whole UI: stdlib
+  PBKDF2-SHA-256 verifier stored in the keystore (never SQLite, never
+  plaintext — Rule 6), constant-time comparison, five free attempts
+  then a doubling lockout capped at 15 minutes, idle auto-lock
+  (30 seconds / 1 / 5 / 15 minutes, default 1 minute) driven by
+  frame-gap detection, and
+  a lock screen with an animated PIN pad and shake-on-error. While
+  locked, no mail pixels render — app switchers screenshot nothing.
+  (ADR-0010)
+- **Sign out.** Per-account sign-out from Settings (with confirm
+  dialog): the engine stops the account's sync goroutines with a
+  bounded wait, wipes its credential from the keystore, and removes its
+  local mail; `AccountRemovedEvent` closes the loop. Removing the last
+  account returns to onboarding. Goroutine-leak-tested.
+- **Account switcher.** The drawer gained an identity header: switch
+  between accounts with two taps, or add another account from the
+  drawer and Settings.
+- **Thread action bar.** Reply, **Forward** (quoted plain text),
+  Archive, and Delete (with confirmation) — thumb-reachable at the
+  bottom of every conversation.
+- **Notification toggle.** New-mail notifications can be switched off
+  in Settings; the setting gates the notifier before it posts.
+- **Motion system.** A new `ui/anim` package: press-scale buttons and
+  FAB with gradient fills, staggered message-list entrance, parallax
+  screen transitions with dim, animated switches, an animated confirm
+  dialog, drawer account-switcher reveal, and a spinning sync
+  indicator. Every animation is time-interpolated and requests frames
+  only while running — an idle screen renders zero frames, so the
+  motion system costs no battery at rest.
+
+### Changed
+- **New design language.** "Wind at night": deep blue-black surfaces
+  with one electric indigo→cyan accent sweep, raised-surface elevation
+  with soft shadows, gradient duotone avatars, pill buttons, a refined
+  light palette, and richer message rows (unread accent bar,
+  subject + snippet preview line, attachment and PGP indicators, folder
+  icons and pill badges in the drawer).
+- **PGP keys now sync themselves.** Auto-discovery of contacts' keys
+  via WKD (their server's key directory — VayuPress publishes one for
+  every mailbox) is **on by default**, throttled to one sweep per 10
+  minutes; composing to key-holding recipients still auto-encrypts.
+  Turn it off in Settings → Encryption.
+- **Settings rebuilt** around sections: Accounts (sync now / sign out /
+  add), Security (app lock, change PIN, auto-lock window, lock now),
+  Sync & notifications (sync-all, notification toggle), Encryption
+  (auto-fetch toggle, keys, tools, VayuPress key directory),
+  Appearance, About.
+- Auth failures now surface as an inline banner on the inbox instead
+  of being silently recorded.
+- `cmd/vayumail-provision` serves setup codes at `GET /code` (legacy
+  `/qr` path kept, PNG endpoint removed).
+
+### Removed
+- **QR scanning, the camera, and the CAMERA permission** (ADR-0009,
+  Constitution v1.2). VayuPress removed QR generation in v3.9.16; the
+  scanner was the app's only camera use and its heaviest platform
+  surface (device-only cgo bridge, un-CI-testable). The Ed25519
+  provisioning protocol itself is unchanged — payloads arrive as
+  pasted setup codes through the identical verifier and all rejection
+  fixtures. Dependencies dropped: `gozxing`, `golang.org/x/xerrors`.
+
+### Security
+- The app-lock verifier design (PBKDF2 600k iterations, per-verifier
+  random salt, keystore residency, lockout ladder) is documented in
+  ADR-0010; a test scans the data directory to prove the literal PIN
+  never touches disk.
+- Onboarding no longer trusts screen-borne payloads by default: direct
+  connect authenticates the channel with WebPKI before any credential
+  leaves the device.
+- Pinned the Go toolchain to 1.25.12, which fixes GO-2026-5856
+  (Encrypted Client Hello privacy leak in `crypto/tls`) reached through
+  every IMAP/SMTP/HTTPS handshake; picked up the dependency security
+  bumps from main (`golang.org/x/net` 0.57.0, `golang.org/x/crypto`
+  0.54.0, `gioui.org/x` 0.10.1). `govulncheck` is clean.
+
 ## [1.5.0] — 2026-07-06
 
 ### Added

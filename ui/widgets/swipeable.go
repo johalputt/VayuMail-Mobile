@@ -146,9 +146,9 @@ func (s *Swipeable) beginSnapBack(now time.Time) {
 // drawReveal paints the action background and icon behind the sliding
 // row.
 func (s *Swipeable) drawReveal(gtx layout.Context, th *theme.Theme, size image.Point) {
-	bg := th.Palette.AccentSubtle
+	bg := theme.ArchiveReveal(th.Dark)
 	icon := IconArchive
-	iconColor := th.Palette.Accent
+	iconColor := th.Palette.AccentAlt
 	if s.offset < 0 {
 		bg = theme.DeleteReveal(th.Dark)
 		icon = IconTrash

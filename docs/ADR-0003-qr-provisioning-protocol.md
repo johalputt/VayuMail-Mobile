@@ -2,10 +2,11 @@
 
 ## Status
 
-Accepted — v0.1.0. Mobile-side decode and verification complete; the live
-token exchange requires the VayuPress server-side endpoint
-(`/.well-known/vayumail/provision`), a cross-repo dependency that is not
-yet built.
+Accepted — v0.1.0. **Amended by ADR-0009 (v2.0.0):** QR *scanning* is
+retired; the payload lives on as the pasted **setup code** and runs the
+identical verification below. VayuPress ships autoconfig-based direct
+connect instead of a provisioning endpoint; `cmd/vayumail-provision`
+remains the reference issuer for setup codes (`GET /code`).
 
 ## Decision
 

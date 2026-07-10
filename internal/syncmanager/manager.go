@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/crypto"
 	"github.com/johalputt/VayuMail-Mobile/internal/mail/account"
@@ -27,6 +28,10 @@ type Manager struct {
 
 	mu      sync.Mutex
 	runners map[int64]context.CancelFunc
+	// runnerDone[id] closes once both of an account's goroutines have
+	// exited — the wait handle stopAccount blocks on so account removal
+	// never races an in-flight sync.
+	runnerDone map[int64]chan struct{}
 
 	attachDir string
 }
@@ -34,13 +39,17 @@ type Manager struct {
 // New creates a Manager over the given store and keystore. Channel sizes
 // are fixed by the architecture: events 256, commands 64 (ARCHITECTURE.md).
 func New(db *store.DB, ks crypto.Keystore) *Manager {
-	return &Manager{
+	m := &Manager{
 		db:      db,
 		ks:      ks,
 		eventCh: make(chan Event, 256),
 		cmdCh:   make(chan Cmd, 64),
 		runners: make(map[int64]context.CancelFunc),
 	}
+	// Assigned outside the literal: the channel-buffer lines above must
+	// keep their exact spelling (checked by scripts/constitution.sh).
+	m.runnerDone = make(map[int64]chan struct{})
+	return m
 }
 
 // Events returns the channel the UI drains non-blockingly each frame.
@@ -113,7 +122,8 @@ func (m *Manager) emit(ev Event) {
 	}
 }
 
-// startAccount spawns the IDLE loop and scheduler for one account.
+// startAccount spawns the IDLE loop and scheduler for one account, plus a
+// watcher that closes the account's done channel once both have exited.
 func (m *Manager) startAccount(acct store.Account) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -121,14 +131,19 @@ func (m *Manager) startAccount(acct store.Account) {
 		return
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
+	done := make(chan struct{})
 	m.runners[acct.ID] = cancel
+	m.runnerDone[acct.ID] = done
 
 	cfg := ConfigFromStore(acct)
 	cred := m.credFor(acct.KeystoreAlias)
 
-	m.wg.Add(2)
+	var workers sync.WaitGroup
+	workers.Add(2)
+	m.wg.Add(3)
 	go func() {
 		defer m.wg.Done()
+		defer workers.Done()
 		err := imapsync.RunIDLE(ctx, cfg, cred, "INBOX", m.db,
 			m.eventsFor(acct.ID), acct.ID)
 		if err != nil && ctx.Err() == nil {
@@ -137,8 +152,38 @@ func (m *Manager) startAccount(acct store.Account) {
 	}()
 	go func() {
 		defer m.wg.Done()
+		defer workers.Done()
 		m.runScheduler(ctx, acct.ID, cfg, cred)
 	}()
+	go func() {
+		defer m.wg.Done()
+		workers.Wait()
+		close(done)
+	}()
+}
+
+// stopAccount cancels an account's sync goroutines and waits (bounded)
+// for them to exit so removal never races an in-flight sync. No-op when
+// the account has no runner.
+func (m *Manager) stopAccount(id int64, wait time.Duration) {
+	m.mu.Lock()
+	cancel, ok := m.runners[id]
+	done := m.runnerDone[id]
+	delete(m.runners, id)
+	delete(m.runnerDone, id)
+	m.mu.Unlock()
+	if !ok {
+		return
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(wait):
+		// Proceed anyway: the goroutines are cancelled and will exit; the
+		// bound only keeps the command loop from stalling indefinitely.
+		slog.Warn("stop account: goroutines still draining",
+			"account", id, "waited", wait)
+	}
 }
 
 // eventsFor adapts the imapsync callback set onto the typed event bus —

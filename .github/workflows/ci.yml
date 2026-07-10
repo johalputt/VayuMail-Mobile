@@ -9,7 +9,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.25.12'
       - name: Constitution gate (v1.1, all rules)
         run: sh scripts/constitution.sh
 
@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.25.12'
       # govulncheck loads every package, including the Gio UI, which binds
       # to system windowing libraries — install them so package loading
       # succeeds and the whole tree is scanned.
@@ -44,7 +44,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.25.12'
 
       # Gio's Linux backend needs system windowing headers; the engine
       # itself is pure Go (verified in the constitution job).
@@ -96,7 +96,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.25.12'
       - name: Coverage on engine packages
         run: |
           go test -count=1 -coverpkg=./internal/... -coverprofile=coverage.out ./test/

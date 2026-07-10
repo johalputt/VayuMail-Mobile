@@ -132,9 +132,10 @@ func (s *Snackbar) slideProgress(now time.Time) float32 {
 }
 
 func (s *Snackbar) layoutBar(gtx layout.Context, th *theme.Theme, msg string, hasUndo bool) layout.Dimensions {
-	r := gtx.Dp(theme.CornerRadius)
+	r := gtx.Dp(theme.CornerRadius + 4)
 	return layout.Background{}.Layout(gtx,
 		func(gtx layout.Context) layout.Dimensions {
+			Shadow(gtx, th, gtx.Constraints.Min, theme.CornerRadius+4)
 			defer clip.UniformRRect(image.Rectangle{Max: gtx.Constraints.Min}, r).Push(gtx.Ops).Pop()
 			return Fill(gtx, th.Palette.OnBackground)
 		},

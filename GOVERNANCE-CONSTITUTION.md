@@ -1,6 +1,6 @@
 # VayuMail-Mobile Governance Constitution
 
-**Version: v1.1**
+**Version: v1.2**
 
 These rules govern all code in this repository without exception. Any
 contribution that violates a rule must resolve the violation before merge.
@@ -72,27 +72,32 @@ usernames, TLS settings, and a keystore key alias — never the credential
 itself. The credential is fetched from the platform keystore at connection
 time, used in memory, and discarded when the connection closes.
 
-## Rule 7 — QR provisioning signature verification
+## Rule 7 — Provisioning signature verification
 
-QR-derived account payloads must be Ed25519-signature-verified before any
-field is used to open a network connection. An unsigned or unverifiable
-payload returns a typed error and produces a clear user-facing message. It
-never silently falls back to using unverified values. A malicious QR code
-must not be able to redirect the app to an attacker-controlled mail server.
+Signed provisioning payloads (setup codes — however they arrive: pasted,
+fetched, or handed over by tooling) must be Ed25519-signature-verified
+before any field is used to open a network connection. An unsigned or
+unverifiable payload returns a typed error and produces a clear
+user-facing message. It never silently falls back to using unverified
+values. A malicious setup code must not be able to redirect the app to
+an attacker-controlled mail server. (Reworded from "QR provisioning" in
+v1.2 — QR scanning was retired by ADR-0009; the payload format, the
+verifier, and every rejection path are unchanged.)
 
 ## Rule 8 — Battery and permission honesty
 
-Permissions requested at v0.1.0, and no others:
+Permissions requested at v2.0.0, and no others:
 
 | Permission | Justification |
 |---|---|
 | `INTERNET` | Required; self-evident for a mail client |
-| `CAMERA` | QR provisioning — the onboarding path |
 | `FOREGROUND_SERVICE` | Android background IMAP IDLE (ADR-0005) |
 | `RECEIVE_BOOT_COMPLETED` | Restart sync on reboot (ADR-0005) |
 
-No `ACCESS_FINE_LOCATION`. No `READ_CONTACTS`. No `RECORD_AUDIO`. Any
-future permission requires a new ADR before the manifest is touched.
+`CAMERA` was authorized at v0.1.0 for QR onboarding and withdrawn with
+it at v2.0.0 (ADR-0009). No `ACCESS_FINE_LOCATION`. No `READ_CONTACTS`.
+No `RECORD_AUDIO`. Any future permission requires a new ADR before the
+manifest is touched.
 
 ## Rule 9 — Honest compliance
 
@@ -122,7 +127,7 @@ automatically; "review" checks are the reviewer's responsibility.
 | 4 — Gio-free engine boundary | greps `internal/{mail,store,syncmanager}` for `gioui.org` | `make boundary` |
 | 5 — Async discipline | bans `time.Sleep` in `ui/`; pins eventCh=256 / cmdCh=64 | `-race` + `goleak` tests, review |
 | 6 — Credential sovereignty | bans credential columns in schema; bans `math/rand` in production | sealed-keystore tests, review |
-| 7 — QR signature verification | asserts every rejection error exists in the verifier | fixture tests, ADR-0003 |
+| 7 — Provisioning signature verification | asserts every rejection error exists in the verifier | fixture tests, ADR-0003/0009 |
 | 8 — Permission honesty | bans forbidden Android permissions under `platform/` | ADR-0005, manifest review |
 | 9 — Honest compliance | requires COMPLIANCE-TRACKER entries for STUBs; bans unmarked TODO/FIXME | review |
 | 10 — File size | fails any `*.go` over 400 lines | — |
@@ -143,6 +148,11 @@ code.
 
 ### Changelog
 
+- **v1.2** — Rule 7 generalized from "QR provisioning" to signed
+  provisioning payloads over any transport, and Rule 8's permission
+  table drops CAMERA — both consequences of retiring QR scanning
+  (ADR-0009). No mechanical check changed: the Rule 7 gate verifies the
+  same five rejection errors in the same verifier file.
 - **v1.1** — Added mechanical enforcement for the channel-buffer
   invariants (Rule 5), `math/rand` ban (Rule 6), QR rejection-path
   completeness (Rule 7), ADR cross-reference integrity, and supply-chain

@@ -20,7 +20,7 @@ import (
 // is handed to the UI thread via pendingCfg and applied on the next frame by
 // applyPendingDetect, so the editors are never mutated from the goroutine.
 func (s *AccountSetup) autodetect(env *Env) {
-	email := strings.TrimSpace(s.email.Text())
+	email := strings.TrimSpace(s.manualEmail.Text())
 	if email == "" {
 		env.Snack.ShowInfo("Enter your email address first")
 		return

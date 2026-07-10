@@ -15,6 +15,19 @@ const (
 	// SettingAutoWKD, when "1", auto-discovers correspondents' keys via WKD
 	// when new mail arrives (throttled). Off by default (no phone-home).
 	SettingAutoWKD = "auto_wkd"
+	// SettingAppLockFailures counts consecutive failed PIN attempts (as a
+	// decimal string). Only lockout bookkeeping lives here — the PIN
+	// verifier itself is in the platform keystore, never in SQLite.
+	SettingAppLockFailures = "applock_failures"
+	// SettingAppLockLockedUntil is the Unix-seconds time (as a string)
+	// before which PIN attempts are refused. "" or past = not locked out.
+	SettingAppLockLockedUntil = "applock_locked_until"
+	// SettingAppLockTimeout is how long (seconds, as a string) the app may
+	// stay backgrounded before the lock re-engages. Consumed by the UI.
+	SettingAppLockTimeout = "applock_timeout"
+	// SettingNotifications toggles new-mail notifications: "" or "1" = on,
+	// "0" = off. Consumed by the UI.
+	SettingNotifications = "notifications"
 )
 
 // GetSetting returns the stored value for key, or "" if unset.

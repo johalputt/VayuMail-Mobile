@@ -66,6 +66,13 @@ type FolderListEvent struct {
 	Folders   []store.Folder
 }
 
+// AccountRemovedEvent reports the outcome of a RemoveAccountCmd. On
+// success the account and all its local data are gone.
+type AccountRemovedEvent struct {
+	AccountID int64
+	Err       error
+}
+
 // AttachmentSavedEvent reports the outcome of a FetchAttachmentCmd:
 // Path is the saved file on success, Err the failure otherwise
 // (ADR-0007).
@@ -83,4 +90,5 @@ func (SendResultEvent) isEvent()      {}
 func (AuthErrorEvent) isEvent()       {}
 func (ConnectionEvent) isEvent()      {}
 func (FolderListEvent) isEvent()      {}
+func (AccountRemovedEvent) isEvent()  {}
 func (AttachmentSavedEvent) isEvent() {}
