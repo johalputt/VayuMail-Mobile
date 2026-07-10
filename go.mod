@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	gioui.org v0.10.1
-	gioui.org/x v0.10.0
+	gioui.org/x v0.10.1
 	github.com/ProtonMail/go-crypto v1.4.1
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
