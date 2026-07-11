@@ -146,6 +146,13 @@ func (s *Inbox) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 		env.Nav.Push(state.ScreenSetup, gtx.Now)
 	case a.Settings:
 		env.Nav.Push(state.ScreenSettings, gtx.Now)
+	case a.Talk:
+		if c := env.State.Chat; c != nil {
+			if acct, ok := env.State.CurrentAccount(); ok {
+				c.EnsureStarted(acct)
+			}
+		}
+		env.Nav.Push(state.ScreenTalk, gtx.Now)
 	}
 	return dims
 }

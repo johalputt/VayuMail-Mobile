@@ -73,6 +73,10 @@ type AppState struct {
 	// when it expires un-undone. Set by the app root.
 	NotifyUndo func(msg string, onUndo, onCommit func())
 
+	// Chat is the VayuTalk holder, wired by the app root once the keystore
+	// is available. Nil in headless tests (the chat screens then no-op).
+	Chat *ChatState
+
 	keyring *pgp.Keyring
 
 	mu           sync.Mutex
@@ -229,6 +233,12 @@ func (s *AppState) Apply(ev syncmanager.Event) {
 			s.selFolder = 0
 		}
 		s.mu.Unlock()
+		// VayuTalk is bound to a specific account's credential and domain;
+		// signing an account out must drop that live connection. It rebinds
+		// lazily when the chat screen is next opened.
+		if s.Chat != nil {
+			s.Chat.Stop()
+		}
 		s.Refresh()
 		return
 	}

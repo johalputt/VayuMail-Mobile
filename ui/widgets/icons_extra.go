@@ -123,5 +123,15 @@ func extraIconPath(p *clip.Path, icon Icon, pt func(x, y float32) f32.Point, s f
 		p.LineTo(pt(21, 19))
 		p.LineTo(pt(3, 19))
 		p.LineTo(pt(3, 6))
+	case IconChat:
+		// Rounded speech bubble with a tail at the bottom-left.
+		p.MoveTo(pt(4, 5))
+		p.LineTo(pt(20, 5))
+		p.LineTo(pt(20, 16))
+		p.LineTo(pt(9, 16))
+		p.LineTo(pt(6, 20))
+		p.LineTo(pt(6, 16))
+		p.LineTo(pt(4, 16))
+		p.LineTo(pt(4, 5))
 	}
 }

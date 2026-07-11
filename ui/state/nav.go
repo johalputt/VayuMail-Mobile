@@ -19,6 +19,13 @@ const (
 	// Settings. The launch/idle unlock gate is drawn by the root instead
 	// and never enters this stack.
 	ScreenLock
+	// ScreenTalk is the VayuTalk conversation list (ephemeral E2E chat).
+	ScreenTalk
+	// ScreenTalkRoom is one VayuTalk conversation with its compose bar.
+	ScreenTalkRoom
+	// ScreenTalkVerify shows a peer's safety number for out-of-band
+	// verification.
+	ScreenTalkVerify
 )
 
 // Motion constants from the design spec: push 200ms ease-out cubic,
