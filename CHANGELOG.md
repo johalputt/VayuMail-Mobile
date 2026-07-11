@@ -6,6 +6,15 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.8] — 2026-07-11
+
+### Changed
+- **Release bundles are now signed with the project's own upload key**
+  (via the `ANDROID_KEYSTORE_B64` / `ANDROID_KEYSTORE_PASS` repository
+  secrets) instead of the shared debug key. The `.aab` is Play
+  Console-ready: on first upload Google registers this key as the app's
+  upload key under Play App Signing. Package ID is `com.vayu.mail`.
+
 ## [2.1.7] — 2026-07-11
 
 ### Changed
