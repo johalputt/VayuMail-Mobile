@@ -6,6 +6,13 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Every release now ships a Play Store bundle too.** The release
+  workflow builds both `vayumail-<version>.apk` (sideload) and
+  `vayumail-<version>.aab` (Google Play Console) from the same signed
+  source and attaches both to the GitHub Release — so each version's APK
+  and AAB always update together.
+
 ## [2.1.0] — 2026-07-11
 
 Encryption that just works, a second unlock factor, and the polish
