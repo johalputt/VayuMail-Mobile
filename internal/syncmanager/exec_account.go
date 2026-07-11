@@ -99,7 +99,14 @@ func (m *Manager) execSyncPrivateKey(ctx context.Context, c SyncPrivateKeyCmd) e
 	}
 	fctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	armored, err := account.FetchPrivateKey(fctx, http.DefaultClient, acct.EmailAddress, secret)
+	// Dedicated, non-pooling client: this fires opportunistically after
+	// every AddAccount, so a pooled keep-alive connection would leave its
+	// reader goroutine running past the fetch (a leak the tests catch).
+	// DisableKeepAlives + CloseIdleConnections guarantees the transport
+	// leaves nothing behind once the request returns.
+	tr := &http.Transport{DisableKeepAlives: true}
+	defer tr.CloseIdleConnections()
+	armored, err := account.FetchPrivateKey(fctx, &http.Client{Transport: tr}, acct.EmailAddress, secret)
 	if err != nil {
 		m.emit(PrivateKeyEvent{AccountID: c.AccountID, Email: acct.EmailAddress, Err: err})
 		return err
