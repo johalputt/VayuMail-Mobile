@@ -6,6 +6,14 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.9] — 2026-07-11
+
+### Changed
+- **Target SDK is now Android 15 (API level 35).** Google Play requires
+  new apps and updates to target API 35; the release build now sets
+  `-targetsdk 35` (min SDK unchanged at 24) and installs the android-35
+  platform. No app behaviour changes.
+
 ## [2.1.8] — 2026-07-11
 
 ### Changed
