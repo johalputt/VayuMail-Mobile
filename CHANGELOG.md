@@ -6,6 +6,16 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.7] — 2026-07-11
+
+### Changed
+- **Android application ID is now `com.vayu.mail`** (was
+  `org.vayumail.mobile`). This is the app's permanent identity on Google
+  Play. Because the package name is a new identity, this build installs
+  as a separate app rather than updating an `org.vayumail.mobile` install
+  — uninstall the old sideloaded build first. The APK and AAB are
+  otherwise unchanged and built from the same signed inputs.
+
 ## [2.1.6] — 2026-07-11
 
 ### Fixed
