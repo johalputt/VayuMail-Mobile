@@ -149,6 +149,17 @@ func (s *AppState) DiscoverContactKeysWKD() {
 			s.notify("Could not read contacts")
 			return
 		}
+		// Every connected account's own address leads the sweep: VayuPress
+		// publishes each mailbox's key over WKD, and holding your own
+		// public key is what makes encrypt-to-self (readable Sent mail)
+		// work on every account.
+		if accounts, aerr := s.db.ListAccounts(ctx); aerr == nil {
+			own := make([]string, 0, len(accounts))
+			for _, a := range accounts {
+				own = append(own, a.EmailAddress)
+			}
+			emails = append(own, emails...)
+		}
 		found := 0
 		for _, email := range emails {
 			if ctx.Err() != nil {

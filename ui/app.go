@@ -82,6 +82,8 @@ func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Mana
 		Invalidate: w.Invalidate,
 	}
 	env.LockSetup = screens.NewLock(screens.LockIntentEnroll)
+	// Live key status for the composer's security readout.
+	env.Composer.HasKey = func(addr string) bool { return st.Keyring().HasKeyFor(addr) }
 
 	ui := &UI{
 		window:    w,

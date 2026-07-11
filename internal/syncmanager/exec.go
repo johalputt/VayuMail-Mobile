@@ -49,6 +49,8 @@ func (m *Manager) handleCmd(ctx context.Context, cmd Cmd) error {
 		return m.execAddAccount(ctx, c)
 	case RemoveAccountCmd:
 		return m.execRemoveAccount(ctx, c)
+	case UpdateCredentialCmd:
+		return m.execUpdateCredential(ctx, c)
 	case FetchAttachmentCmd:
 		return m.execFetchAttachment(ctx, c)
 	case SaveDraftCmd:

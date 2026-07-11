@@ -35,6 +35,10 @@ const (
 	stageCurrent lockStage = iota
 	stageNew
 	stageConfirm
+	// stageTOTP asks for the authenticator code after a correct PIN when
+	// the second factor is enrolled — for unlocking and for the sensitive
+	// flows (change/disable) alike.
+	stageTOTP
 )
 
 // lockOutcome carries an async verify/set result back to the UI thread;
@@ -44,6 +48,9 @@ type lockOutcome struct {
 	err        bool
 	errMsg     string
 	retryAfter time.Duration
+	// totpNext: the PIN was right but the enrolled second factor still
+	// gates the flow.
+	totpNext bool
 }
 
 // Lock is the PIN screen: dots, keypad, shake-on-error, lockout
@@ -100,6 +107,8 @@ func (l *Lock) title() string {
 		return "Enter your current PIN"
 	case l.stage == stageNew:
 		return "Choose a PIN (4–12 digits)"
+	case l.stage == stageTOTP:
+		return "Enter your authenticator code"
 	default:
 		return "Repeat the new PIN"
 	}
@@ -165,10 +174,18 @@ func (l *Lock) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 
 // applyKey folds a keypad action into the flow. UI thread only.
 func (l *Lock) applyKey(gtx layout.Context, env *Env, action widgets.PinPadAction) {
+	limit := 12
+	if l.stage == stageTOTP {
+		limit = 6
+	}
 	switch {
-	case action.Digit != 0 && len(l.pin) < 12:
+	case action.Digit != 0 && len(l.pin) < limit:
 		l.errText = ""
 		l.pin += string(action.Digit)
+		// Authenticator codes are always six digits — submit on the last.
+		if l.stage == stageTOTP && len(l.pin) == 6 && !l.busy {
+			l.submit(gtx, env)
+		}
 	case action.Backspace && len(l.pin) > 0:
 		l.pin = l.pin[:len(l.pin)-1]
 	case action.Submit && len(l.pin) >= 4 && !l.busy:
@@ -199,11 +216,19 @@ func (l *Lock) submit(gtx layout.Context, env *Env) {
 			l.deliver(&lockOutcome{ok: err == nil, err: err != nil, errMsg: "Could not set PIN"}, env)
 		})
 
+	case l.stage == stageTOTP:
+		l.busy = true
+		l.errText = ""
+		unlockOn := l.intent == LockIntentUnlock
+		env.State.VerifyTOTP(pin, unlockOn, func(ok bool, retryAfter time.Duration) {
+			l.deliver(&lockOutcome{ok: ok, retryAfter: retryAfter, errMsg: "Wrong code"}, env)
+		})
+
 	default: // verifying the current PIN
 		l.busy = true
 		l.errText = ""
-		env.State.VerifyPIN(pin, func(ok bool, retryAfter time.Duration) {
-			l.deliver(&lockOutcome{ok: ok, retryAfter: retryAfter, errMsg: "Wrong PIN"}, env)
+		env.State.VerifyPIN(pin, func(ok bool, retryAfter time.Duration, totpNext bool) {
+			l.deliver(&lockOutcome{ok: ok, retryAfter: retryAfter, totpNext: totpNext, errMsg: "Wrong PIN"}, env)
 		})
 	}
 }
@@ -238,6 +263,11 @@ func (l *Lock) foldOutcome(gtx layout.Context, env *Env) {
 		return
 	}
 	l.errText = ""
+	if o.totpNext {
+		// Correct PIN, second factor enrolled: same pad, six digits.
+		l.stage = stageTOTP
+		return
+	}
 	switch {
 	case l.stage == stageConfirm:
 		// New PIN stored.

@@ -84,6 +84,12 @@ func (ml *MessageList) BeginEntrance(key string, now time.Time) {
 	ml.list.Position.Offset = 0
 }
 
+// AtTop reports whether the list is scrolled to its very top — the
+// arming condition for pull-to-refresh.
+func (ml *MessageList) AtTop() bool {
+	return ml.list.Position.First == 0 && ml.list.Position.Offset == 0
+}
+
 // Layout renders the list and returns any actions performed this frame.
 func (ml *MessageList) Layout(gtx layout.Context, th *theme.Theme, msgs []store.Message) []ListAction {
 	if len(ml.rows) < len(msgs) {

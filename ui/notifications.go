@@ -32,6 +32,9 @@ type mailNotifier struct {
 	// enabled gates posting on the user's notifications setting; it must
 	// be a cheap, non-blocking read (a snapshot field). Nil means on.
 	enabled func() bool
+	// preview controls whether notifications carry sender and subject or
+	// only a generic line — the lock-screen privacy option. Nil means on.
+	preview func() bool
 }
 
 // newMailNotifier starts the notifier. On platforms without a
@@ -103,6 +106,16 @@ func (n *mailNotifier) loop(ctx context.Context) {
 // post renders one or a summary notification for the batch.
 func (n *mailNotifier) post(ctx context.Context, batch []syncmanager.NewMessageEvent) {
 	title, body := "New mail", ""
+	if n.preview != nil && !n.preview() {
+		// Privacy mode: never put sender or subject on the lock screen.
+		if len(batch) > 1 {
+			body = fmt.Sprintf("%d new messages", len(batch))
+		}
+		if _, err := n.notifier.CreateNotification(title, body); err != nil {
+			slog.Debug("post notification", "err", err)
+		}
+		return
+	}
 	if len(batch) == 1 {
 		ev := batch[0]
 		lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)

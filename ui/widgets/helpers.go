@@ -44,11 +44,19 @@ func Separator(gtx layout.Context, th *theme.Theme, leftInset unit.Dp) layout.Di
 	return layout.Dimensions{Size: image.Pt(width, height)}
 }
 
-// IconButton lays out a tappable icon with a TouchTarget-sized hit area.
+// IconButton lays out a tappable icon with a TouchTarget-sized hit area
+// and a pressed-state halo, so every tap answers instantly.
 func IconButton(gtx layout.Context, th *theme.Theme, click *widget.Clickable, icon Icon, c color.NRGBA) layout.Dimensions {
 	return click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		target := gtx.Dp(theme.TouchTarget)
 		gtx.Constraints = layout.Exact(image.Pt(target, target))
+		if click.Pressed() {
+			d := gtx.Dp(36)
+			off := (target - d) / 2
+			paint.FillShape(gtx.Ops, th.Palette.AccentSubtle, clip.Ellipse{
+				Min: image.Pt(off, off), Max: image.Pt(off+d, off+d),
+			}.Op(gtx.Ops))
+		}
 		return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 			return DrawIcon(gtx, icon, c, 24)
 		})

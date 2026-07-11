@@ -2,6 +2,8 @@ package screens
 
 import (
 	"fmt"
+	"strings"
+	"sync"
 
 	"gioui.org/layout"
 	"gioui.org/widget"
@@ -21,15 +23,35 @@ type Settings struct {
 
 	syncBtns    []widget.Clickable
 	signOutBtns []widget.Clickable
+	pwBtns      []widget.Clickable
 	addAcctBtn  widget.Clickable
+
+	// pwEditID is the account whose inline password editor is open (0 =
+	// none).
+	pwEditID  int64
+	pwField   *widgets.TextField
+	pwSaveBtn widgets.Button
 
 	lockSwitch    widgets.Switch
 	changePinBtn  widget.Clickable
 	autoLockBtn   widget.Clickable
 	lockNowBtn    widget.Clickable
 	notifySwitch  widgets.Switch
+	previewSwitch widgets.Switch
 	syncAllBtn    widget.Clickable
 	autoWKDSwitch widgets.Switch
+
+	// Two-factor unlock enrollment/disable state (settings_security.go).
+	totpSwitch widgets.Switch
+	totpMode   totpMode
+	totpSecret *widgets.TextField
+	totpCode   *widgets.TextField
+	totpBtn    widgets.Button
+	totpCancel widget.Clickable
+	totpMu     sync.Mutex
+	totpBusy   bool
+	totpErr    string
+	totpDone   bool
 
 	keyPaste  widget.Editor
 	keyEmail  widget.Editor
@@ -48,7 +70,12 @@ type Settings struct {
 
 // NewSettings constructs the settings screen.
 func NewSettings() *Settings {
-	s := &Settings{list: layout.List{Axis: layout.Vertical}}
+	s := &Settings{
+		list:       layout.List{Axis: layout.Vertical},
+		pwField:    widgets.NewTextField(true),
+		totpSecret: widgets.NewTextField(false),
+		totpCode:   widgets.NewTextField(false),
+	}
 	s.keyEmail.SingleLine = true
 	s.keyDirEditor.SingleLine = true
 	return s
@@ -149,6 +176,7 @@ func (s *Settings) accountRows(gtx layout.Context, env *Env, snap state.Snapshot
 		grow := len(snap.Accounts) - len(s.syncBtns)
 		s.syncBtns = append(s.syncBtns, make([]widget.Clickable, grow)...)
 		s.signOutBtns = append(s.signOutBtns, make([]widget.Clickable, grow)...)
+		s.pwBtns = append(s.pwBtns, make([]widget.Clickable, grow)...)
 	}
 	rows := []row{s.section(th, "Accounts")}
 	for i, acct := range snap.Accounts {
@@ -164,6 +192,14 @@ func (s *Settings) accountRows(gtx layout.Context, env *Env, snap state.Snapshot
 				acct.EmailAddress+" and its mail are removed from this device. Nothing changes on the server.",
 				"Sign out", true, func() { env.State.RemoveAccount(id) })
 		}
+		if s.pwBtns[i].Clicked(gtx) {
+			if s.pwEditID == acct.ID {
+				s.pwEditID = 0
+			} else {
+				s.pwEditID = acct.ID
+				s.pwField.SetText("")
+			}
+		}
 		rows = append(rows, s.item(th, acct.EmailAddress,
 			fmt.Sprintf("IMAP %s:%d", acct.IMAPHost, acct.IMAPPort),
 			func(gtx layout.Context) layout.Dimensions {
@@ -177,11 +213,45 @@ func (s *Settings) accountRows(gtx layout.Context, env *Env, snap state.Snapshot
 						})
 					}),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return s.pwBtns[i].Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+							return layout.Inset{Right: theme.MD}.Layout(gtx,
+								func(gtx layout.Context) layout.Dimensions {
+									return th.Label(gtx, theme.Caption, p.Accent, "Password", 1)
+								})
+						})
+					}),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						return s.signOutBtns[i].Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 							return th.Label(gtx, theme.Caption, p.Destructive, "Sign out", 1)
 						})
 					}))
 			}))
+		if s.pwEditID == acct.ID {
+			id := acct.ID
+			if s.pwSaveBtn.Clicked(gtx) {
+				pw := s.pwField.Text()
+				if strings.TrimSpace(pw) == "" {
+					env.Snack.ShowInfo("Enter the new password first")
+				} else {
+					env.State.UpdateCredential(id, pw)
+					s.pwField.SetText("")
+					s.pwEditID = 0
+				}
+			}
+			rows = append(rows, func(gtx layout.Context) layout.Dimensions {
+				return layout.Inset{Left: theme.LG, Right: theme.LG, Top: theme.XS, Bottom: theme.SM}.Layout(gtx,
+					func(gtx layout.Context) layout.Dimensions {
+						return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+							layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+								return s.pwField.Layout(gtx, th, "", "new password or app password")
+							}),
+							layout.Rigid(layout.Spacer{Width: theme.MD}.Layout),
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								return s.pwSaveBtn.Layout(gtx, th, widgets.ButtonTonal, "Save", false, false)
+							}))
+					})
+			})
+		}
 	}
 	if len(snap.Accounts) == 0 {
 		rows = append(rows, s.item(th, "No accounts", "Connect one below", nil))
@@ -217,6 +287,17 @@ func (s *Settings) syncRows(gtx layout.Context, env *Env, snap state.Snapshot) [
 					dims, toggled := s.notifySwitch.Layout(gtx, th, snap.NotificationsOn)
 					if toggled {
 						env.State.SetNotifications(!snap.NotificationsOn)
+					}
+					return dims
+				})
+			return inner(gtx)
+		},
+		func(gtx layout.Context) layout.Dimensions {
+			inner := s.item(th, "Show message preview", "Sender and subject in notifications; off = just \"New mail\"",
+				func(gtx layout.Context) layout.Dimensions {
+					dims, toggled := s.previewSwitch.Layout(gtx, th, snap.NotifyPreviewOn)
+					if toggled {
+						env.State.SetNotifyPreview(!snap.NotifyPreviewOn)
 					}
 					return dims
 				})

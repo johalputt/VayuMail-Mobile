@@ -39,11 +39,17 @@ type Snapshot struct {
 	Locked bool
 	// AppLockEnabled reports whether a PIN is set.
 	AppLockEnabled bool
+	// TOTPEnabled reports whether the authenticator second factor is
+	// enrolled on top of the PIN.
+	TOTPEnabled bool
 	// AppLockTimeout is the auto-lock idle window in seconds (0 = every
 	// time the app is left).
 	AppLockTimeout int
 	// NotificationsOn mirrors the notifications setting (default on).
 	NotificationsOn bool
+	// NotifyPreviewOn mirrors the notification-preview setting: sender and
+	// subject in the tray vs a generic line (default on).
+	NotifyPreviewOn bool
 	// SelectedAccount is the account the folder list belongs to.
 	SelectedAccount int64
 }
@@ -90,7 +96,8 @@ func New(ctx context.Context, db *store.DB, mgr *syncmanager.Manager, lock *appl
 		lock:         lock,
 		keyring:      pgp.NewKeyring(),
 		refreshQueue: make(chan struct{}, 1),
-		snap:         Snapshot{Unread: map[int64]int{}, Online: true, NotificationsOn: true},
+		snap: Snapshot{Unread: map[int64]int{}, Online: true,
+			NotificationsOn: true, NotifyPreviewOn: true},
 	}
 	go func() {
 		s.loadPGPKeys(ctx)
@@ -145,10 +152,8 @@ func (s *AppState) Apply(ev syncmanager.Event) {
 	case syncmanager.AuthErrorEvent:
 		s.snap.AuthError = true
 	case syncmanager.NewMessageEvent:
-		// New mail: if auto-WKD is on, opportunistically discover keys for
-		// correspondents that still lack one. Throttled so a burst of mail
-		// triggers at most one sweep per interval; the sweep skips known
-		// keys, so it stays cheap.
+		// Auto-WKD: throttled opportunistic key discovery on new mail;
+		// the sweep skips known keys, so it stays cheap.
 		if s.autoWKD && time.Since(s.lastAutoWKD) > autoWKDInterval {
 			s.lastAutoWKD = time.Now()
 			go s.DiscoverContactKeysWKD()
@@ -169,6 +174,18 @@ func (s *AppState) Apply(ev syncmanager.Event) {
 		} else {
 			s.notify("Saved: " + e.Path)
 		}
+		return
+	case syncmanager.CredentialUpdatedEvent:
+		// A fresh credential clears the stale auth banner; the reconnect
+		// under way proves it right or re-raises the error.
+		s.snap.AuthError = false
+		s.mu.Unlock()
+		if e.Err != nil {
+			s.notify("Could not update password — try again")
+		} else {
+			s.notify("Password updated — reconnecting")
+		}
+		s.Refresh()
 		return
 	case syncmanager.AccountRemovedEvent:
 		s.mu.Unlock()

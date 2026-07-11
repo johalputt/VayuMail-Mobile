@@ -76,6 +76,11 @@ func New(ks crypto.Keystore, db *store.DB) *Manager {
 	return &Manager{ks: ks, db: db, now: time.Now}
 }
 
+// SetNowForTest pins the clock the lockout and TOTP arithmetic read.
+// Tests use it to replay RFC vectors and expire lockout windows without
+// sleeping; production code never calls it.
+func (m *Manager) SetNowForTest(now func() time.Time) { m.now = now }
+
 // Enabled reports whether a PIN is set.
 func (m *Manager) Enabled(ctx context.Context) bool {
 	_, err := m.ks.Fetch(verifierAlias)

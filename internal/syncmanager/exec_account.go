@@ -46,6 +46,33 @@ func (m *Manager) execAddAccount(ctx context.Context, c AddAccountCmd) error {
 	return nil
 }
 
+// execUpdateCredential replaces an account's stored password in place:
+// its sync goroutines stop, the keystore entry is overwritten under the
+// same alias, and sync restarts with the fresh credential — the standard
+// recovery from a password change on the server. The outcome is always
+// reported as a CredentialUpdatedEvent.
+func (m *Manager) execUpdateCredential(ctx context.Context, c UpdateCredentialCmd) error {
+	acct, err := m.db.GetAccount(ctx, c.AccountID)
+	if err != nil {
+		err = fmt.Errorf("syncmanager: update credential %d: %w", c.AccountID, err)
+		m.emit(CredentialUpdatedEvent{AccountID: c.AccountID, Err: err})
+		return err
+	}
+	m.stopAccount(c.AccountID, stopAccountWait)
+	err = m.ks.Store(acct.KeystoreAlias, c.Credential)
+	for i := range c.Credential {
+		c.Credential[i] = 0
+	}
+	if err != nil {
+		err = fmt.Errorf("syncmanager: update credential %d: %w", c.AccountID, err)
+		m.emit(CredentialUpdatedEvent{AccountID: c.AccountID, Err: err})
+		return err
+	}
+	m.startAccount(acct)
+	m.emit(CredentialUpdatedEvent{AccountID: c.AccountID})
+	return nil
+}
+
 // execRemoveAccount signs an account out. Order matters: the sync
 // goroutines stop first so no in-flight sync resurrects rows mid-delete,
 // then the credential leaves the keystore, then the account row goes and

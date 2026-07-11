@@ -12,8 +12,9 @@ const (
 	// SettingPGPKeyDirectoryURL is the VayuPress key-directory base URL used
 	// to auto-import correspondents' PGP public keys.
 	SettingPGPKeyDirectoryURL = "pgp_key_directory_url"
-	// SettingAutoWKD, when "1", auto-discovers correspondents' keys via WKD
-	// when new mail arrives (throttled). Off by default (no phone-home).
+	// SettingAutoWKD auto-discovers correspondents' keys via WKD when new
+	// mail arrives (throttled). On by default since v2.0.0; only an
+	// explicit "0" disables it.
 	SettingAutoWKD = "auto_wkd"
 	// SettingAppLockFailures counts consecutive failed PIN attempts (as a
 	// decimal string). Only lockout bookkeeping lives here — the PIN
@@ -28,6 +29,10 @@ const (
 	// SettingNotifications toggles new-mail notifications: "" or "1" = on,
 	// "0" = off. Consumed by the UI.
 	SettingNotifications = "notifications"
+	// SettingNotifyPreview controls whether notifications show sender and
+	// subject ("" or "1") or only a generic "New mail" line ("0") — the
+	// privacy option for lock screens. Consumed by the UI.
+	SettingNotifyPreview = "notify_preview"
 )
 
 // GetSetting returns the stored value for key, or "" if unset.
