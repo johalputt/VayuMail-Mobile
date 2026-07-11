@@ -1,12 +1,14 @@
 package screens
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"time"
 
 	"gioui.org/layout"
 	"gioui.org/op"
+	"gioui.org/unit"
 	"gioui.org/widget"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/mail/account"
@@ -50,16 +52,22 @@ type AccountSetup struct {
 
 	host, imapPort, smtpPort, manualEmail, manualPassword *widgets.TextField
 	form                                                  layout.List
+	connectForm                                           layout.List
 	detectBtn                                             widgets.Button
 	addBtn                                                widgets.Button
 
 	// busy/status/errText carry async connect progress to the UI thread;
-	// pendingCfg carries a completed autodetect result. Guarded by mu.
+	// pendingCfg carries a completed autodetect result; waitCancel aborts
+	// a running device-approval wait (ADR-0011) and waitGen pairs each
+	// wait with its cancel so a finished wait never clobbers a newer one.
+	// Guarded by mu.
 	mu         sync.Mutex
 	busy       bool
 	status     string
 	errText    string
 	pendingCfg *account.Config
+	waitCancel context.CancelFunc
+	waitGen    int
 }
 
 // NewAccountSetup constructs the onboarding screen.
@@ -73,6 +81,7 @@ func NewAccountSetup() *AccountSetup {
 		manualEmail:    widgets.NewTextField(false),
 		manualPassword: widgets.NewTextField(true),
 		form:           layout.List{Axis: layout.Vertical},
+		connectForm:    layout.List{Axis: layout.Vertical},
 	}
 	// The setup code (a base64url payload) can be long; allow wrap.
 	s.setupCode.SingleLine = false
@@ -106,10 +115,12 @@ func (s *AccountSetup) layoutConnect(gtx layout.Context, env *Env) layout.Dimens
 	s.mu.Unlock()
 
 	if s.codeBtn.Clicked(gtx) {
+		s.cancelWait()
 		s.setError("")
 		s.mode = modeCode
 	}
 	if s.manualBtn.Clicked(gtx) {
+		s.cancelWait()
 		s.setError("")
 		s.mode = modeManual
 	}
@@ -125,6 +136,7 @@ func (s *AccountSetup) layoutConnect(gtx layout.Context, env *Env) layout.Dimens
 
 	pushed := env.Nav.Depth() > 1
 	if pushed && s.cancelBtn.Clicked(gtx) {
+		s.cancelWait()
 		env.Nav.Pop(gtx.Now)
 	}
 
@@ -138,16 +150,33 @@ func (s *AccountSetup) layoutConnect(gtx layout.Context, env *Env) layout.Dimens
 				"Add account")
 		}),
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-			return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			// When the soft keyboard is up, the frame's insets shrink this
+			// viewport to roughly half a screen — a fixed, centered card
+			// would leave the fields clipped underneath the keyboard.
+			// Compact mode swaps in a smaller logo and the card scrolls,
+			// so the focused field is always reachable above the IME.
+			compact := gtx.Constraints.Max.Y < gtx.Dp(600)
+			card := func(gtx layout.Context) layout.Dimensions {
 				return fadeRise(gtx, t, func(gtx layout.Context) layout.Dimensions {
-					return s.connectCard(gtx, env, busy, status, errText)
+					return s.connectCard(gtx, env, busy, status, errText, compact)
 				})
-			})
+			}
+			if !compact {
+				return layout.Center.Layout(gtx, card)
+			}
+			return s.connectForm.Layout(gtx, 1,
+				func(gtx layout.Context, _ int) layout.Dimensions {
+					return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+						layout.Flexed(1, layout.Spacer{}.Layout),
+						layout.Rigid(card),
+						layout.Flexed(1, layout.Spacer{}.Layout))
+				})
 		}))
 }
 
-// connectCard renders the hero content.
-func (s *AccountSetup) connectCard(gtx layout.Context, env *Env, busy bool, status, errText string) layout.Dimensions {
+// connectCard renders the hero content. compact tightens it for a
+// keyboard-shrunken viewport: smaller artwork, tighter spacing.
+func (s *AccountSetup) connectCard(gtx layout.Context, env *Env, busy bool, status, errText string, compact bool) layout.Dimensions {
 	th := env.Theme
 	p := th.Palette
 	maxW := gtx.Dp(400)
@@ -156,6 +185,10 @@ func (s *AccountSetup) connectCard(gtx layout.Context, env *Env, busy bool, stat
 	}
 	gtx.Constraints.Max.X = maxW
 	gtx.Constraints.Min.X = maxW
+	logoDp, gap := unit.Dp(170), theme.XL
+	if compact {
+		logoDp, gap = 88, theme.MD
+	}
 
 	return layout.UniformInset(theme.XL).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
@@ -163,15 +196,18 @@ func (s *AccountSetup) connectCard(gtx layout.Context, env *Env, busy bool, stat
 				// The brand artwork, theme-correct, centered.
 				gtx.Constraints.Min.X = gtx.Constraints.Max.X
 				return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-					return widgets.BrandLogo(gtx, th, 170)
+					return widgets.BrandLogo(gtx, th, logoDp)
 				})
 			}),
 			layout.Rigid(layout.Spacer{Height: theme.MD}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				if compact {
+					return layout.Dimensions{}
+				}
 				return th.Label(gtx, theme.Body, p.OnSurface,
 					"Mail that moves like wind. Enter your address — the rest is automatic.", 0)
 			}),
-			layout.Rigid(layout.Spacer{Height: theme.XL}.Layout),
+			layout.Rigid(layout.Spacer{Height: gap}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				return s.email.Layout(gtx, th, "Email", "you@yourdomain.com")
 			}),

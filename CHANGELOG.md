@@ -6,6 +6,44 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.6] — 2026-07-11
+
+### Fixed
+- **Encrypted mail no longer sticks on "fetching the locked copy…".** The
+  repair loop had no terminal state: a broken cached row whose re-download
+  produced the same bytes re-fetched forever. The repair now runs exactly
+  once per session; armored bodies decrypt on-device, and mail the server
+  already opened (VayuPress 3.11.33's transparent decryption) displays
+  directly — with the Security row still reading "PGP end-to-end
+  encrypted" via the server's X-VayuPGP marker.
+- **The keyboard no longer covers the sign-in fields.** When the soft
+  keyboard opens, the connect card switches to a compact scrollable
+  layout (smaller logo, tighter spacing), keeping the email and password
+  fields visible above the keyboard.
+
+### Added
+- **Device-approval onboarding (ADR-0011).** Connecting an account now
+  registers this install as a named device with the account's VayuPress
+  server (pairs with VayuPress ADR-0129). Approved devices sync
+  immediately with a per-device password; when approval is required, the
+  connect card waits with clear guidance ("open your VayuPress webmail →
+  Mail accounts → Devices"), polling every 5 seconds for up to 10
+  minutes and cancellable at any point. Servers without the endpoint get
+  exactly the previous connect behavior — nothing changes for older
+  VayuPress installs. The granted device ID is kept per account for
+  future display.
+
+### Security
+- Each install now authenticates to IMAP/SMTP with its own approved
+  device password instead of the shared mailbox password (on servers
+  that enforce device approval), so a lost phone is revoked from the
+  web console without rotating the mailbox credential. The device
+  endpoints are called with the same transport discipline as the
+  private-key fetch: HTTPS only, SSRF domain guard, refused redirects,
+  size-capped responses. The device password lives only in the platform
+  keystore as the account credential; SQLite stores just the public
+  device ID (Rule 6).
+
 ## [2.1.5] — 2026-07-11
 
 ### Fixed

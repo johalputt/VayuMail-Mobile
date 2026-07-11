@@ -18,9 +18,12 @@ import (
 )
 
 // connect runs the direct-connect flow off the UI thread: discover the
-// domain's autoconfig document over HTTPS, then hand the account to the
-// sync manager with the typed app password. Nothing is stored until
-// discovery succeeds; the password never touches SQLite (Rule 6).
+// domain's autoconfig document over HTTPS, register this install as a
+// device with the server (ADR-0011), then hand the account to the sync
+// manager — with the approved device password where the server grants
+// one, or the typed app password on servers without device approval.
+// Nothing is stored until discovery succeeds; passwords never touch
+// SQLite (Rule 6).
 func (s *AccountSetup) connect(env *Env) {
 	email := strings.TrimSpace(s.email.Text())
 	pass := s.password.Text()
@@ -32,6 +35,7 @@ func (s *AccountSetup) connect(env *Env) {
 		s.setError("Enter your password or an app password")
 		return
 	}
+	s.cancelWait()
 	s.mu.Lock()
 	s.busy = true
 	s.errText = ""
@@ -48,16 +52,7 @@ func (s *AccountSetup) connect(env *Env) {
 			return
 		}
 		cfg.KeystoreAlias = keystoreAlias(email)
-		env.State.Send(syncmanager.AddAccountCmd{
-			Config:     *cfg,
-			Credential: []byte(pass),
-		})
-		s.mu.Lock()
-		s.busy = false
-		s.status = ""
-		s.mu.Unlock()
-		s.password.SetText("")
-		env.Snack.ShowInfo("Connected — syncing " + email)
+		s.registerAndAdd(ctx, env, cfg, email, pass)
 	}()
 }
 

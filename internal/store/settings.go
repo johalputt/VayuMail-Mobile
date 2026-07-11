@@ -33,6 +33,12 @@ const (
 	// subject ("" or "1") or only a generic "New mail" line ("0") — the
 	// privacy option for lock screens. Consumed by the UI.
 	SettingNotifyPreview = "notify_preview"
+	// SettingDeviceIDPrefix keys the per-account device ID granted by a
+	// VayuPress server during device-approval onboarding (ADR-0011); the
+	// full key is the prefix plus the account's email address. Only the
+	// public identifier is stored — the device password is a credential
+	// and lives exclusively in the platform keystore (Rule 6).
+	SettingDeviceIDPrefix = "device-id:"
 )
 
 // GetSetting returns the stored value for key, or "" if unset.

@@ -72,6 +72,14 @@ func Parse(raw []byte) (*Parsed, error) {
 	if ctErr == nil {
 		p.PGPStatus = pgpStatusFromContentType(ct, ctParams)
 	}
+	// X-VayuPGP marks mail that WAS end-to-end encrypted but has been
+	// transparently opened by the owner's VayuPress server before serving
+	// (both its inline sends and rebuilt PGP/MIME carry it) — the body is
+	// already plaintext, but the Security row must still say encrypted.
+	if p.PGPStatus == "" &&
+		strings.EqualFold(mr.Header.Get("X-VayuPGP"), "encrypted") {
+		p.PGPStatus = "encrypted"
+	}
 	p.ListID = mr.Header.Get("List-Id")
 	p.ListUnsubscribe = mr.Header.Get("List-Unsubscribe")
 
