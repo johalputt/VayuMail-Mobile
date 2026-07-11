@@ -1,14 +1,15 @@
 // Command appicon regenerates cmd/vayumail/appicon.png — the launcher
-// icon gogio bakes into the APK — from the committed brand artwork.
-// Launchers mask icons into rounded squares, so the design must fill
-// the full canvas edge to edge: a deep-navy brand field with the white
-// V mark large in the middle. Deterministic (same inputs, same PNG
-// bytes modulo encoder), stdlib only, run with:
+// icon gogio bakes into the APK — from the committed brand artwork:
+// the V mark inset on a light tile at the proportion neighboring
+// launcher glyphs use. The tile background fills the canvas so the
+// launcher mask never exposes a ring. Deterministic (same inputs, same
+// PNG bytes modulo encoder), stdlib only, run with:
 //
 //	go run ./tools/appicon
 package main
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -17,6 +18,12 @@ import (
 )
 
 const (
+	// markPath is the preferred source: the standalone V mark exactly as
+	// designed (background removed), used whole with no cropping or
+	// reconstruction. Drop the real file here and rerun.
+	markPath = "assets/logo/mark.png"
+	// srcPath is the fallback when no standalone mark is committed: the
+	// mark is cropped out of the full logo artwork.
 	srcPath = "ui/widgets/brand-light.png"
 	dstPath = "cmd/vayumail/appicon.png"
 	// canvas is the icon size gogio expects.
@@ -39,17 +46,10 @@ var background = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
 var markColor = color.NRGBA{R: 0x0E, G: 0x12, B: 0x20, A: 0xFF}
 
 func main() {
-	f, err := os.Open(srcPath)
+	mark, err := loadMark()
 	if err != nil {
-		log.Fatalf("open %s: %v", srcPath, err)
+		log.Fatal(err)
 	}
-	src, err := png.Decode(f)
-	_ = f.Close()
-	if err != nil {
-		log.Fatalf("decode %s: %v", srcPath, err)
-	}
-
-	mark := cropMark(src)
 	out := compose(mark)
 
 	dst, err := os.Create(dstPath)
@@ -61,6 +61,102 @@ func main() {
 		log.Fatalf("encode: %v", err)
 	}
 	log.Printf("wrote %s (%dx%d, mark %v)", dstPath, canvas, canvas, mark.Bounds())
+}
+
+// loadMark returns the standalone mark file when committed, else the
+// mark cropped from the full logo. The standalone file wins because it
+// is the designed artwork verbatim — the crop is a reconstruction.
+func loadMark() (image.Image, error) {
+	if f, err := os.Open(markPath); err == nil {
+		defer f.Close()
+		img, derr := png.Decode(f)
+		if derr != nil {
+			return nil, fmt.Errorf("decode %s: %w", markPath, derr)
+		}
+		log.Printf("using standalone mark %s", markPath)
+		return alphaBBox(img), nil
+	}
+	f, err := os.Open(srcPath)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", srcPath, err)
+	}
+	defer f.Close()
+	src, err := png.Decode(f)
+	if err != nil {
+		return nil, fmt.Errorf("decode %s: %w", srcPath, err)
+	}
+	log.Printf("no %s; cropping mark from %s", markPath, srcPath)
+	return cropMark(src), nil
+}
+
+// alphaBBox trims transparent margins so the mark scales from its true
+// bounds. Marks exported on white instead of transparency also work:
+// when the image has no alpha variation, near-white reads as empty.
+func alphaBBox(img image.Image) image.Image {
+	b := img.Bounds()
+	bbox := image.Rectangle{Min: b.Max, Max: b.Min}
+	opaque := true
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			if _, _, _, a := img.At(x, y).RGBA(); a <= 0x2000 {
+				opaque = false
+			}
+		}
+	}
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			r, g, bl, a := img.At(x, y).RGBA()
+			ink := a > 0x2000
+			if opaque {
+				// No transparency anywhere: treat near-white as background.
+				lum := (r + g + bl) / 3
+				ink = lum < 0xE000
+			}
+			if ink {
+				if x < bbox.Min.X {
+					bbox.Min.X = x
+				}
+				if y < bbox.Min.Y {
+					bbox.Min.Y = y
+				}
+				if x+1 > bbox.Max.X {
+					bbox.Max.X = x + 1
+				}
+				if y+1 > bbox.Max.Y {
+					bbox.Max.Y = y + 1
+				}
+			}
+		}
+	}
+	if bbox.Empty() {
+		log.Fatal("standalone mark has no visible pixels")
+	}
+	if opaque {
+		return luminanceMask{src: img, rect: bbox}
+	}
+	return cropped{src: img, rect: bbox}
+}
+
+// luminanceMask adapts a mark exported on a white background: darkness
+// becomes coverage, so the compositor's alpha sampling works unchanged.
+type luminanceMask struct {
+	src  image.Image
+	rect image.Rectangle
+}
+
+func (m luminanceMask) ColorModel() color.Model { return color.NRGBAModel }
+func (m luminanceMask) Bounds() image.Rectangle {
+	return image.Rect(0, 0, m.rect.Dx(), m.rect.Dy())
+}
+func (m luminanceMask) At(x, y int) color.Color {
+	r, g, b, _ := m.src.At(m.rect.Min.X+x, m.rect.Min.Y+y).RGBA()
+	lum := (r + g + b) / 3
+	// Dark ink -> full coverage; white background -> none.
+	a := uint16(0)
+	if lum < 0xE000 {
+		a = uint16(0xFFFF - lum)
+	}
+	return color.NRGBA64{A: a}
 }
 
 // cropMark isolates the V mark: the artwork stacks mark over wordmark,
@@ -135,7 +231,7 @@ func compose(mark image.Image) *image.NRGBA {
 	for y := 0; y < targetH; y++ {
 		for x := 0; x < targetW; x++ {
 			a := field.bicubic((float64(x)+0.5)/scale-0.5, (float64(y)+0.5)/scale-0.5)
-			cov := smoothstep(0.42, 0.58, a)
+			cov := smoothstep(0.35, 0.65, a)
 			if cov <= 0 {
 				continue
 			}
