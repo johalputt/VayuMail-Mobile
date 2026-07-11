@@ -91,13 +91,20 @@ cmd/vayumail ──► ui (Gio, single-threaded event loop — never blocks)
 
 ## Getting the app
 
-**Android APK** — grab the latest signed build from the
-[Releases page](https://github.com/johalputt/VayuMail-Mobile/releases), or
-cut your own: push a `v*` tag (or run the *Release APK* workflow) and
-GitHub Actions builds, signs, and attaches `vayumail-<version>.apk` to the
-release. Set the `ANDROID_KEYSTORE_B64` / `ANDROID_KEYSTORE_PASS`
+**Android** — every release on the
+[Releases page](https://github.com/johalputt/VayuMail-Mobile/releases)
+carries two files:
+
+- **`vayumail-<version>.apk`** — install directly on a device (sideload).
+- **`vayumail-<version>.aab`** — upload to the Google Play Console (Play
+  requires an App Bundle, not an APK).
+
+Cut your own by pushing a `v*` tag or running the *Release APK + AAB*
+workflow (Actions → Run workflow); GitHub Actions builds, signs, and
+attaches both. Set the `ANDROID_KEYSTORE_B64` / `ANDROID_KEYSTORE_PASS`
 repository secrets to sign with your own upload key for the Play Store;
-without them builds are test-signed for sideloading.
+without them builds are test-signed — fine for sideloading the APK, but
+Play only accepts an AAB signed with your registered upload key.
 
 **Desktop** — the same binary runs on Linux/macOS/Windows:
 

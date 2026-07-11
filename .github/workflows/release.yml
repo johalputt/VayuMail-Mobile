@@ -1,15 +1,21 @@
-name: Release APK
+name: Release APK + AAB
 
-# Builds the Android APK with gogio on GitHub's runners (which carry the
-# Android SDK + NDK) — the sovereign build machine when no local Android
-# toolchain is available.
+# Builds BOTH Android artifacts with gogio on GitHub's runners (which
+# carry the Android SDK + NDK) — the sovereign build machine when no
+# local Android toolchain is available:
+#   - vayumail-<version>.apk  — install/sideload directly on a device.
+#   - vayumail-<version>.aab  — Android App Bundle for the Play Console
+#     (Play requires an .aab, not an .apk, for new uploads).
+# Both are built from the same source version and attached to the same
+# GitHub Release, so every release carries a matching APK and AAB.
 #
 # Signing:
 #   - If the repository secrets ANDROID_KEYSTORE_B64 / ANDROID_KEYSTORE_PASS
-#     are set, the APK is signed with that release key (Play Store ready —
-#     keep that key safe; Play requires every update signed by it).
-#   - Otherwise a fresh test key is generated in the run: the APK installs
-#     fine for sideloading/testing, but is NOT suitable for Play upload.
+#     are set, both are signed with that release/upload key (Play Store
+#     ready — keep that key safe; Play requires every update signed by it).
+#   - Otherwise a fresh test key is generated in the run: fine for
+#     sideloading the APK, but the AAB is NOT accepted by Play until it is
+#     signed with your registered upload key.
 on:
   push:
     tags: ['v*']
@@ -68,6 +74,9 @@ jobs:
           echo "semver=$SEMVER" >> "$GITHUB_OUTPUT"
           echo "gogio=$SEMVER.$CODE" >> "$GITHUB_OUTPUT"
 
+      # gogio picks the output format from the file extension: .apk for a
+      # sideloadable package, .aab for a Play Console app bundle. Both are
+      # built from the same signed inputs so their version code matches.
       - name: Build APK
         env:
           GOFLAGS: -trimpath   # reproducible builds: no local paths in the binary
@@ -80,18 +89,46 @@ jobs:
             -o vayumail-${{ steps.ver.outputs.semver }}.apk \
             ./cmd/vayumail
 
-      - name: Verify signature
+      - name: Build AAB (Play Store bundle)
+        env:
+          GOFLAGS: -trimpath
+        run: |
+          gogio -target android -arch arm64,amd64 \
+            -appid org.vayumail.mobile \
+            -version ${{ steps.ver.outputs.gogio }} \
+            -minsdk 24 -targetsdk 34 \
+            -signkey release.keystore -signpass "$SIGN_PASS" \
+            -o vayumail-${{ steps.ver.outputs.semver }}.aab \
+            ./cmd/vayumail
+
+      - name: Verify APK signature
         run: |
           BT="$ANDROID_HOME/build-tools/34.0.0"
           "$BT/apksigner" verify --print-certs \
             vayumail-${{ steps.ver.outputs.semver }}.apk
-          echo "signed with the $SIGN_KIND key"
+          echo "APK signed with the $SIGN_KIND key"
 
-      - name: Upload artifact
+      - name: Verify AAB signature
+        run: |
+          # apksigner is APK-only; an AAB is a signed JAR, so verify with
+          # jarsigner. A test-key AAB verifies here but Play will only
+          # accept an AAB signed with your registered upload key.
+          jarsigner -verify -strict \
+            vayumail-${{ steps.ver.outputs.semver }}.aab \
+            && echo "AAB signed with the $SIGN_KIND key"
+
+      - name: List built artifacts
+        run: |
+          ls -lh vayumail-*.apk vayumail-*.aab
+          echo "APK for sideloading · AAB for the Play Console"
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: vayumail-apk
-          path: vayumail-*.apk
+          name: vayumail-android
+          path: |
+            vayumail-*.apk
+            vayumail-*.aab
 
       # Release notes come from the version's CHANGELOG section, so the
       # release page always says what actually changed. Falls back to a
@@ -109,21 +146,31 @@ jobs:
           fi
           {
             echo ""
+            echo "### Downloads"
+            echo ""
+            echo "- **vayumail-${SEMVER}.apk** — install directly on your"
+            echo "  Android device (sideload)."
+            echo "- **vayumail-${SEMVER}.aab** — upload to the Google Play"
+            echo "  Console (Play requires an App Bundle, not an APK)."
+            echo ""
             echo "---"
             echo "Signed with the ${SIGN_KIND} key. Test-key builds are for"
             echo "sideloading only; set ANDROID_KEYSTORE_B64 /"
             echo "ANDROID_KEYSTORE_PASS repository secrets to produce Play"
-            echo "Store-ready builds."
+            echo "Store-ready builds signed with your upload key."
           } >> release-notes.md
 
       # Publishes on tag pushes AND on manual dispatch: the tag is derived
       # from the source version (internal/version/version.go), so a
       # dispatch from main cuts exactly the release the source declares —
       # and a mistagged push can no longer ship a wrongly named release.
+      # Both the APK and the AAB are attached to every release.
       - name: Publish release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.ver.outputs.semver }}
           name: VayuMail ${{ steps.ver.outputs.semver }}
-          files: vayumail-*.apk
+          files: |
+            vayumail-*.apk
+            vayumail-*.aab
           body_path: release-notes.md
