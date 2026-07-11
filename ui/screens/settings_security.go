@@ -43,7 +43,8 @@ func (s *Settings) securityRows(gtx layout.Context, env *Env, snap state.Snapsho
 	rows := []row{s.section(th, "Security")}
 
 	rows = append(rows, func(gtx layout.Context) layout.Dimensions {
-		inner := s.item(th, "App lock", "Require a PIN to open VayuMail",
+		inner := s.item(th, "App lock",
+			"Require a PIN (and optional two-factor code) to open VayuMail",
 			func(gtx layout.Context) layout.Dimensions {
 				dims, toggled := s.lockSwitch.Layout(gtx, th, snap.AppLockEnabled)
 				if toggled {
@@ -84,9 +85,14 @@ func (s *Settings) securityRows(gtx layout.Context, env *Env, snap state.Snapsho
 				return th.Label(gtx, theme.Caption, th.Palette.Accent,
 					autoLockLabel(snap.AppLockTimeout), 1)
 			}))
+	}
 
-		rows = append(rows, s.totpRows(gtx, env, snap)...)
+	// Two-factor unlock is always listed so it is discoverable; when the
+	// app lock is off it shows a hint instead of a live toggle, because a
+	// second factor without a first (the PIN) makes no sense.
+	rows = append(rows, s.totpRows(gtx, env, snap)...)
 
+	if snap.AppLockEnabled {
 		if s.lockNowBtn.Clicked(gtx) {
 			env.State.LockNow()
 		}
@@ -115,6 +121,16 @@ func (s *Settings) totpRows(gtx layout.Context, env *Env, snap state.Snapshot) [
 	th := env.Theme
 	p := th.Palette
 	s.foldTOTPResult(env)
+
+	// App lock off: show the row as a hint so the feature is visible and
+	// its prerequisite is clear, but with no live toggle.
+	if !snap.AppLockEnabled {
+		return []row{s.item(th, "Two-factor unlock",
+			"Turn on App lock first, then add an authenticator code as a second factor",
+			func(gtx layout.Context) layout.Dimensions {
+				return th.Label(gtx, theme.Caption, th.Palette.Subtle, "Off", 1)
+			})}
+	}
 
 	rows := []row{func(gtx layout.Context) layout.Dimensions {
 		inner := s.item(th, "Two-factor unlock",
