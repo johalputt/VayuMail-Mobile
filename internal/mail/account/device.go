@@ -94,11 +94,7 @@ func RegisterDevice(ctx context.Context, client *http.Client, email, password, d
 		// caller falls back safely.
 		return DeviceGrant{}, fmt.Errorf("%w: unexpected response shape", ErrNoDeviceEndpoint)
 	}
-	return DeviceGrant{
-		DeviceID:       out.DeviceID,
-		DevicePassword: out.DevicePassword,
-		Status:         out.Status,
-	}, nil
+	return DeviceGrant(out), nil
 }
 
 // DeviceStatus polls the approval state of a previously registered
