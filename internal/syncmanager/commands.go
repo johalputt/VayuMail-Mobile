@@ -53,6 +53,14 @@ type AddAccountCmd struct {
 	Credential []byte
 }
 
+// SyncPrivateKeyCmd fetches the account's own PGP private key from its
+// VayuPress server (authenticated with the stored mailbox credential)
+// so received encrypted mail can be decrypted on-device. Completion
+// arrives as PrivateKeyEvent.
+type SyncPrivateKeyCmd struct {
+	AccountID int64
+}
+
 // UpdateCredentialCmd replaces an account's stored password: sync
 // stops, the keystore entry is overwritten in place, and sync restarts
 // with the new credential. Credential is wiped after storage.
@@ -106,6 +114,7 @@ func (SyncNowCmd) isCmd()          {}
 func (SyncFolderCmd) isCmd()       {}
 func (AddAccountCmd) isCmd()       {}
 func (UpdateCredentialCmd) isCmd() {}
+func (SyncPrivateKeyCmd) isCmd()   {}
 func (RemoveAccountCmd) isCmd()    {}
 func (FetchAttachmentCmd) isCmd()  {}
 func (SaveDraftCmd) isCmd()        {}

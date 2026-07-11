@@ -6,6 +6,32 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.4] — 2026-07-11
+
+### Fixed
+- **Encrypted mail is now readable.** Received PGP mail (VayuPress sends
+  it inline as an armored `-----BEGIN PGP MESSAGE-----` body) previously
+  showed a blank message with no detail. The parser now lifts the armored
+  ciphertext out of both inline-PGP and PGP/MIME messages, keeps it
+  on-disk as ciphertext (never decrypted at rest), and the thread view
+  decrypts it in memory when you open it. When your private key isn't on
+  the device yet, the message shows a clear notice pointing to
+  Settings → Encryption instead of a blank body.
+- **Pull-to-refresh now works.** The gesture was being swallowed by the
+  list's own scroll handler, which claims a touch-drag after only 3dp.
+  The refresh control now registers a pass-through observer above the
+  list and claims the pointer the instant a downward drag begins at the
+  top of the list, so a swipe-down reliably triggers a sync while normal
+  scrolling, row taps, and swipe actions are untouched.
+
+### Added
+- **Your private key syncs from VayuPress.** A new
+  "Sync my key from VayuPress" action (Settings → Encryption) fetches
+  this mailbox's own PGP private key from your VayuPress server over TLS,
+  authenticated with the account credential you already hold, so encrypted
+  mail opens on this device. It also runs automatically the first time you
+  connect an account. Servers that don't serve a key are ignored silently.
+
 ## [2.1.3] — 2026-07-11
 
 ### Changed

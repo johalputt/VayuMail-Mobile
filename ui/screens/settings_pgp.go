@@ -13,6 +13,7 @@ import (
 
 	"github.com/johalputt/VayuMail-Mobile/ui/state"
 	"github.com/johalputt/VayuMail-Mobile/ui/theme"
+	"github.com/johalputt/VayuMail-Mobile/ui/widgets"
 )
 
 // pgpRows builds the PGP section.
@@ -34,6 +35,25 @@ func (s *Settings) pgpRows(gtx layout.Context, env *Env, snap state.Snapshot) []
 			})
 		return inner(gtx)
 	})
+
+	// Sync my key: pull this device's own PGP private key from the
+	// VayuPress server so received encrypted mail can be opened. Runs for
+	// every connected account.
+	if s.syncKeyBtn.Clicked(gtx) {
+		if len(snap.Accounts) == 0 {
+			env.Snack.ShowInfo("Connect an account first")
+		} else {
+			for _, a := range snap.Accounts {
+				env.State.SyncPrivateKey(a.ID)
+			}
+			env.Snack.ShowInfo("Fetching your key from VayuPress…")
+		}
+	}
+	rows = append(rows, s.tapItem(th, &s.syncKeyBtn, "Sync my key from VayuPress",
+		"Import your own private key so encrypted mail opens on this device",
+		func(gtx layout.Context) layout.Dimensions {
+			return widgets.DrawIcon(gtx, widgets.IconKey, p.Accent, 20)
+		}))
 
 	if len(s.trustBtns) < len(snap.PGPKeys) {
 		grow := len(snap.PGPKeys) - len(s.trustBtns)

@@ -175,6 +175,12 @@ func (s *AppState) Apply(ev syncmanager.Event) {
 			s.notify("Saved: " + e.Path)
 		}
 		return
+	case syncmanager.PrivateKeyEvent:
+		s.mu.Unlock()
+		if e.Err == nil && e.Armored != "" {
+			s.importPrivateKey(e.Armored, e.Email)
+		}
+		return
 	case syncmanager.CredentialUpdatedEvent:
 		// A fresh credential clears the stale auth banner; the reconnect
 		// under way proves it right or re-raises the error.
@@ -301,7 +307,7 @@ func (s *AppState) reload(ctx context.Context) {
 	if selThread != "" {
 		thread, err := s.db.ListThread(ctx, selAccount, selThread)
 		if err == nil {
-			next.Thread = thread
+			next.Thread = s.decryptThread(thread)
 		}
 	}
 	if query != "" {
@@ -324,72 +330,6 @@ func (s *AppState) commit(next Snapshot) {
 	next.Locked = s.locked
 	s.snap = next
 	s.mu.Unlock()
-}
-
-// SelectAccount switches the active account and reloads.
-func (s *AppState) SelectAccount(id int64) {
-	s.mu.Lock()
-	s.selAccount = id
-	s.selFolder = 0
-	s.mu.Unlock()
-	s.Refresh()
-}
-
-// SelectFolder switches the active folder, reloads from cache, and asks
-// the sync layer to refresh that folder from the server so folders that
-// the idle loop doesn't watch (Sent, Archive, …) show their real contents.
-func (s *AppState) SelectFolder(id int64) {
-	s.mu.Lock()
-	s.selFolder = id
-	acct := s.selAccount
-	s.mu.Unlock()
-	s.Refresh()
-	if id > 0 && acct > 0 {
-		s.Send(syncmanager.SyncFolderCmd{AccountID: acct, FolderID: id})
-	}
-}
-
-// SyncNow asks the sync layer to refresh every folder of the active
-// account now (pull-to-refresh, or the Settings "Sync now" button).
-func (s *AppState) SyncNow() {
-	acct, ok := s.CurrentAccount()
-	if !ok {
-		return
-	}
-	s.Send(syncmanager.SyncNowCmd{AccountID: acct.ID})
-}
-
-// OpenThread loads a conversation for the thread screen.
-func (s *AppState) OpenThread(threadID string) {
-	s.mu.Lock()
-	s.selThread = threadID
-	s.mu.Unlock()
-	s.Refresh()
-}
-
-// SetSearch updates the live search query.
-func (s *AppState) SetSearch(query string) {
-	s.mu.Lock()
-	changed := s.searchQuery != query
-	s.searchQuery = query
-	s.mu.Unlock()
-	if changed {
-		s.Refresh()
-	}
-}
-
-// CurrentAccount returns the active account, if any.
-func (s *AppState) CurrentAccount() (store.Account, bool) {
-	snap := s.Snapshot()
-	s.mu.Lock()
-	sel := s.selAccount
-	s.mu.Unlock()
-	for _, a := range snap.Accounts {
-		if a.ID == sel || sel == 0 {
-			return a, true
-		}
-	}
-	return store.Account{}, false
 }
 
 func (s *AppState) notify(msg string) {

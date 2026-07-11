@@ -66,6 +66,7 @@ type Settings struct {
 	keyDirSaveBtn widget.Clickable
 	keyDirSyncBtn widget.Clickable
 	keyDirLoaded  bool
+	syncKeyBtn    widget.Clickable
 }
 
 // NewSettings constructs the settings screen.

@@ -66,6 +66,15 @@ type FolderListEvent struct {
 	Folders   []store.Folder
 }
 
+// PrivateKeyEvent carries the account's fetched armored PGP private key
+// (or an error). The UI imports it into the keyring and persists it.
+type PrivateKeyEvent struct {
+	AccountID int64
+	Email     string
+	Armored   string
+	Err       error
+}
+
 // CredentialUpdatedEvent reports the outcome of an
 // UpdateCredentialCmd. On success the account is reconnecting with its
 // new password.
@@ -98,6 +107,7 @@ func (SendResultEvent) isEvent()        {}
 func (AuthErrorEvent) isEvent()         {}
 func (ConnectionEvent) isEvent()        {}
 func (FolderListEvent) isEvent()        {}
+func (PrivateKeyEvent) isEvent()        {}
 func (CredentialUpdatedEvent) isEvent() {}
 func (AccountRemovedEvent) isEvent()    {}
 func (AttachmentSavedEvent) isEvent()   {}
