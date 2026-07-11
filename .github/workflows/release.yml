@@ -48,6 +48,19 @@ jobs:
       - name: Install gogio
         run: go install gioui.org/cmd/gogio@latest
 
+      - name: Install bundletool (gogio needs it to build the AAB)
+        run: |
+          # gogio globs "<build-tools>/bundletool*.jar" in the highest
+          # build-tools version it finds (the runner ships one newer than
+          # the pinned 34.0.0), so place the jar in every build-tools dir.
+          BT_VER=1.17.2
+          curl -fsSL -o /tmp/bundletool.jar \
+            "https://github.com/google/bundletool/releases/download/${BT_VER}/bundletool-all-${BT_VER}.jar"
+          for d in "$ANDROID_HOME"/build-tools/*/; do
+            cp /tmp/bundletool.jar "${d}bundletool.jar"
+          done
+          ls -l "$ANDROID_HOME"/build-tools/*/bundletool.jar
+
       - name: Prepare signing key
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
