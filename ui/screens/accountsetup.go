@@ -10,6 +10,7 @@ import (
 	"gioui.org/widget"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/mail/account"
+	"github.com/johalputt/VayuMail-Mobile/internal/version"
 	"github.com/johalputt/VayuMail-Mobile/ui/anim"
 	"github.com/johalputt/VayuMail-Mobile/ui/theme"
 	"github.com/johalputt/VayuMail-Mobile/ui/widgets"
@@ -210,6 +211,13 @@ func (s *AccountSetup) connectCard(gtx layout.Context, env *Env, busy bool, stat
 				return s.manualBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 					return th.Label(gtx, theme.Caption, p.Subtle, "Set up manually", 1)
 				})
+			}),
+			// Build version, identifiable before signing in — every other
+			// feature lives past this screen, so this is the one place to
+			// confirm an update landed without connecting an account first.
+			layout.Rigid(layout.Spacer{Height: theme.XL}.Layout),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return th.Label(gtx, theme.Caption, p.Subtle, "VayuMail v"+version.Semantic, 1)
 			}))
 	})
 }
