@@ -120,13 +120,21 @@ func Parse(raw []byte) (*Parsed, error) {
 			// PGP/MIME (RFC 3156) carries the ciphertext as an
 			// application/octet-stream part; capture its body so the
 			// message can be decrypted for display instead of surfacing as
-			// a mystery attachment.
+			// a mystery attachment. The structure's control part
+			// (application/pgp-encrypted, body "Version: 1") matches on
+			// content-type too, so only a body carrying real PGP armor
+			// counts — anything else falls through.
 			lpt := strings.ToLower(partType)
+			if isEncrypted(p.PGPStatus) && strings.Contains(lpt, "pgp-encrypted") {
+				// RFC 3156 control part: pure structure, never displayable
+				// and never a real attachment.
+				continue
+			}
 			if isEncrypted(p.PGPStatus) && p.EncryptedBlock == "" &&
 				(strings.Contains(lpt, "octet-stream") || strings.Contains(lpt, "pgp")) {
 				blk, rerr := io.ReadAll(io.LimitReader(part.Body, 1<<20))
-				if rerr == nil && len(blk) > 0 {
-					p.EncryptedBlock = string(blk)
+				if armored := extractInlinePGP(string(blk)); rerr == nil && armored != "" {
+					p.EncryptedBlock = armored
 					continue
 				}
 			}

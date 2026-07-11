@@ -6,6 +6,29 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.5] — 2026-07-11
+
+### Fixed
+- **PGP/MIME encrypted mail no longer shows "Version: 1".** Mail sent by
+  the app's own composer (RFC 3156 multipart/encrypted) was displayed as
+  the structure's control part instead of being decrypted: the capture
+  matched the first part whose type mentioned "pgp", which is the
+  `application/pgp-encrypted` version marker, not the ciphertext. Only a
+  part carrying a real `-----BEGIN PGP MESSAGE-----` armor block is now
+  accepted, and the control part is dropped from the attachment list.
+- **Broken encrypted messages repair themselves.** Encrypted mail cached
+  by an earlier version (with "Version: 1" or an empty body stored) is
+  automatically re-downloaded from the server the first time you open it,
+  then decrypted — no need to clear data or re-add the account. While the
+  re-download runs the message shows a short "fetching the locked copy"
+  notice instead of raw structure text.
+- **Pull-to-refresh now visibly refreshes.** A manual sync that found
+  nothing new emitted no events, so the list never reloaded and the
+  spinner never appeared — the swipe looked dead even though the sync
+  ran. The engine now brackets every user-requested sync with
+  started/finished events: the indicator spins for the whole sync and the
+  list reloads when it completes, whether or not new mail arrived.
+
 ## [2.1.4] — 2026-07-11
 
 ### Fixed

@@ -75,6 +75,28 @@ type PrivateKeyEvent struct {
 	Err       error
 }
 
+// SyncStartedEvent marks the start of a user-requested full sync
+// (SyncNowCmd) so the UI can show activity even before any message
+// counts exist.
+type SyncStartedEvent struct {
+	AccountID int64
+}
+
+// SyncFinishedEvent marks the end of a user-requested full sync —
+// success or failure — so the UI can stop its indicator and reload.
+type SyncFinishedEvent struct {
+	AccountID int64
+	Err       error
+}
+
+// MessageRefetchedEvent reports the outcome of a RefetchMessageCmd; on
+// success the stored row carries the freshly parsed body.
+type MessageRefetchedEvent struct {
+	AccountID int64
+	MessageID int64
+	Err       error
+}
+
 // CredentialUpdatedEvent reports the outcome of an
 // UpdateCredentialCmd. On success the account is reconnecting with its
 // new password.
@@ -108,6 +130,9 @@ func (AuthErrorEvent) isEvent()         {}
 func (ConnectionEvent) isEvent()        {}
 func (FolderListEvent) isEvent()        {}
 func (PrivateKeyEvent) isEvent()        {}
+func (SyncStartedEvent) isEvent()       {}
+func (SyncFinishedEvent) isEvent()      {}
+func (MessageRefetchedEvent) isEvent()  {}
 func (CredentialUpdatedEvent) isEvent() {}
 func (AccountRemovedEvent) isEvent()    {}
 func (AttachmentSavedEvent) isEvent()   {}
