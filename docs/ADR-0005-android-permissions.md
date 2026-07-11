@@ -1,8 +1,10 @@
-# ADR-0005 — Android permissions: exactly four
+# ADR-0005 — Android permissions: the minimum, and no more
 
 ## Status
 
-Accepted — v0.1.0.
+Accepted — v0.1.0. **Amended by ADR-0009 (v2.0.0):** the CAMERA
+permission was withdrawn with QR scanning, leaving three
+(`INTERNET`, `FOREGROUND_SERVICE`, `RECEIVE_BOOT_COMPLETED`).
 
 ## Decision
 

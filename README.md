@@ -39,6 +39,7 @@ versus stubbed is always truthfully recorded in
 | **Credentials** | AES-256-GCM sealed store / platform keystore | Often plaintext in a database |
 | **Onboarding** | Type your email + app password — **everything else auto-discovered** (signed setup codes as fallback) | Type server settings by hand |
 | **Encryption** | PGP built in; auto-encrypts when recipients have keys | Plugin or absent |
+| **Key discovery** | Auto-fetches contacts' PGP keys from their server (WKD), on by default | Manual key exchange |
 | **Real-time mail** | One held IMAP IDLE socket | Battery-hungry polling |
 | **Telemetry** | None. Verifiable — it's open source | "Anonymized analytics" |
 | **Server key pinning** | Optional per-account SPKI pin | Not offered |
@@ -48,7 +49,9 @@ versus stubbed is always truthfully recorded in
 
 ## The five pillars
 
-- **Elegance** — every element earns its place or is removed.
+- **Elegance** — every element earns its place or is removed. One
+  gradient accent, motion that runs only while something is moving
+  (an idle screen renders zero frames), no chrome that does not do work.
 - **Minimalism** — fewer UI elements than competitors, not more.
 - **Speed** — SQLite on first paint, IMAP IDLE for instant delivery,
   virtualized lists, no spinner where a cached value exists.
@@ -59,6 +62,12 @@ versus stubbed is always truthfully recorded in
   about you and sends nothing anywhere.
 - **Lightness** — every dependency justifies its size; the binary-size
   budget is enforced in CI.
+
+Security is the floor, not a pillar: credentials never touch disk in
+plaintext (platform keystore / AES-256-GCM sealed store), an optional
+PIN **app lock** with idle auto-lock and an offline brute-force throttle
+gates the whole UI (ADR-0010), and **signing out** wipes an account's
+credential from the keystore and its mail from the device.
 
 ## Architecture
 
@@ -82,12 +91,13 @@ cmd/vayumail ──► ui (Gio, single-threaded event loop — never blocks)
 
 ## Getting the app
 
-**Android APK** — push a `v*` tag (or run the *Release APK* workflow):
+**Android APK** — grab the latest signed build from the
+[Releases page](https://github.com/johalputt/VayuMail-Mobile/releases), or
+cut your own: push a `v*` tag (or run the *Release APK* workflow) and
 GitHub Actions builds, signs, and attaches `vayumail-<version>.apk` to the
-[Release](https://github.com/johalputt/VayuMail-Mobile/releases). Set the
-`ANDROID_KEYSTORE_B64` / `ANDROID_KEYSTORE_PASS` repository secrets to
-sign with your own upload key for the Play Store; without them builds are
-test-signed for sideloading.
+release. Set the `ANDROID_KEYSTORE_B64` / `ANDROID_KEYSTORE_PASS`
+repository secrets to sign with your own upload key for the Play Store;
+without them builds are test-signed for sideloading.
 
 **Desktop** — the same binary runs on Linux/macOS/Windows:
 
@@ -149,9 +159,10 @@ fail CI.
 
 ## Governance
 
-- [GOVERNANCE-CONSTITUTION.md](GOVERNANCE-CONSTITUTION.md) — the ten rules, v1.0
+- [GOVERNANCE-CONSTITUTION.md](GOVERNANCE-CONSTITUTION.md) — the ten rules, v1.2
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — normative topology
-- [docs/](docs/) — ADR-0001 … ADR-0010 (every architectural decision, recorded)
+- [docs/README.md](docs/README.md) — the ADR index (ADR-0001 … ADR-0010,
+  every architectural decision, recorded)
 - [COMPLIANCE-TRACKER.md](COMPLIANCE-TRACKER.md) — the honest ledger
 - [CONTRIBUTING.md](CONTRIBUTING.md) — how changes land
 
