@@ -6,6 +6,17 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.3] — 2026-07-11
+
+### Changed
+- **Security is now the first section in Settings**, and **Two-factor
+  unlock is always listed** — previously it appeared only after App lock
+  was turned on, so it read as missing. When App lock is off, the
+  Two-factor row shows a hint ("Turn on App lock first") instead of
+  being hidden. The App lock subtitle now names the second factor too.
+  All of this makes the 2.1.x security additions visible the moment you
+  open Settings, without scrolling or first setting a PIN.
+
 ## [2.1.2] — 2026-07-11
 
 ### Added

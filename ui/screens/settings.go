@@ -93,9 +93,11 @@ func (s *Settings) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 		env.Nav.Pop(gtx.Now)
 	}
 
+	// Security first: the app lock and two-factor unlock are the headline
+	// additions, so they lead Settings rather than sit below the fold.
 	var rows []row
-	rows = append(rows, s.accountRows(gtx, env, snap)...)
 	rows = append(rows, s.securityRows(gtx, env, snap)...)
+	rows = append(rows, s.accountRows(gtx, env, snap)...)
 	rows = append(rows, s.syncRows(gtx, env, snap)...)
 	rows = append(rows, s.pgpRows(gtx, env, snap)...)
 
