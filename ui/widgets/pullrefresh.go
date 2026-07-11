@@ -20,18 +20,26 @@ const (
 	pullTrigger = 72
 	// pullMax caps the visual travel (rubber-band feel).
 	pullMax = 108
-	// pullSlop filters taps and horizontal row swipes out.
-	pullSlop = 24
+	// pullGrab is the tiny downward travel at which the pull claims the
+	// gesture. It must be no larger than the list's own scroll slop (3dp)
+	// or the enclosing layout.List grabs the pointer first and the pull
+	// never sees another drag event.
+	pullGrab = 3
 )
 
 // PullRefresh turns a downward drag from the top of a list into a
-// refresh. It observes pointer events without grabbing them, so row
-// taps and horizontal swipe gestures underneath keep working exactly as
-// before; a drag only reads as a pull when it starts with the list
-// scrolled to the top and moves clearly downward.
+// refresh. The enclosing layout.List grabs any touch-drag after ~3dp to
+// scroll, so a passive observer never wins; instead this widget registers
+// a pass-through input area on top of the content and, the instant a drag
+// begins downward with the list already at its top, claims the pointer
+// with a GrabCmd. Its event loop runs before the list lays out, so its
+// grab is issued first and the router hands it the gesture — while upward
+// drags, horizontal row swipes, and taps fall straight through to the
+// list and rows underneath, untouched.
 type PullRefresh struct {
 	pressY   float32
 	pressX   float32
+	pid      pointer.ID
 	pulling  bool
 	pull     float32
 	settle   anim.Anim
@@ -44,6 +52,7 @@ type PullRefresh struct {
 // user releases past the threshold.
 func (pr *PullRefresh) Layout(gtx layout.Context, th *theme.Theme, atTop, syncing bool, content layout.Widget) (bool, layout.Dimensions) {
 	triggered := false
+	grabSlop := float32(gtx.Dp(pullGrab))
 	for {
 		ev, ok := gtx.Event(pointer.Filter{
 			Target: pr,
@@ -59,18 +68,24 @@ func (pr *PullRefresh) Layout(gtx layout.Context, th *theme.Theme, atTop, syncin
 		switch e.Kind {
 		case pointer.Press:
 			pr.pressY, pr.pressX = e.Position.Y, e.Position.X
+			pr.pid = e.PointerID
 			pr.pulling = false
 		case pointer.Drag:
 			dy := e.Position.Y - pr.pressY
 			dx := e.Position.X - pr.pressX
 			if !pr.pulling {
-				// Qualify: at the top, clearly downward, clearly vertical.
-				if atTop && dy > pullSlop && dy > 2*abs32(dx) {
+				// Claim the gesture on the first downward, vertical-ish drag
+				// while at the top — before the list's 3dp scroll grab. The
+				// GrabCmd is issued here, ahead of the list's own grab later
+				// in the frame, so the router awards us the pointer. Upward
+				// drags and horizontal swipes never qualify and flow through.
+				if atTop && dy >= grabSlop && dy > abs32(dx) {
 					pr.pulling = true
+					gtx.Execute(pointer.GrabCmd{Tag: pr, ID: pr.pid})
 				}
 			}
 			if pr.pulling {
-				pull := (dy - pullSlop) * 0.5 // resistance
+				pull := (dy - grabSlop) * 0.5 // resistance
 				if pull < 0 {
 					pull = 0
 				}
@@ -102,16 +117,22 @@ func (pr *PullRefresh) Layout(gtx layout.Context, th *theme.Theme, atTop, syncin
 		gtx.Execute(op.InvalidateCmd{})
 	}
 
-	// Register the observation area over the whole content, then draw
-	// the content shifted by the pull.
-	defer clip.Rect{Max: gtx.Constraints.Max}.Push(gtx.Ops).Pop()
-	event.Op(gtx.Ops, pr)
-
+	// Draw the content (with its own scroll/tap/swipe input) shifted by
+	// the pull.
 	var dims layout.Dimensions
 	func() {
 		defer op.Offset(image.Pt(0, int(offset))).Push(gtx.Ops).Pop()
 		dims = content(gtx)
 	}()
+
+	// Register the pull's input area ON TOP of the content, pass-through,
+	// so it receives the same drags the list does without blocking the
+	// list's scrolling — and can pre-empt with a grab when a pull begins.
+	area := clip.Rect{Max: gtx.Constraints.Max}.Push(gtx.Ops)
+	pass := pointer.PassOp{}.Push(gtx.Ops)
+	event.Op(gtx.Ops, pr)
+	pass.Pop()
+	area.Pop()
 
 	pr.indicator(gtx, th, offset, syncing)
 	return triggered, dims

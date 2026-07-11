@@ -111,6 +111,15 @@ func fetchAndAttachBody(client *imapclient.Client, uid imap.UID, msg *store.Mess
 	msg.Snippet = parsed.Snippet
 	msg.HasAttachments = len(parsed.Attachments) > 0
 	msg.PGPStatus = parsed.PGPStatus
+	// Encrypted mail: keep the armored ciphertext as the body so the UI
+	// can decrypt it on open with the account's private key (never stored
+	// decrypted). Give it a readable snippet instead of a blank row.
+	if parsed.EncryptedBlock != "" {
+		msg.BodyText = parsed.EncryptedBlock
+		if msg.Snippet == "" {
+			msg.Snippet = "Encrypted message"
+		}
+	}
 	msg.HasTrackers = parsed.HasTrackers
 	msg.IsList = parsed.ListID != ""
 	msg.ListUnsubscribe = parsed.ListUnsubscribe

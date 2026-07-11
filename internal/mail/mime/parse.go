@@ -35,6 +35,12 @@ type Parsed struct {
 	// PGPStatus is "", "signed", "encrypted", or "signed+encrypted",
 	// matching the store's pgp_status column.
 	PGPStatus string
+	// EncryptedBlock is the armored PGP ciphertext for an encrypted
+	// message (from the PGP/MIME octet-stream part, or an inline
+	// -----BEGIN PGP MESSAGE----- block). Empty when not encrypted. The
+	// display layer decrypts it with the keyring's private key; it is
+	// never shown raw.
+	EncryptedBlock string
 	// HasTrackers reports detected tracking pixels or tracker-hosted
 	// resources (see track.go). VayuMail never fetches remote content;
 	// this powers the "this sender tracks you" indicator.
@@ -91,6 +97,15 @@ func Parse(raw []byte) (*Parsed, error) {
 			if err != nil {
 				continue
 			}
+			// PGP/MIME ciphertext often has no Content-Disposition, so
+			// go-message hands it back as an inline octet-stream part
+			// rather than an attachment. Capture any armored block here too
+			// so both classifications feed the decrypt-on-display path.
+			if isEncrypted(p.PGPStatus) && p.EncryptedBlock == "" &&
+				strings.Contains(string(body), "-----BEGIN PGP MESSAGE-----") &&
+				!strings.EqualFold(partType, "text/html") {
+				p.EncryptedBlock = extractInlinePGP(string(body))
+			}
 			switch {
 			case strings.EqualFold(partType, "text/plain") && p.Text == "":
 				p.Text = string(body)
@@ -98,13 +113,26 @@ func Parse(raw []byte) (*Parsed, error) {
 				p.HTML = string(body)
 			}
 		case *mail.AttachmentHeader:
-			filename, err := h.Filename()
-			if err != nil {
-				filename = ""
-			}
 			partType, _, err := h.ContentType()
 			if err != nil {
 				partType = "application/octet-stream"
+			}
+			// PGP/MIME (RFC 3156) carries the ciphertext as an
+			// application/octet-stream part; capture its body so the
+			// message can be decrypted for display instead of surfacing as
+			// a mystery attachment.
+			lpt := strings.ToLower(partType)
+			if isEncrypted(p.PGPStatus) && p.EncryptedBlock == "" &&
+				(strings.Contains(lpt, "octet-stream") || strings.Contains(lpt, "pgp")) {
+				blk, rerr := io.ReadAll(io.LimitReader(part.Body, 1<<20))
+				if rerr == nil && len(blk) > 0 {
+					p.EncryptedBlock = string(blk)
+					continue
+				}
+			}
+			filename, err := h.Filename()
+			if err != nil {
+				filename = ""
 			}
 			p.Attachments = append(p.Attachments, AttachmentRef{
 				Filename:    filename,
@@ -115,6 +143,11 @@ func Parse(raw []byte) (*Parsed, error) {
 
 	if p.PGPStatus == "" && looksInlinePGP(p.Text) {
 		p.PGPStatus = "encrypted"
+	}
+	// Inline PGP keeps its armored block in the text body; lift it out so
+	// the same decrypt-on-display path handles both PGP/MIME and inline.
+	if isEncrypted(p.PGPStatus) && p.EncryptedBlock == "" && looksInlinePGP(p.Text) {
+		p.EncryptedBlock = extractInlinePGP(p.Text)
 	}
 	p.HasTrackers = DetectTrackers(p.HTML)
 	p.Snippet = Snippet(p.Text, p.HTML)
@@ -143,6 +176,27 @@ func pgpStatusFromContentType(ct string, params map[string]string) string {
 // looksInlinePGP detects inline (non-MIME) PGP messages.
 func looksInlinePGP(text string) bool {
 	return strings.Contains(text, "-----BEGIN PGP MESSAGE-----")
+}
+
+// isEncrypted reports whether a PGP status implies an encrypted body.
+func isEncrypted(status string) bool {
+	return status == "encrypted" || status == "signed+encrypted"
+}
+
+// extractInlinePGP returns the armored -----BEGIN PGP MESSAGE----- block
+// from a text body, or "" if the delimiters are not both present.
+func extractInlinePGP(text string) string {
+	const begin = "-----BEGIN PGP MESSAGE-----"
+	const end = "-----END PGP MESSAGE-----"
+	i := strings.Index(text, begin)
+	if i < 0 {
+		return ""
+	}
+	j := strings.Index(text[i:], end)
+	if j < 0 {
+		return ""
+	}
+	return text[i : i+j+len(end)]
 }
 
 // Snippet builds a single-line preview from the best available body,

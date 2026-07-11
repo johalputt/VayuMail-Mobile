@@ -6,12 +6,39 @@ package state
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/mail/pgp"
+	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
 )
+
+// SyncPrivateKey asks the engine to fetch this account's own private key
+// from its VayuPress server so received encrypted mail can be decrypted.
+func (s *AppState) SyncPrivateKey(accountID int64) {
+	s.Send(syncmanager.SyncPrivateKeyCmd{AccountID: accountID})
+}
+
+// importPrivateKey imports a fetched armored private key into the keyring
+// and persists it (marked private). Called from the event loop off the
+// frame path.
+func (s *AppState) importPrivateKey(armored, email string) {
+	go func() {
+		fps, err := s.keyring.ImportArmored([]byte(armored))
+		if err != nil {
+			slog.Warn("import private key", "email", email, "err", err)
+			s.notify("Could not import your key")
+			return
+		}
+		for _, fp := range fps {
+			s.storeKeyRow(fp, armored, true)
+		}
+		s.notify("Your encryption key is ready — encrypted mail will now open")
+		s.Refresh()
+	}()
+}
 
 // MissingKeys reports which of the given addresses have no key in the
 // keyring. Cheap enough for the frame loop (in-memory map lookups).

@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
 
+	"github.com/johalputt/VayuMail-Mobile/internal/mail/account"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 )
 
@@ -39,10 +41,16 @@ func (m *Manager) execAddAccount(ctx context.Context, c AddAccountCmd) error {
 		PinnedSPKI:    c.Config.PinnedSPKI,
 		AuthMech:      c.Config.AuthMech,
 	}
-	if _, err := m.db.InsertAccount(ctx, &row); err != nil {
+	id, err := m.db.InsertAccount(ctx, &row)
+	if err != nil {
 		return err
 	}
 	m.startAccount(row)
+	// Opportunistically pull the account's own private key so received
+	// encrypted mail decrypts without a manual step. Best-effort: servers
+	// that don't serve it (non-VayuPress) simply emit an error the UI
+	// ignores. Queued, not inline, so AddAccount stays fast.
+	go func() { _ = m.Send(SyncPrivateKeyCmd{AccountID: id}) }()
 	return nil
 }
 
@@ -70,6 +78,33 @@ func (m *Manager) execUpdateCredential(ctx context.Context, c UpdateCredentialCm
 	}
 	m.startAccount(acct)
 	m.emit(CredentialUpdatedEvent{AccountID: c.AccountID})
+	return nil
+}
+
+// execSyncPrivateKey fetches the account's own PGP private key from its
+// VayuPress server using the stored mailbox credential, so received
+// encrypted mail can be decrypted on-device. The key is delivered to the
+// UI as a PrivateKeyEvent; the credential is used in memory only and the
+// key is never logged.
+func (m *Manager) execSyncPrivateKey(ctx context.Context, c SyncPrivateKeyCmd) error {
+	acct, err := m.db.GetAccount(ctx, c.AccountID)
+	if err != nil {
+		m.emit(PrivateKeyEvent{AccountID: c.AccountID, Err: err})
+		return err
+	}
+	secret, err := m.credFor(acct.KeystoreAlias)()
+	if err != nil {
+		m.emit(PrivateKeyEvent{AccountID: c.AccountID, Email: acct.EmailAddress, Err: err})
+		return err
+	}
+	fctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	armored, err := account.FetchPrivateKey(fctx, http.DefaultClient, acct.EmailAddress, secret)
+	if err != nil {
+		m.emit(PrivateKeyEvent{AccountID: c.AccountID, Email: acct.EmailAddress, Err: err})
+		return err
+	}
+	m.emit(PrivateKeyEvent{AccountID: c.AccountID, Email: acct.EmailAddress, Armored: armored})
 	return nil
 }
 
