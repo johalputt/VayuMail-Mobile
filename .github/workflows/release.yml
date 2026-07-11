@@ -71,10 +71,15 @@ jobs:
             echo "SIGN_PASS=$KEYSTORE_PASS" >> "$GITHUB_ENV"
             echo "SIGN_KIND=release" >> "$GITHUB_ENV"
           else
-            keytool -genkeypair -v -keystore release.keystore \
-              -storepass vayumail-test -keypass vayumail-test \
-              -alias vayumail -keyalg RSA -keysize 4096 -validity 10000 \
-              -dname "CN=VayuMail Test, O=VayuMail, C=IN"
+            # Use the committed debug keystore, NOT a freshly generated one.
+            # Android refuses to update an installed app when the new build
+            # is signed by a different key, so every test build MUST share
+            # one signature or sideload updates silently fail — the cause of
+            # "I updated but nothing changed". This shared key makes every
+            # test build update over the previous one. It is a throwaway
+            # debug key (public repo, known password); it is NOT a Play
+            # upload key — set the secrets above for that.
+            cp .github/keystore/debug.keystore release.keystore
             echo "SIGN_PASS=vayumail-test" >> "$GITHUB_ENV"
             echo "SIGN_KIND=test" >> "$GITHUB_ENV"
           fi
