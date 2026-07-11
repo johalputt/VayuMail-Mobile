@@ -24,6 +24,7 @@ and data-flow walkthroughs; the ADRs below record *why* it is that way.
 | [0008](ADR-0008-transport-pinning-and-sync.md) | TLS key pinning, encrypted settings sync, reference provisioning server | Accepted | v1.1.0 |
 | [0009](ADR-0009-retire-qr-scanning-direct-connect.md) | Retire QR scanning; direct connect is the onboarding path | Accepted | v2.0.0 |
 | [0010](ADR-0010-app-lock.md) | App lock: PIN gate with idle auto-lock | Accepted | v2.0.0 |
+| [0011](ADR-0011-device-approval-onboarding.md) | Device-approval onboarding | Accepted | v2.1.6 |
 
 ## The v2.0.0 amendment chain
 

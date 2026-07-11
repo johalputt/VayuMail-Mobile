@@ -158,3 +158,18 @@ func (s *AppState) DownloadAttachment(messageID int64, index int) {
 	s.Send(syncmanager.FetchAttachmentCmd{MessageID: messageID, Index: index})
 	s.notify("Downloading attachment…")
 }
+
+// SetDeviceID persists the device ID a VayuPress server granted this
+// install during onboarding (ADR-0011), keyed per address, so the device
+// can be cross-referenced in the web console later. Only the public ID
+// is stored here — the device password is a credential and goes to the
+// platform keystore, never SQLite (Rule 6).
+func (s *AppState) SetDeviceID(email, deviceID string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.db.SetSetting(ctx, store.SettingDeviceIDPrefix+email, deviceID); err != nil {
+			slog.Error("persist device id", "err", err)
+		}
+	}()
+}

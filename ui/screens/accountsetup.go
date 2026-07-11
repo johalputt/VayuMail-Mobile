@@ -1,6 +1,7 @@
 package screens
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"time"
@@ -56,12 +57,17 @@ type AccountSetup struct {
 	addBtn                                                widgets.Button
 
 	// busy/status/errText carry async connect progress to the UI thread;
-	// pendingCfg carries a completed autodetect result. Guarded by mu.
+	// pendingCfg carries a completed autodetect result; waitCancel aborts
+	// a running device-approval wait (ADR-0011) and waitGen pairs each
+	// wait with its cancel so a finished wait never clobbers a newer one.
+	// Guarded by mu.
 	mu         sync.Mutex
 	busy       bool
 	status     string
 	errText    string
 	pendingCfg *account.Config
+	waitCancel context.CancelFunc
+	waitGen    int
 }
 
 // NewAccountSetup constructs the onboarding screen.
@@ -109,10 +115,12 @@ func (s *AccountSetup) layoutConnect(gtx layout.Context, env *Env) layout.Dimens
 	s.mu.Unlock()
 
 	if s.codeBtn.Clicked(gtx) {
+		s.cancelWait()
 		s.setError("")
 		s.mode = modeCode
 	}
 	if s.manualBtn.Clicked(gtx) {
+		s.cancelWait()
 		s.setError("")
 		s.mode = modeManual
 	}
@@ -128,6 +136,7 @@ func (s *AccountSetup) layoutConnect(gtx layout.Context, env *Env) layout.Dimens
 
 	pushed := env.Nav.Depth() > 1
 	if pushed && s.cancelBtn.Clicked(gtx) {
+		s.cancelWait()
 		env.Nav.Pop(gtx.Now)
 	}
 
