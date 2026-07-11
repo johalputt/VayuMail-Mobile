@@ -6,6 +6,16 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.2] — 2026-07-11
+
+### Added
+- **The version is now shown on the login screen.** Every feature past
+  onboarding (2FA, message details, pull-to-refresh, in-app password
+  change, the encryption flow) only appears after you connect an
+  account — the connect screen itself only carries the logo and the
+  two fields. A small "VayuMail vX.Y.Z" now sits at the bottom of that
+  screen so the installed build is identifiable before signing in.
+
 ## [2.1.1] — 2026-07-11
 
 ### Fixed
