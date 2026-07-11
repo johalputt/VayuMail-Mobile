@@ -25,6 +25,7 @@ type Inbox struct {
 	drawer  *widgets.FolderDrawer
 	fab     *widgets.FAB
 	syncBar widgets.SyncBar
+	pull    widgets.PullRefresh
 
 	menuBtn    widget.Clickable
 	searchBtn  widget.Clickable
@@ -105,14 +106,21 @@ func (s *Inbox) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 			return statusBanner(gtx, th, snap)
 		}),
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-			if len(visible) == 0 {
-				return emptyState(gtx, th, widgets.IconEnvelope, true,
-					"All clear.", "New messages will appear here.")
+			triggered, dims := s.pull.Layout(gtx, th, s.list.AtTop(), syncing,
+				func(gtx layout.Context) layout.Dimensions {
+					if len(visible) == 0 {
+						return emptyState(gtx, th, widgets.IconEnvelope, true,
+							"All clear.", "New messages will appear here.")
+					}
+					for _, action := range s.list.Layout(gtx, th, visible) {
+						s.handleAction(gtx, env, snap, action)
+					}
+					return layout.Dimensions{Size: gtx.Constraints.Max}
+				})
+			if triggered {
+				env.State.SyncNow()
 			}
-			for _, action := range s.list.Layout(gtx, th, visible) {
-				s.handleAction(gtx, env, snap, action)
-			}
-			return layout.Dimensions{Size: gtx.Constraints.Max}
+			return dims
 		}))
 
 	// FAB floats bottom-right above the list.

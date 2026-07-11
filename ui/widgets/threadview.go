@@ -21,6 +21,11 @@ type ThreadView struct {
 	toggles []widget.Clickable
 	shown   map[int64]bool // message ID -> quoted text expanded
 
+	// detailBtns/details drive the per-message header disclosure: the
+	// full addressing, security, and size panel.
+	detailBtns []widget.Clickable
+	details    map[int64]bool
+
 	attachClicks map[int64][]widget.Clickable
 	requests     []DownloadRequest
 }
@@ -36,6 +41,7 @@ func NewThreadView() *ThreadView {
 	return &ThreadView{
 		list:         layout.List{Axis: layout.Vertical},
 		shown:        make(map[int64]bool),
+		details:      make(map[int64]bool),
 		attachClicks: make(map[int64][]widget.Clickable),
 	}
 }
@@ -50,17 +56,22 @@ func (tv *ThreadView) DownloadRequests() []DownloadRequest {
 // Layout renders the messages oldest-first.
 func (tv *ThreadView) Layout(gtx layout.Context, th *theme.Theme, msgs []store.Message) layout.Dimensions {
 	if len(tv.toggles) < len(msgs) {
-		tv.toggles = append(tv.toggles, make([]widget.Clickable, len(msgs)-len(tv.toggles))...)
+		grow := len(msgs) - len(tv.toggles)
+		tv.toggles = append(tv.toggles, make([]widget.Clickable, grow)...)
+		tv.detailBtns = append(tv.detailBtns, make([]widget.Clickable, grow)...)
 	}
 	tv.requests = tv.requests[:0]
 	return tv.list.Layout(gtx, len(msgs), func(gtx layout.Context, i int) layout.Dimensions {
-		return tv.message(gtx, th, &tv.toggles[i], msgs[i])
+		return tv.message(gtx, th, &tv.toggles[i], &tv.detailBtns[i], msgs[i])
 	})
 }
 
-func (tv *ThreadView) message(gtx layout.Context, th *theme.Theme, toggle *widget.Clickable, msg store.Message) layout.Dimensions {
+func (tv *ThreadView) message(gtx layout.Context, th *theme.Theme, toggle, dBtn *widget.Clickable, msg store.Message) layout.Dimensions {
 	if toggle.Clicked(gtx) {
 		tv.shown[msg.ID] = !tv.shown[msg.ID]
+	}
+	if dBtn.Clicked(gtx) {
+		tv.details[msg.ID] = !tv.details[msg.ID]
 	}
 	body := mime.DisplayText(msg.BodyText, msg.BodyHTML)
 	visible, quoted := splitQuoted(body)
@@ -69,9 +80,20 @@ func (tv *ThreadView) message(gtx layout.Context, th *theme.Theme, toggle *widge
 	return layout.Inset{Left: theme.LG, Right: theme.LG, Top: theme.MD, Bottom: theme.MD}.Layout(gtx,
 		func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-				// Header: avatar, sender, date.
+				// Header: avatar, sender, date — tap for full details.
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return tv.header(gtx, th, msg)
+					return dBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						gtx.Constraints.Min.X = gtx.Constraints.Max.X
+						return tv.header(gtx, th, msg, tv.details[msg.ID])
+					})
+				}),
+				// Full addressing + security panel (the Gmail-style
+				// "details" disclosure).
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					if !tv.details[msg.ID] {
+						return layout.Dimensions{}
+					}
+					return tv.detailsPanel(gtx, th, msg)
 				}),
 				layout.Rigid(layout.Spacer{Height: theme.SM}.Layout),
 				// PGP status, when present.
@@ -147,7 +169,7 @@ func (tv *ThreadView) message(gtx layout.Context, th *theme.Theme, toggle *widge
 		})
 }
 
-func (tv *ThreadView) header(gtx layout.Context, th *theme.Theme, msg store.Message) layout.Dimensions {
+func (tv *ThreadView) header(gtx layout.Context, th *theme.Theme, msg store.Message, expanded bool) layout.Dimensions {
 	sender := msg.FromName
 	if sender == "" {
 		sender = msg.FromAddr
@@ -169,6 +191,16 @@ func (tv *ThreadView) header(gtx layout.Context, th *theme.Theme, msg store.Mess
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return th.Label(gtx, theme.Caption, th.Palette.Subtle,
 				RelativeTime(msg.Date, time.Now()), 1)
+		}),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			icon := IconChevronDown
+			if expanded {
+				icon = IconChevronRight
+			}
+			return layout.Inset{Left: theme.SM}.Layout(gtx,
+				func(gtx layout.Context) layout.Dimensions {
+					return DrawIcon(gtx, icon, th.Palette.Subtle, 16)
+				})
 		}))
 }
 

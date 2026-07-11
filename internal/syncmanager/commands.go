@@ -53,6 +53,15 @@ type AddAccountCmd struct {
 	Credential []byte
 }
 
+// UpdateCredentialCmd replaces an account's stored password: sync
+// stops, the keystore entry is overwritten in place, and sync restarts
+// with the new credential. Credential is wiped after storage.
+// Completion arrives as CredentialUpdatedEvent.
+type UpdateCredentialCmd struct {
+	AccountID  int64
+	Credential []byte
+}
+
 // RemoveAccountCmd signs an account out: its sync goroutines stop, its
 // credential is deleted from the keystore, and its local rows (folders,
 // messages, outbox) are removed. Completion arrives as AccountRemovedEvent.
@@ -89,15 +98,16 @@ type UnsubscribeCmd struct {
 	MessageID int64
 }
 
-func (MoveCmd) isCmd()            {}
-func (DeleteCmd) isCmd()          {}
-func (MarkCmd) isCmd()            {}
-func (SendCmd) isCmd()            {}
-func (SyncNowCmd) isCmd()         {}
-func (SyncFolderCmd) isCmd()      {}
-func (AddAccountCmd) isCmd()      {}
-func (RemoveAccountCmd) isCmd()   {}
-func (FetchAttachmentCmd) isCmd() {}
-func (SaveDraftCmd) isCmd()       {}
-func (SnoozeCmd) isCmd()          {}
-func (UnsubscribeCmd) isCmd()     {}
+func (MoveCmd) isCmd()             {}
+func (DeleteCmd) isCmd()           {}
+func (MarkCmd) isCmd()             {}
+func (SendCmd) isCmd()             {}
+func (SyncNowCmd) isCmd()          {}
+func (SyncFolderCmd) isCmd()       {}
+func (AddAccountCmd) isCmd()       {}
+func (UpdateCredentialCmd) isCmd() {}
+func (RemoveAccountCmd) isCmd()    {}
+func (FetchAttachmentCmd) isCmd()  {}
+func (SaveDraftCmd) isCmd()        {}
+func (SnoozeCmd) isCmd()           {}
+func (UnsubscribeCmd) isCmd()      {}

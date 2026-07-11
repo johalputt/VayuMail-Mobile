@@ -5,6 +5,8 @@ package screens
 // (Rule 10).
 
 import (
+	"time"
+
 	"gioui.org/layout"
 
 	"github.com/johalputt/VayuMail-Mobile/ui/state"
@@ -83,6 +85,8 @@ func (s *Settings) securityRows(gtx layout.Context, env *Env, snap state.Snapsho
 					autoLockLabel(snap.AppLockTimeout), 1)
 			}))
 
+		rows = append(rows, s.totpRows(gtx, env, snap)...)
+
 		if s.lockNowBtn.Clicked(gtx) {
 			env.State.LockNow()
 		}
@@ -92,4 +96,196 @@ func (s *Settings) securityRows(gtx layout.Context, env *Env, snap state.Snapsho
 			}))
 	}
 	return rows
+}
+
+// totpMode is the state of the inline two-factor form.
+type totpMode int
+
+const (
+	totpIdle totpMode = iota
+	totpEnrolling
+	totpDisabling
+)
+
+// totpRows builds the two-factor unlock rows: the switch, and — while
+// enrolling or disabling — the inline secret/code form. Enrollment is
+// atomic: the secret is stored, one live code must verify, and a failed
+// code removes the secret again so a typo can never lock the user out.
+func (s *Settings) totpRows(gtx layout.Context, env *Env, snap state.Snapshot) []row {
+	th := env.Theme
+	p := th.Palette
+	s.foldTOTPResult(env)
+
+	rows := []row{func(gtx layout.Context) layout.Dimensions {
+		inner := s.item(th, "Two-factor unlock",
+			"Require an authenticator code after the PIN — the same TOTP secret VayuPress uses",
+			func(gtx layout.Context) layout.Dimensions {
+				dims, toggled := s.totpSwitch.Layout(gtx, th, snap.TOTPEnabled || s.totpMode == totpEnrolling)
+				if toggled {
+					if snap.TOTPEnabled {
+						s.totpMode = totpDisabling
+					} else {
+						s.totpMode = totpEnrolling
+					}
+					s.totpSecret.SetText("")
+					s.totpCode.SetText("")
+					s.totpErr = ""
+				}
+				return dims
+			})
+		return inner(gtx)
+	}}
+	if s.totpMode == totpIdle {
+		return rows
+	}
+
+	s.totpMu.Lock()
+	busy, errText := s.totpBusy, s.totpErr
+	s.totpMu.Unlock()
+
+	if s.totpCancel.Clicked(gtx) {
+		s.totpMode = totpIdle
+	}
+	if s.totpBtn.Clicked(gtx) && !busy {
+		s.submitTOTP(env)
+	}
+
+	rows = append(rows, func(gtx layout.Context) layout.Dimensions {
+		return layout.Inset{Left: theme.LG, Right: theme.LG, Top: theme.XS, Bottom: theme.SM}.Layout(gtx,
+			func(gtx layout.Context) layout.Dimensions {
+				children := []layout.FlexChild{}
+				if s.totpMode == totpEnrolling {
+					children = append(children,
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return s.totpSecret.Layout(gtx, th, "Authenticator secret",
+								"paste the base32 secret (from VayuPress 2FA setup)")
+						}),
+						layout.Rigid(layout.Spacer{Height: theme.SM}.Layout))
+				}
+				label := "Confirm with a current code"
+				if s.totpMode == totpDisabling {
+					label = "Enter a current code to turn off"
+				}
+				children = append(children,
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return s.totpCode.Layout(gtx, th, label, "6-digit code")
+					}),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						if errText == "" {
+							return layout.Dimensions{}
+						}
+						return layout.Inset{Top: theme.XS}.Layout(gtx,
+							func(gtx layout.Context) layout.Dimensions {
+								return th.Label(gtx, theme.Caption, p.Destructive, errText, 1)
+							})
+					}),
+					layout.Rigid(layout.Spacer{Height: theme.SM}.Layout),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								action := "Turn on"
+								if s.totpMode == totpDisabling {
+									action = "Turn off"
+								}
+								if busy {
+									action = "Checking…"
+								}
+								return s.totpBtn.Layout(gtx, th, widgets.ButtonTonal, action, false, busy)
+							}),
+							layout.Rigid(layout.Spacer{Width: theme.MD}.Layout),
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								return s.totpCancel.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+									return layout.Inset{Top: theme.SM}.Layout(gtx,
+										func(gtx layout.Context) layout.Dimensions {
+											return th.Label(gtx, theme.Caption, p.Subtle, "Cancel", 1)
+										})
+								})
+							}))
+					}))
+				return layout.Flex{Axis: layout.Vertical}.Layout(gtx, children...)
+			})
+	})
+	return rows
+}
+
+// submitTOTP runs the enroll or disable flow off-thread.
+func (s *Settings) submitTOTP(env *Env) {
+	code := s.totpCode.Text()
+	s.totpMu.Lock()
+	s.totpBusy = true
+	s.totpErr = ""
+	s.totpMu.Unlock()
+
+	fail := func(msg string) {
+		s.totpMu.Lock()
+		s.totpBusy = false
+		s.totpErr = msg
+		s.totpMu.Unlock()
+		if env.Invalidate != nil {
+			env.Invalidate()
+		}
+	}
+	finish := func() {
+		s.totpMu.Lock()
+		s.totpBusy = false
+		s.totpDone = true
+		s.totpMu.Unlock()
+		if env.Invalidate != nil {
+			env.Invalidate()
+		}
+	}
+
+	if s.totpMode == totpDisabling {
+		env.State.VerifyTOTP(code, false, func(ok bool, _ time.Duration) {
+			if !ok {
+				fail("Wrong code")
+				return
+			}
+			env.State.RemoveTOTP(func(err error) {
+				if err != nil {
+					fail("Could not turn off two-factor unlock")
+					return
+				}
+				finish()
+			})
+		})
+		return
+	}
+
+	secret := s.totpSecret.Text()
+	env.State.EnrollTOTP(secret, func(err error) {
+		if err != nil {
+			fail("Secret rejected — paste the base32 secret exactly")
+			return
+		}
+		env.State.VerifyTOTP(code, false, func(ok bool, _ time.Duration) {
+			if !ok {
+				// A wrong confirm code must never leave a half-enrolled
+				// factor behind: remove the secret again.
+				env.State.RemoveTOTP(func(error) {})
+				fail("Code didn't match — check the secret and try again")
+				return
+			}
+			finish()
+		})
+	})
+}
+
+// foldTOTPResult applies a finished enroll/disable on the UI thread.
+func (s *Settings) foldTOTPResult(env *Env) {
+	s.totpMu.Lock()
+	done := s.totpDone
+	s.totpDone = false
+	s.totpMu.Unlock()
+	if !done {
+		return
+	}
+	if s.totpMode == totpDisabling {
+		env.Snack.ShowInfo("Two-factor unlock off")
+	} else {
+		env.Snack.ShowInfo("Two-factor unlock on")
+	}
+	s.totpMode = totpIdle
+	s.totpSecret.SetText("")
+	s.totpCode.SetText("")
 }

@@ -1,6 +1,12 @@
 # ADR-0010 — App lock: PIN gate with idle auto-lock
 
-- **Status:** Accepted (v2.0.0)
+- **Status:** Accepted (v2.0.0). **Amended v2.1.0:** an optional RFC
+  6238 TOTP second factor joins the PIN — same authenticator secret a
+  VayuPress operator already carries, stored in the keystore beside the
+  verifier, verified with a ±1-step window against RFC 4226 test
+  vectors, and throttled by the same lockout ladder as the PIN.
+  Enrollment is atomic (secret + one live code, or nothing), and
+  disabling the app lock removes both factors.
 
 ## Context
 

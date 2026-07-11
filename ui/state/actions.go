@@ -91,8 +91,14 @@ func buildOutbound(draft *smtpsend.Draft, opts SendOptions) ([]byte, error) {
 		if opts.Sign {
 			signer = draft.FromAddr
 		}
+		// Encrypt-to-self when the sender's own key is known, so the copy
+		// filed to Sent stays readable to its author.
+		rcpts := draft.Recipients()
+		if opts.Keyring.HasKeyFor(draft.FromAddr) {
+			rcpts = append(rcpts, draft.FromAddr)
+		}
 		ciphertext, err := opts.Keyring.Encrypt(
-			[]byte(draft.TextBody), draft.Recipients(), signer)
+			[]byte(draft.TextBody), rcpts, signer)
 		if err != nil {
 			return nil, err
 		}

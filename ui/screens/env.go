@@ -8,7 +8,6 @@ import (
 	"image/color"
 	"io"
 
-	"gioui.org/font"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/paint"
@@ -60,11 +59,6 @@ func fadeRise(gtx layout.Context, t float32, w layout.Widget) layout.Dimensions 
 	defer paint.PushOpacity(gtx.Ops, anim.Clamp01(t)).Pop()
 	call.Add(gtx.Ops)
 	return dims
-}
-
-// fontFor maps a theme text style onto a Gio font.
-func fontFor(style theme.TextStyle) font.Font {
-	return font.Font{Weight: style.Weight}
 }
 
 // topBar lays out the standard screen header: optional leading icon,

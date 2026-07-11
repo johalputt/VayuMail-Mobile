@@ -62,6 +62,14 @@ does not) · **PENDING** (not started, deliberately deferred).
 | Notifications toggle | COMPLETE | Settings switch (default on); gates the notifier before posting |
 | Message forward + thread action bar | COMPLETE | Reply / Forward (quoted plain text) / Archive / Delete-with-confirm from the thread screen |
 | Motion system (ui/anim) | COMPLETE | Time-interpolated easings, staggered list entrance, press-scale buttons/FAB, parallax screen transitions, animated switches/dialog/PIN pad; frames requested only while something animates (battery: idle screens render zero frames) |
+| Two-factor unlock (TOTP) | COMPLETE | RFC 6238 second factor on the app lock: keystore-resident secret, RFC 4226 vector-tested, shared lockout ladder with the PIN, atomic enrollment (wrong confirm code removes the secret) |
+| In-app password update | COMPLETE | UpdateCredentialCmd: per-account inline form in Settings; sync stops, keystore entry overwritten in place, reconnects; clears the auth-error banner |
+| Compose-time key acquisition | COMPLETE | Turning encryption on fetches missing recipient keys via WKD immediately; live per-recipient readout in the action row; send names any recipient still without a key |
+| Encrypt-to-self | COMPLETE | Outbound PGP mail also encrypts to the sender's own key when known, keeping the Sent copy readable; own-account keys lead every WKD sweep |
+| Message details panel | COMPLETE | Per-message disclosure: full From/To/Cc, date, PGP/transport security line, tracking honesty, size |
+| Pull-to-refresh | COMPLETE | Passive vertical-drag observer over the inbox list (taps and row swipes unaffected); rubber-band indicator, spins while the sync runs |
+| Notification preview toggle | COMPLETE | Privacy option: generic "New mail" line instead of sender/subject on the lock screen |
+| Full-bleed launcher icon | COMPLETE | tools/appicon regenerates cmd/vayumail/appicon.png from the committed brand artwork (edge-to-edge, launcher-mask-safe); `make icon` |
 | APK release pipeline | COMPLETE | `.github/workflows/release.yml`: gogio build on GitHub runners, signature verification, artifact + Release upload on `v*` tags; Play-ready when `ANDROID_KEYSTORE_B64`/`ANDROID_KEYSTORE_PASS` secrets are set, test-signed otherwise |
 | iOS IPA pipeline | PENDING | Requires a macOS runner and Apple signing assets |
 

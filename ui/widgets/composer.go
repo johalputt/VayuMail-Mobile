@@ -20,6 +20,9 @@ type ComposerAction struct {
 	Send bool
 	// AttachRequested is true when the attach icon was tapped.
 	AttachRequested bool
+	// EncryptRequested is true when the user just turned encryption on —
+	// the screen fetches any missing recipient keys in response.
+	EncryptRequested bool
 }
 
 // Composer is the full-screen compose surface: To / Cc / Bcc / Subject /
@@ -38,6 +41,11 @@ type Composer struct {
 	// Encrypt and Sign are the PGP toggles (off = Subtle, on = Accent).
 	Encrypt bool
 	Sign    bool
+
+	// HasKey reports whether the keyring holds a key for an address; set
+	// by the root so the action row can show live per-recipient key
+	// status. Nil disables the readout.
+	HasKey func(addr string) bool
 
 	// attachments is guarded because AddAttachment is called from the file-
 	// picker goroutine while the UI thread reads/removes on layout. attachDel
@@ -102,55 +110,6 @@ func (c *Composer) Reset() {
 	c.mu.Unlock()
 }
 
-// PrefillReply seeds the composer for a reply.
-func (c *Composer) PrefillReply(to, subject string) {
-	c.Reset()
-	c.to.SetText(to)
-	if subject != "" && !strings.HasPrefix(strings.ToLower(subject), "re:") {
-		subject = "Re: " + subject
-	}
-	c.subject.SetText(subject)
-}
-
-// PrefillForward seeds the composer with a quoted copy of a message;
-// the recipient stays empty for the user to fill.
-func (c *Composer) PrefillForward(subject, fromName, fromAddr, date, body string) {
-	c.Reset()
-	if subject != "" && !strings.HasPrefix(strings.ToLower(subject), "fwd:") {
-		subject = "Fwd: " + subject
-	}
-	c.subject.SetText(subject)
-	sender := fromName
-	if sender == "" {
-		sender = fromAddr
-	} else if fromAddr != "" {
-		sender += " <" + fromAddr + ">"
-	}
-	var b strings.Builder
-	b.WriteString("\n\n---------- Forwarded message ----------\n")
-	b.WriteString("From: " + sender + "\n")
-	if date != "" {
-		b.WriteString("Date: " + date + "\n")
-	}
-	b.WriteString("Subject: " + strings.TrimPrefix(subject, "Fwd: ") + "\n\n")
-	b.WriteString(body)
-	c.body.SetText(b.String())
-}
-
-// Draft builds the outbound draft from the current fields.
-func (c *Composer) Draft(fromName, fromAddr string) smtpsend.Draft {
-	return smtpsend.Draft{
-		FromName:    fromName,
-		FromAddr:    fromAddr,
-		To:          splitAddrs(c.to.Text()),
-		Cc:          splitAddrs(c.cc.Text()),
-		Bcc:         splitAddrs(c.bcc.Text()),
-		Subject:     strings.TrimSpace(c.subject.Text()),
-		TextBody:    c.body.Text(),
-		Attachments: c.attachmentsCopy(),
-	}
-}
-
 // Layout renders the composer and reports actions.
 func (c *Composer) Layout(gtx layout.Context, th *theme.Theme) ComposerAction {
 	var action ComposerAction
@@ -159,6 +118,9 @@ func (c *Composer) Layout(gtx layout.Context, th *theme.Theme) ComposerAction {
 	}
 	if c.encToggle.Clicked(gtx) {
 		c.Encrypt = !c.Encrypt
+		if c.Encrypt {
+			action.EncryptRequested = true
+		}
 	}
 	if c.sigToggle.Clicked(gtx) {
 		c.Sign = !c.Sign
@@ -344,12 +306,19 @@ func (c *Composer) actionRow(gtx layout.Context, th *theme.Theme) layout.Dimensi
 						}),
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 							label := securityLabel(c.Encrypt, c.Sign)
+							col := th.Palette.Success
+							if c.Encrypt {
+								if n := c.missingKeyCount(); n > 0 {
+									label = fmt.Sprintf("%d recipient(s) missing a key", n)
+									col = th.Palette.Warning
+								}
+							}
 							if label == "" {
 								return layout.Dimensions{}
 							}
 							return layout.Inset{Left: theme.XS}.Layout(gtx,
 								func(gtx layout.Context) layout.Dimensions {
-									return th.Label(gtx, theme.Micro, th.Palette.Success, label, 1)
+									return th.Label(gtx, theme.Micro, col, label, 1)
 								})
 						}),
 						layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {

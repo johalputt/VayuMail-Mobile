@@ -63,6 +63,9 @@ lint: vet boundary constitution
 	if [ -n "$$files" ]; then echo "Unformatted: $$files"; exit 1; fi
 
 # Android APK via gogio. Requires Android SDK/NDK on PATH.
+icon:
+	go run ./tools/appicon
+
 android:
 	$(GO) run gioui.org/cmd/gogio@latest -target android \
 		-appid org.vayumail.mobile -o $(BIN_DIR)/vayumail.apk ./cmd/vayumail

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"sync"
 
 	"gioui.org/layout"
 	"gioui.org/widget"
@@ -21,7 +22,15 @@ const maxAttachBytes = 50 << 20
 // Compose hosts the shared composer widget.
 type Compose struct {
 	backBtn widget.Clickable
+
+	// keyResult carries an async key-fetch outcome to the UI thread;
+	// Layout folds it on the next frame (the outcome mailbox pattern).
+	mu        sync.Mutex
+	keyResult *keyFetchResult
 }
+
+// keyFetchResult is the outcome of an EnsureKeysFor run.
+type keyFetchResult struct{ missing []string }
 
 // NewCompose constructs the compose screen.
 func NewCompose() *Compose { return &Compose{} }
@@ -29,6 +38,7 @@ func NewCompose() *Compose { return &Compose{} }
 // Layout renders the composer and handles its actions.
 func (s *Compose) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 	th := env.Theme
+	s.foldKeyResult(env)
 
 	if s.backBtn.Clicked(gtx) {
 		env.Nav.Pop(gtx.Now)
@@ -49,10 +59,49 @@ func (s *Compose) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 	if action.AttachRequested {
 		s.pickAttachment(env)
 	}
+	if action.EncryptRequested {
+		s.fetchMissingKeys(env)
+	}
 	if action.Send {
 		s.send(gtx, env)
 	}
 	return dims
+}
+
+// fetchMissingKeys resolves recipient keys the moment encryption is
+// turned on: anything missing is looked up on the recipient's own
+// server (WKD) right then, so "encrypt" almost always just works.
+func (s *Compose) fetchMissingKeys(env *Env) {
+	missing := env.State.MissingKeys(env.Composer.RecipientList())
+	if len(missing) == 0 {
+		return
+	}
+	env.Snack.ShowInfo("Fetching keys for " + strings.Join(missing, ", ") + "…")
+	env.State.EnsureKeysFor(missing, func(stillMissing []string) {
+		s.mu.Lock()
+		s.keyResult = &keyFetchResult{missing: stillMissing}
+		s.mu.Unlock()
+		if env.Invalidate != nil {
+			env.Invalidate()
+		}
+	})
+}
+
+// foldKeyResult applies a finished key fetch on the UI thread.
+func (s *Compose) foldKeyResult(env *Env) {
+	s.mu.Lock()
+	r := s.keyResult
+	s.keyResult = nil
+	s.mu.Unlock()
+	if r == nil {
+		return
+	}
+	if len(r.missing) == 0 {
+		env.Snack.ShowInfo("All recipients have keys — encrypted")
+		return
+	}
+	env.Composer.Encrypt = false
+	env.Snack.ShowInfo("No published key for " + strings.Join(r.missing, ", ") + " — encryption off")
 }
 
 func (s *Compose) send(gtx layout.Context, env *Env) {
@@ -62,6 +111,14 @@ func (s *Compose) send(gtx layout.Context, env *Env) {
 		return
 	}
 	draft := env.Composer.Draft(acct.DisplayName, acct.EmailAddress)
+	// Encryption on but keys missing: name the recipients and hold the
+	// send instead of failing later with a generic error.
+	if env.Composer.Encrypt {
+		if missing := env.State.MissingKeys(draft.Recipients()); len(missing) > 0 {
+			env.Snack.ShowInfo("Can't encrypt — no key for " + strings.Join(missing, ", "))
+			return
+		}
+	}
 	// Encrypted-by-default: when every recipient has a known key, turn
 	// encryption on automatically.
 	if !env.Composer.Encrypt && env.Keyring.HasKeyFor(draft.Recipients()...) {

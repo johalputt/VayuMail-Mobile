@@ -6,6 +6,67 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-07-11
+
+Encryption that just works, a second unlock factor, and the polish
+round from the first on-device testing.
+
+### Added
+- **Two-factor unlock (TOTP).** The app lock gains an optional RFC 6238
+  second factor: enroll the same base32 authenticator secret your
+  VayuPress 2FA uses (Settings → Security → Two-factor unlock), and
+  unlocking asks PIN, then the 6-digit code — auto-submitting on the
+  sixth digit. The secret lives in the keystore next to the PIN
+  verifier, never in SQLite; wrong codes feed the same doubling lockout
+  ladder as wrong PINs; the HOTP core is tested against the published
+  RFC 4226 vectors. Enrollment is atomic — a mistyped secret can never
+  lock you out, because a failed confirmation code removes it again.
+- **In-app password update.** Each account row in Settings gained
+  **Password**: type the new password or app password, Save, and the
+  engine stops sync, overwrites the keystore entry in place, and
+  reconnects — no more sign-out/sign-in dance after a server-side
+  password change. Clears the sign-in-failed banner on success.
+- **Message details, Gmail-style.** Tap any message header in a
+  conversation to unfold the full record: From/To/Cc, exact date, a
+  security line that tells the truth ("PGP end-to-end encrypted (+
+  transport TLS)" vs "Transport TLS only"), tracking honesty
+  ("Tracking pixels detected — blocked"), and size.
+- **Pull-to-refresh.** Drag down from the top of the inbox: a
+  rubber-banded indicator follows your finger, arms past the threshold,
+  and spins while the sync runs. Implemented as a passive gesture
+  observer, so row taps and swipe-to-archive/delete are untouched.
+- **Notification preview toggle.** Settings → Sync & notifications →
+  "Show message preview": off replaces sender/subject with a generic
+  "New mail" line — nothing sensitive on the lock screen.
+- **`make icon`** regenerates the launcher icon from the committed
+  brand artwork (tools/appicon).
+
+### Changed
+- **Encryption no longer says no — it goes and gets the key.** Turning
+  the shield on immediately fetches missing recipient keys from each
+  recipient's own server (WKD), with a live "N recipient(s) missing a
+  key" readout in the compose bar; if a key genuinely isn't published,
+  the send is held with a message naming exactly who. Outbound
+  encrypted mail now also **encrypts to your own key**, so your Sent
+  copy stays readable — and every connected account's own key leads the
+  WKD sweep, fetched automatically from your VayuPress server.
+- **The connect screen now shows the VayuMail logo** — the real
+  artwork, theme-aware (dark art in dark mode), replacing the text
+  wordmark.
+- **The launcher icon is full-bleed**: the V mark large on the brand
+  deep-navy field, edge to edge, so it fills the launcher tile instead
+  of floating in a white box.
+- Every top-bar icon button now shows a pressed halo — taps answer
+  instantly everywhere.
+
+### Security
+- The TOTP secret is keystore-resident (Rule 6), verification is
+  constant-time across all accepted time windows, and both unlock
+  factors share one persistent brute-force throttle (ADR-0010,
+  amended).
+- Disabling two-factor requires a current code; disabling the app lock
+  removes both factors together.
+
 ## [2.0.0] — 2026-07-10
 
 The enterprise redesign: a new design language, an app lock, real

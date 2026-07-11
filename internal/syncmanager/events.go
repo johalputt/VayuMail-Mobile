@@ -66,6 +66,14 @@ type FolderListEvent struct {
 	Folders   []store.Folder
 }
 
+// CredentialUpdatedEvent reports the outcome of an
+// UpdateCredentialCmd. On success the account is reconnecting with its
+// new password.
+type CredentialUpdatedEvent struct {
+	AccountID int64
+	Err       error
+}
+
 // AccountRemovedEvent reports the outcome of a RemoveAccountCmd. On
 // success the account and all its local data are gone.
 type AccountRemovedEvent struct {
@@ -83,12 +91,13 @@ type AttachmentSavedEvent struct {
 	Err       error
 }
 
-func (NewMessageEvent) isEvent()      {}
-func (FlagChangeEvent) isEvent()      {}
-func (SyncProgressEvent) isEvent()    {}
-func (SendResultEvent) isEvent()      {}
-func (AuthErrorEvent) isEvent()       {}
-func (ConnectionEvent) isEvent()      {}
-func (FolderListEvent) isEvent()      {}
-func (AccountRemovedEvent) isEvent()  {}
-func (AttachmentSavedEvent) isEvent() {}
+func (NewMessageEvent) isEvent()        {}
+func (FlagChangeEvent) isEvent()        {}
+func (SyncProgressEvent) isEvent()      {}
+func (SendResultEvent) isEvent()        {}
+func (AuthErrorEvent) isEvent()         {}
+func (ConnectionEvent) isEvent()        {}
+func (FolderListEvent) isEvent()        {}
+func (CredentialUpdatedEvent) isEvent() {}
+func (AccountRemovedEvent) isEvent()    {}
+func (AttachmentSavedEvent) isEvent()   {}

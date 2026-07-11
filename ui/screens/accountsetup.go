@@ -7,7 +7,6 @@ import (
 
 	"gioui.org/layout"
 	"gioui.org/op"
-	"gioui.org/text"
 	"gioui.org/widget"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/mail/account"
@@ -160,13 +159,13 @@ func (s *AccountSetup) connectCard(gtx layout.Context, env *Env, busy bool, stat
 	return layout.UniformInset(theme.XL).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				// Gradient wordmark.
-				l := widget.Label{MaxLines: 1, Alignment: text.Start}
-				f := fontFor(theme.Hero)
-				return l.Layout(gtx, th.Shaper, f, theme.Hero.Size, "VayuMail",
-					widgets.TextGradientOp(gtx, th, gtx.Dp(180)))
+				// The brand artwork, theme-correct, centered.
+				gtx.Constraints.Min.X = gtx.Constraints.Max.X
+				return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					return widgets.BrandLogo(gtx, th, 170)
+				})
 			}),
-			layout.Rigid(layout.Spacer{Height: theme.SM}.Layout),
+			layout.Rigid(layout.Spacer{Height: theme.MD}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				return th.Label(gtx, theme.Body, p.OnSurface,
 					"Mail that moves like wind. Enter your address — the rest is automatic.", 0)
