@@ -2,6 +2,7 @@ package widgets
 
 import (
 	"image"
+	"image/color"
 	"time"
 
 	"gioui.org/layout"
@@ -30,6 +31,8 @@ type DrawerAction struct {
 	AddAccount bool
 	// Settings is true when the settings row was tapped.
 	Settings bool
+	// Talk is true when the VayuTalk row was tapped.
+	Talk bool
 }
 
 // FolderDrawer is the slide-in navigation panel: account switcher on
@@ -41,6 +44,7 @@ type FolderDrawer struct {
 	list          layout.List
 	clicks        []widget.Clickable
 	settings      widget.Clickable
+	talk          widget.Clickable
 	scrimClick    widget.Clickable
 	headerClick   widget.Clickable
 	acctClicks    []widget.Clickable
@@ -156,25 +160,36 @@ func (d *FolderDrawer) layoutPanel(gtx layout.Context, th *theme.Theme, accounts
 			return Separator(gtx, th, 0)
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			if d.talk.Clicked(gtx) {
+				action.Talk = true
+			}
+			return d.footerRow(gtx, th, &d.talk, IconChat, "VayuTalk", th.Palette.Accent)
+		}),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			if d.settings.Clicked(gtx) {
 				action.Settings = true
 			}
-			return d.settings.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				gtx.Constraints.Min.X = gtx.Constraints.Max.X
-				return layout.Inset{Left: theme.LG, Top: theme.MD, Bottom: theme.LG, Right: theme.LG}.Layout(gtx,
-					func(gtx layout.Context) layout.Dimensions {
-						return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
-							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-								return DrawIcon(gtx, IconSettings, th.Palette.OnSurface, 20)
-							}),
-							layout.Rigid(layout.Spacer{Width: theme.MD}.Layout),
-							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-								return th.Label(gtx, theme.Body, th.Palette.OnSurface, "Settings", 1)
-							}))
-					})
-			})
+			return d.footerRow(gtx, th, &d.settings, IconSettings, "Settings", th.Palette.OnSurface)
 		}))
 	return action
+}
+
+// footerRow draws one tappable icon+label row for the drawer footer.
+func (d *FolderDrawer) footerRow(gtx layout.Context, th *theme.Theme, click *widget.Clickable, icon Icon, label string, tint color.NRGBA) layout.Dimensions {
+	return click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		gtx.Constraints.Min.X = gtx.Constraints.Max.X
+		return layout.Inset{Left: theme.LG, Top: theme.MD, Bottom: theme.MD, Right: theme.LG}.Layout(gtx,
+			func(gtx layout.Context) layout.Dimensions {
+				return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return DrawIcon(gtx, icon, tint, 20)
+					}),
+					layout.Rigid(layout.Spacer{Width: theme.MD}.Layout),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return th.Label(gtx, theme.Body, tint, label, 1)
+					}))
+			})
+	})
 }
 
 // folderRow draws one folder with its icon, an active pill highlight,

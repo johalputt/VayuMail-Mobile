@@ -35,14 +35,17 @@ type UI struct {
 	nav    *state.Nav
 	env    *screens.Env
 
-	inbox     *screens.Inbox
-	thread    *screens.Thread
-	compose   *screens.Compose
-	setup     *screens.AccountSetup
-	settings  *screens.Settings
-	search    *screens.Search
-	lockSetup *screens.Lock
-	lockGate  *screens.Lock
+	inbox      *screens.Inbox
+	thread     *screens.Thread
+	compose    *screens.Compose
+	setup      *screens.AccountSetup
+	settings   *screens.Settings
+	search     *screens.Search
+	lockSetup  *screens.Lock
+	lockGate   *screens.Lock
+	talk       *screens.Talk
+	talkRoom   *screens.TalkRoom
+	talkVerify *screens.TalkVerify
 
 	events    <-chan syncmanager.Event
 	notify    *mailNotifier
@@ -85,24 +88,37 @@ func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Mana
 	// Live key status for the composer's security readout.
 	env.Composer.HasKey = func(addr string) bool { return st.Keyring().HasKeyFor(addr) }
 
+	// VayuTalk: the ephemeral-chat holder shares the keyring (for E2E) and
+	// the keystore (for the on-demand mailbox credential) with the mail
+	// engine. It stays idle until the Talk screen binds it to an account.
+	chatState := state.NewChatState(db, st.Keyring(), ks, w.Invalidate, st.Notify)
+	st.Chat = chatState
+
 	ui := &UI{
-		window:    w,
-		th:        th,
-		st:        st,
-		nav:       env.Nav,
-		env:       env,
-		inbox:     screens.NewInbox(),
-		thread:    screens.NewThread(),
-		compose:   screens.NewCompose(),
-		setup:     screens.NewAccountSetup(),
-		settings:  screens.NewSettings(),
-		search:    screens.NewSearch(),
-		lockSetup: env.LockSetup,
-		lockGate:  screens.NewLock(screens.LockIntentUnlock),
-		events:    mgr.Events(),
-		notify:    newMailNotifier(ctx, db),
+		window:     w,
+		th:         th,
+		st:         st,
+		nav:        env.Nav,
+		env:        env,
+		inbox:      screens.NewInbox(),
+		thread:     screens.NewThread(),
+		compose:    screens.NewCompose(),
+		setup:      screens.NewAccountSetup(),
+		settings:   screens.NewSettings(),
+		search:     screens.NewSearch(),
+		lockSetup:  env.LockSetup,
+		lockGate:   screens.NewLock(screens.LockIntentUnlock),
+		talk:       screens.NewTalk(),
+		talkRoom:   screens.NewTalkRoom(),
+		talkVerify: screens.NewTalkVerify(),
+		events:     mgr.Events(),
+		notify:     newMailNotifier(ctx, db),
 	}
 	ui.notify.enabled = st.NotificationsEnabled
+	ui.notify.preview = st.NotifyPreviewEnabled
+	// Incoming VayuTalk messages post a content-free notification (privacy:
+	// never the sender or the text), gated by the notifications setting.
+	chatState.OnIncoming = ui.notify.notifyChat
 	st.Refresh() // SQLite on first paint: cached mail renders immediately.
 	return ui
 }
@@ -253,6 +269,12 @@ func (ui *UI) layoutScreen(gtx layout.Context, s state.Screen) {
 		ui.search.Layout(gtx, ui.env)
 	case state.ScreenLock:
 		ui.lockSetup.Layout(gtx, ui.env)
+	case state.ScreenTalk:
+		ui.talk.Layout(gtx, ui.env)
+	case state.ScreenTalkRoom:
+		ui.talkRoom.Layout(gtx, ui.env)
+	case state.ScreenTalkVerify:
+		ui.talkVerify.Layout(gtx, ui.env)
 	default:
 		ui.inbox.Layout(gtx, ui.env)
 	}

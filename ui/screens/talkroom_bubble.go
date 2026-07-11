@@ -1,0 +1,222 @@
+package screens
+
+import (
+	"image"
+	"image/color"
+	"strings"
+
+	"gioui.org/layout"
+	"gioui.org/op/clip"
+	"gioui.org/widget"
+
+	"github.com/johalputt/VayuMail-Mobile/ui/state"
+	"github.com/johalputt/VayuMail-Mobile/ui/theme"
+	"github.com/johalputt/VayuMail-Mobile/ui/widgets"
+)
+
+// bubble draws one message. It reports live=true while the message still
+// has a running countdown, so the caller keeps requesting frames.
+func (s *TalkRoom) bubble(gtx layout.Context, env *Env, th *theme.Theme, m state.ChatMessage) (layout.Dimensions, bool) {
+	now := gtx.Now
+	expired := !m.ExpiresAt.IsZero() && !now.Before(m.ExpiresAt)
+	tombstone := expired || m.Status == state.MsgExpired
+
+	switch {
+	case tombstone:
+		return s.tombstone(gtx, th, m.Self), false
+	case !m.Self && !m.Revealed:
+		click := s.clickFor(m.ID)
+		if click.Clicked(gtx) && env.State.Chat != nil {
+			env.State.Chat.RevealMessage(m.Peer, m.ID)
+		}
+		return s.sealedBubble(gtx, th, click), false
+	default:
+		frac := widgets.RemainingFraction(m.CreatedAt, m.ExpiresAt, now)
+		live := !m.ExpiresAt.IsZero() && frac > 0
+		return s.contentBubble(gtx, th, m, frac), live
+	}
+}
+
+// bubbleRow aligns a bubble to the correct side and caps its width.
+func bubbleRow(gtx layout.Context, self bool, inner layout.Widget) layout.Dimensions {
+	max := gtx.Constraints.Max.X * 78 / 100
+	capped := func(gtx layout.Context) layout.Dimensions {
+		gtx.Constraints.Max.X = max
+		return inner(gtx)
+	}
+	return layout.Inset{Left: theme.LG, Right: theme.LG, Top: theme.XS, Bottom: theme.XS}.Layout(gtx,
+		func(gtx layout.Context) layout.Dimensions {
+			if self {
+				return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+					layout.Flexed(1, func(gtx layout.Context) layout.Dimensions { return layout.Dimensions{} }),
+					layout.Rigid(capped))
+			}
+			return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+				layout.Rigid(capped),
+				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions { return layout.Dimensions{} }))
+		})
+}
+
+// fillBubble paints the rounded bubble background.
+func fillBubble(gtx layout.Context, fill color.NRGBA) layout.Dimensions {
+	r := gtx.Dp(theme.CardRadius)
+	defer clip.UniformRRect(image.Rectangle{Max: gtx.Constraints.Min}, r).Push(gtx.Ops).Pop()
+	return widgets.Fill(gtx, fill)
+}
+
+// contentBubble draws a revealed/outgoing message with its text and a meta
+// row carrying the countdown ring, remaining time, and status.
+func (s *TalkRoom) contentBubble(gtx layout.Context, th *theme.Theme, m state.ChatMessage, frac float32) layout.Dimensions {
+	bg := th.Palette.Surface
+	fg := th.Palette.OnBackground
+	meta := th.Palette.Subtle
+	if m.Self {
+		bg = th.Palette.Accent
+		fg = th.Palette.OnAccent
+		meta = theme.WithAlpha(th.Palette.OnAccent, 0xCC)
+	}
+	return bubbleRow(gtx, m.Self, func(gtx layout.Context) layout.Dimensions {
+		return layout.Background{}.Layout(gtx,
+			func(gtx layout.Context) layout.Dimensions { return fillBubble(gtx, bg) },
+			func(gtx layout.Context) layout.Dimensions {
+				return layout.UniformInset(theme.SM+theme.XS).Layout(gtx,
+					func(gtx layout.Context) layout.Dimensions {
+						return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								return th.Label(gtx, theme.Body, fg, m.Text, 0)
+							}),
+							layout.Rigid(layout.Spacer{Height: theme.XS}.Layout),
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								return s.metaRow(gtx, th, m, frac, meta)
+							}))
+					})
+			})
+	})
+}
+
+// metaRow renders the countdown ring, remaining time, and status text.
+func (s *TalkRoom) metaRow(gtx layout.Context, th *theme.Theme, m state.ChatMessage, frac float32, meta color.NRGBA) layout.Dimensions {
+	track := theme.WithAlpha(meta, 0x40)
+	arc := meta
+	if !m.Self {
+		arc = th.Palette.Accent
+	}
+	return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			if m.ExpiresAt.IsZero() {
+				return layout.Dimensions{}
+			}
+			return widgets.CountdownRing(gtx, 14, frac, track, arc)
+		}),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			label := widgets.FormatRemaining(m.ExpiresAt, gtx.Now)
+			if label == "" {
+				return layout.Dimensions{}
+			}
+			return layout.Inset{Left: theme.XS}.Layout(gtx,
+				func(gtx layout.Context) layout.Dimensions {
+					return th.Label(gtx, theme.Micro, meta, label, 1)
+				})
+		}),
+		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions { return layout.Dimensions{} }),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			label := statusLabel(m)
+			if label == "" {
+				return layout.Dimensions{}
+			}
+			return layout.Inset{Left: theme.SM}.Layout(gtx,
+				func(gtx layout.Context) layout.Dimensions {
+					return th.Label(gtx, theme.Micro, meta, label, 1)
+				})
+		}))
+}
+
+// statusLabel names an outgoing message's delivery state.
+func statusLabel(m state.ChatMessage) string {
+	if !m.Self {
+		return ""
+	}
+	switch m.Status {
+	case state.MsgSending:
+		return "Sending…"
+	case state.MsgSent:
+		return "Sent"
+	case state.MsgQueued:
+		return "Queued"
+	case state.MsgRead:
+		return "Read · gone"
+	default:
+		return ""
+	}
+}
+
+// sealedBubble is the covered peer message: tap to reveal (and destroy).
+func (s *TalkRoom) sealedBubble(gtx layout.Context, th *theme.Theme, click *widget.Clickable) layout.Dimensions {
+	return bubbleRow(gtx, false, func(gtx layout.Context) layout.Dimensions {
+		return click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			return layout.Background{}.Layout(gtx,
+				func(gtx layout.Context) layout.Dimensions { return fillBubble(gtx, th.Palette.AccentSubtle) },
+				func(gtx layout.Context) layout.Dimensions {
+					return layout.UniformInset(theme.SM+theme.XS).Layout(gtx,
+						func(gtx layout.Context) layout.Dimensions {
+							return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+									return widgets.DrawIcon(gtx, widgets.IconLock, th.Palette.Accent, 16)
+								}),
+								layout.Rigid(layout.Spacer{Width: theme.SM}.Layout),
+								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+									return th.Label(gtx, theme.Body, th.Palette.Accent, "Tap to reveal · read once", 1)
+								}))
+						})
+				})
+		})
+	})
+}
+
+// tombstone is the collapsed remnant of a read or expired message.
+func (s *TalkRoom) tombstone(gtx layout.Context, th *theme.Theme, self bool) layout.Dimensions {
+	return bubbleRow(gtx, self, func(gtx layout.Context) layout.Dimensions {
+		return layout.Background{}.Layout(gtx,
+			func(gtx layout.Context) layout.Dimensions {
+				return fillBubble(gtx, theme.WithAlpha(th.Palette.Subtle, 0x1F))
+			},
+			func(gtx layout.Context) layout.Dimensions {
+				return layout.UniformInset(theme.SM).Layout(gtx,
+					func(gtx layout.Context) layout.Dimensions {
+						return th.Label(gtx, theme.Caption, th.Palette.Subtle, "message deleted", 1)
+					})
+			})
+	})
+}
+
+// pillToggle draws a small tappable status pill (TTL / mode selectors).
+func (s *TalkRoom) pillToggle(gtx layout.Context, th *theme.Theme, click *widget.Clickable, icon widgets.Icon, label string) layout.Dimensions {
+	return click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return layout.Background{}.Layout(gtx,
+			func(gtx layout.Context) layout.Dimensions {
+				r := gtx.Dp(theme.PillRadius)
+				sz := gtx.Constraints.Min
+				if sz.Y < 2*r {
+					r = sz.Y / 2
+				}
+				defer clip.UniformRRect(image.Rectangle{Max: sz}, r).Push(gtx.Ops).Pop()
+				return widgets.Fill(gtx, th.Palette.AccentSubtle)
+			},
+			func(gtx layout.Context) layout.Dimensions {
+				return layout.Inset{Left: theme.SM, Right: theme.SM, Top: theme.XS, Bottom: theme.XS}.Layout(gtx,
+					func(gtx layout.Context) layout.Dimensions {
+						return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								return widgets.DrawIcon(gtx, icon, th.Palette.Accent, 14)
+							}),
+							layout.Rigid(layout.Spacer{Width: theme.XS}.Layout),
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								return th.Label(gtx, theme.Caption, th.Palette.Accent, label, 1)
+							}))
+					})
+			})
+	})
+}
+
+// trimmed is strings.TrimSpace, named for readability at call sites.
+func trimmed(s string) string { return strings.TrimSpace(s) }

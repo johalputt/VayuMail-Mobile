@@ -6,6 +6,20 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.0] — 2026-07-11
+
+### Added
+- **VayuTalk — ephemeral, end-to-end-encrypted messaging.** A new
+  private chat built on your own VayuPress server. Messages are PGP
+  encrypted to the recipient before they leave the device; the server is
+  a blind relay that only ever holds opaque ciphertext, in memory, with a
+  strict time-to-live. Open a chat from the drawer, verify a
+  correspondent once by comparing safety numbers (Signal-style), and
+  talk. Messages are destroyed on the server the moment they are read,
+  expire automatically after their TTL, and a server restart purges
+  everything. Reuses your existing mailbox identity, PGP keypair and
+  approved-device credential — no new account, no phone number.
+
 ## [2.1.9] — 2026-07-11
 
 ### Changed
