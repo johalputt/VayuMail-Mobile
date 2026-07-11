@@ -159,32 +159,74 @@ func (m luminanceMask) At(x, y int) color.Color {
 	return color.NRGBA64{A: a}
 }
 
-// cropMark isolates the V mark: the artwork stacks mark over wordmark,
-// so the alpha bounding box of the top 55%% of rows is the mark alone.
+// cropMark isolates the V mark from the full logo. The artwork stacks
+// the mark above the wordmark with a band of empty rows between them,
+// so the split line is found by profiling ink per row and taking the
+// widest empty gap — never a fixed percentage, which once amputated
+// the mark's descending foot.
 func cropMark(src image.Image) image.Image {
 	b := src.Bounds()
-	top := image.Rect(b.Min.X, b.Min.Y, b.Max.X, b.Min.Y+b.Dy()*55/100)
-	bbox := image.Rectangle{Min: top.Max, Max: top.Min} // inverted; grown below
-	for y := top.Min.Y; y < top.Max.Y; y++ {
-		for x := top.Min.X; x < top.Max.X; x++ {
+	inked := make([]bool, b.Dy())
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			if _, _, _, a := src.At(x, y).RGBA(); a > 0x2000 {
+				inked[y-b.Min.Y] = true
+				break
+			}
+		}
+	}
+	// First ink band = the mark: from its first inked row to the row
+	// before the widest interior gap.
+	first := -1
+	for y, ink := range inked {
+		if ink {
+			first = y
+			break
+		}
+	}
+	if first < 0 {
+		log.Fatal("artwork has no visible pixels")
+	}
+	gapStart, gapLen, run, runStart := -1, 0, 0, -1
+	lastInk := first
+	for y := first; y < len(inked); y++ {
+		if inked[y] {
+			if run > gapLen && runStart > first {
+				gapStart, gapLen = runStart, run
+			}
+			run, runStart = 0, -1
+			lastInk = y
+			continue
+		}
+		if runStart < 0 {
+			runStart = y
+		}
+		run++
+	}
+	markEnd := lastInk + 1
+	if gapLen > 0 {
+		markEnd = gapStart
+	}
+	// Horizontal bounds over the mark's rows only. Built as a literal:
+	// image.Rect would canonicalize the deliberately inverted X seed.
+	bbox := image.Rectangle{
+		Min: image.Pt(b.Max.X, b.Min.Y+first),
+		Max: image.Pt(b.Min.X, b.Min.Y+markEnd),
+	}
+	for y := bbox.Min.Y; y < bbox.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
 			if _, _, _, a := src.At(x, y).RGBA(); a > 0x2000 {
 				if x < bbox.Min.X {
 					bbox.Min.X = x
 				}
-				if y < bbox.Min.Y {
-					bbox.Min.Y = y
-				}
 				if x+1 > bbox.Max.X {
 					bbox.Max.X = x + 1
-				}
-				if y+1 > bbox.Max.Y {
-					bbox.Max.Y = y + 1
 				}
 			}
 		}
 	}
 	if bbox.Empty() {
-		log.Fatal("no mark pixels found in the top band of the artwork")
+		log.Fatal("no mark pixels found in the artwork")
 	}
 	return cropped{src: src, rect: bbox}
 }
