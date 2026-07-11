@@ -88,7 +88,8 @@ func (s *Inbox) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 	s.list.BeginEntrance(fmt.Sprintf("%d/%d", snap.SelectedAccount, snap.CurrentFolder.ID), gtx.Now)
 
 	visible := s.visibleMessages(snap.Messages)
-	syncing := snap.SyncTotal > 0 && snap.SyncDone < snap.SyncTotal
+	syncing := snap.ManualSyncing ||
+		(snap.SyncTotal > 0 && snap.SyncDone < snap.SyncTotal)
 
 	dims := layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {

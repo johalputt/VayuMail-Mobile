@@ -61,6 +61,15 @@ type SyncPrivateKeyCmd struct {
 	AccountID int64
 }
 
+// RefetchMessageCmd re-downloads one cached message's body from the
+// server and updates the stored row — the recovery path for bodies
+// cached by an older parser (e.g. encrypted mail stored as the PGP/MIME
+// control part). Completion arrives as MessageRefetchedEvent.
+type RefetchMessageCmd struct {
+	AccountID int64
+	MessageID int64
+}
+
 // UpdateCredentialCmd replaces an account's stored password: sync
 // stops, the keystore entry is overwritten in place, and sync restarts
 // with the new credential. Credential is wiped after storage.
@@ -115,6 +124,7 @@ func (SyncFolderCmd) isCmd()       {}
 func (AddAccountCmd) isCmd()       {}
 func (UpdateCredentialCmd) isCmd() {}
 func (SyncPrivateKeyCmd) isCmd()   {}
+func (RefetchMessageCmd) isCmd()   {}
 func (RemoveAccountCmd) isCmd()    {}
 func (FetchAttachmentCmd) isCmd()  {}
 func (SaveDraftCmd) isCmd()        {}

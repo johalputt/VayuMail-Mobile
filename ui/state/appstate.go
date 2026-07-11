@@ -30,6 +30,11 @@ type Snapshot struct {
 	Online        bool
 	SyncDone      int
 	SyncTotal     int
+	// ManualSyncing is true while a user-requested full sync runs
+	// (pull-to-refresh, "Sync now") — bracketed by the SyncStarted /
+	// SyncFinished events, so the indicator spins and the list reloads
+	// even when the sync finds nothing new.
+	ManualSyncing bool
 	AuthError     bool
 	PGPKeys       []store.PGPKey
 	PGPKeyDirURL  string
@@ -77,9 +82,12 @@ type AppState struct {
 	selThread    string
 	searchQuery  string
 	refreshQueue chan struct{}
-	autoWKD      bool
-	lastAutoWKD  time.Time
-	locked       bool
+	// refetching marks messages with an in-flight body re-download so a
+	// broken row is repaired once, not on every frame the thread is open.
+	refetching  map[int64]bool
+	autoWKD     bool
+	lastAutoWKD time.Time
+	locked      bool
 }
 
 // autoWKDInterval throttles auto key discovery so a burst of new mail
@@ -96,6 +104,7 @@ func New(ctx context.Context, db *store.DB, mgr *syncmanager.Manager, lock *appl
 		lock:         lock,
 		keyring:      pgp.NewKeyring(),
 		refreshQueue: make(chan struct{}, 1),
+		refetching:   map[int64]bool{},
 		snap: Snapshot{Unread: map[int64]int{}, Online: true,
 			NotificationsOn: true, NotifyPreviewOn: true},
 	}
@@ -151,6 +160,10 @@ func (s *AppState) Apply(ev syncmanager.Event) {
 		s.snap.SyncDone, s.snap.SyncTotal = e.Done, e.Total
 	case syncmanager.AuthErrorEvent:
 		s.snap.AuthError = true
+	case syncmanager.SyncStartedEvent:
+		s.snap.ManualSyncing = true
+	case syncmanager.SyncFinishedEvent:
+		s.snap.ManualSyncing = false
 	case syncmanager.NewMessageEvent:
 		// Auto-WKD: throttled opportunistic key discovery on new mail;
 		// the sweep skips known keys, so it stays cheap.
@@ -181,6 +194,10 @@ func (s *AppState) Apply(ev syncmanager.Event) {
 			s.importPrivateKey(e.Armored, e.Email)
 		}
 		return
+	case syncmanager.MessageRefetchedEvent:
+		// Allow another attempt later if this one failed; on success the
+		// reload below picks up the repaired body.
+		delete(s.refetching, e.MessageID)
 	case syncmanager.CredentialUpdatedEvent:
 		// A fresh credential clears the stale auth banner; the reconnect
 		// under way proves it right or re-raises the error.
@@ -327,6 +344,7 @@ func (s *AppState) commit(next Snapshot) {
 	next.Online = s.snap.Online
 	next.AuthError = s.snap.AuthError
 	next.SyncDone, next.SyncTotal = s.snap.SyncDone, s.snap.SyncTotal
+	next.ManualSyncing = s.snap.ManualSyncing
 	next.Locked = s.locked
 	s.snap = next
 	s.mu.Unlock()

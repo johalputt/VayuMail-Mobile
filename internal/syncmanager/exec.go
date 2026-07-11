@@ -53,6 +53,8 @@ func (m *Manager) handleCmd(ctx context.Context, cmd Cmd) error {
 		return m.execUpdateCredential(ctx, c)
 	case SyncPrivateKeyCmd:
 		return m.execSyncPrivateKey(ctx, c)
+	case RefetchMessageCmd:
+		return m.execRefetchMessage(ctx, c)
 	case FetchAttachmentCmd:
 		return m.execFetchAttachment(ctx, c)
 	case SaveDraftCmd:
@@ -254,8 +256,13 @@ func (m *Manager) execSyncNow(ctx context.Context, c SyncNowCmd) error {
 	if err != nil {
 		return err
 	}
+	// Bracket the whole run so the UI can show activity from the first
+	// frame and reliably reload when it ends — even when the sync finds
+	// nothing new and therefore emits no per-message events.
+	m.emit(SyncStartedEvent{AccountID: acct.ID})
+	defer func() { m.emit(SyncFinishedEvent{AccountID: acct.ID, Err: err}) }()
 	cfg := ConfigFromStore(acct)
-	return imapsync.WithConnection(ctx, cfg, m.credFor(acct.KeystoreAlias),
+	err = imapsync.WithConnection(ctx, cfg, m.credFor(acct.KeystoreAlias),
 		func(client *imapclient.Client) error {
 			folders, err := imapsync.SyncFolders(ctx, client, m.db, acct.ID)
 			if err != nil {
@@ -279,6 +286,35 @@ func (m *Manager) execSyncNow(ctx context.Context, c SyncNowCmd) error {
 			}
 			return nil
 		})
+	return err
+}
+
+// execRefetchMessage re-downloads one cached message's body and updates
+// its row — recovery for bodies stored by an older parser. The outcome
+// is always reported as a MessageRefetchedEvent.
+func (m *Manager) execRefetchMessage(ctx context.Context, c RefetchMessageCmd) error {
+	report := func(err error) error {
+		m.emit(MessageRefetchedEvent{AccountID: c.AccountID,
+			MessageID: c.MessageID, Err: err})
+		return err
+	}
+	acct, err := m.db.GetAccount(ctx, c.AccountID)
+	if err != nil {
+		return report(err)
+	}
+	msg, err := m.db.GetMessage(ctx, c.MessageID)
+	if err != nil {
+		return report(err)
+	}
+	folder, err := m.db.GetFolder(ctx, msg.FolderID)
+	if err != nil {
+		return report(err)
+	}
+	cfg := ConfigFromStore(acct)
+	return report(imapsync.WithConnection(ctx, cfg, m.credFor(acct.KeystoreAlias),
+		func(client *imapclient.Client) error {
+			return imapsync.RefetchMessage(ctx, client, m.db, folder, msg)
+		}))
 }
 
 // execSyncFolder syncs a single folder over a short-lived connection.

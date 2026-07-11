@@ -49,6 +49,47 @@ func TestParseInlinePGPLiftsEncryptedBlock(t *testing.T) {
 	}
 }
 
+func TestParsePGPMIMECapturesCiphertextNotVersionPart(t *testing.T) {
+	// RFC 3156 as the app's own composer sends it: the control part
+	// (application/pgp-encrypted, body "Version: 1") comes first and the
+	// armored ciphertext follows as application/octet-stream. The control
+	// part must never be captured or listed as an attachment — v2.1.4
+	// showed exactly "Version: 1" as the message body.
+	raw := []byte("From: a@example.com\r\n" +
+		"To: b@example.com\r\n" +
+		"Subject: test 2 encryption\r\n" +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=\"bnd\"\r\n" +
+		"\r\n" +
+		"--bnd\r\n" +
+		"Content-Type: application/pgp-encrypted\r\n" +
+		"\r\n" +
+		"Version: 1\r\n" +
+		"--bnd\r\n" +
+		"Content-Type: application/octet-stream; name=\"encrypted.asc\"\r\n" +
+		"\r\n" +
+		armoredMsg + "\r\n" +
+		"--bnd--\r\n")
+
+	p, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if p.PGPStatus != "encrypted" {
+		t.Fatalf("PGPStatus = %q, want encrypted", p.PGPStatus)
+	}
+	if strings.Contains(p.EncryptedBlock, "Version: 1") {
+		t.Fatalf("EncryptedBlock captured the control part: %q", p.EncryptedBlock)
+	}
+	if !strings.Contains(p.EncryptedBlock, "BEGIN PGP MESSAGE") ||
+		!strings.Contains(p.EncryptedBlock, "END PGP MESSAGE") {
+		t.Fatalf("EncryptedBlock missing armor: %q", p.EncryptedBlock)
+	}
+	if len(p.Attachments) != 0 {
+		t.Fatalf("PGP/MIME structure parts listed as attachments: %v", p.Attachments)
+	}
+}
+
 func TestParsePlainMessageHasNoEncryptedBlock(t *testing.T) {
 	raw := crlf([]string{
 		"From: a@example.com",

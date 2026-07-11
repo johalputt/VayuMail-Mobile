@@ -87,6 +87,22 @@ func SyncFolder(ctx context.Context, client *imapclient.Client, db *store.DB, ev
 	return nil
 }
 
+// RefetchMessage re-downloads one already-cached message's body and
+// upserts the refreshed row — the recovery path for messages whose
+// stored body predates a parser fix (e.g. encrypted mail cached as the
+// PGP/MIME "Version: 1" control part). The caller passes the message's
+// folder; the connection is positioned here.
+func RefetchMessage(ctx context.Context, client *imapclient.Client, db *store.DB, folder store.Folder, msg store.Message) error {
+	if _, err := client.Select(folder.FullName, nil).Wait(); err != nil {
+		return fmt.Errorf("imapsync: refetch select %s: %w", folder.FullName, err)
+	}
+	if err := fetchAndAttachBody(client, imap.UID(msg.UID), &msg); err != nil {
+		return err
+	}
+	_, err := db.UpsertMessage(ctx, &msg)
+	return err
+}
+
 // fetchAndAttachBody downloads the full body for one UID and fills the
 // body, snippet, attachment, and PGP fields of msg.
 func fetchAndAttachBody(client *imapclient.Client, uid imap.UID, msg *store.Message) error {
