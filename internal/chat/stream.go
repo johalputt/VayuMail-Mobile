@@ -45,13 +45,15 @@ func (Receipt) isStreamEvent()  {}
 func (Ping) isStreamEvent()     {}
 
 // envelopeWire is the JSON shape of an envelope event. Times cross the
-// wire as Unix seconds.
+// wire as RFC 3339 strings — the format the VayuPress VayuTalk relay emits
+// (see ADR-0131). Declaring them as int64 here silently failed every
+// json.Unmarshal, so buildEvent dropped every real envelope.
 type envelopeWire struct {
 	ID         string `json:"id"`
 	From       string `json:"from"`
 	Ciphertext string `json:"ciphertext"`
-	CreatedAt  int64  `json:"created_at"`
-	ExpiresAt  int64  `json:"expires_at"`
+	CreatedAt  string `json:"created_at"`
+	ExpiresAt  string `json:"expires_at"`
 	Mode       string `json:"mode"`
 }
 
@@ -134,12 +136,16 @@ func buildEvent(name, data string) StreamEvent {
 		if json.Unmarshal([]byte(data), &w) != nil || w.ID == "" {
 			return nil
 		}
+		// Timestamps are non-critical for delivery/decryption: a malformed
+		// one yields a zero time, never a dropped envelope.
+		created, _ := time.Parse(time.RFC3339, w.CreatedAt)
+		expires, _ := time.Parse(time.RFC3339, w.ExpiresAt)
 		return Envelope{
 			ID:         w.ID,
 			From:       w.From,
 			Ciphertext: w.Ciphertext,
-			CreatedAt:  time.Unix(w.CreatedAt, 0),
-			ExpiresAt:  time.Unix(w.ExpiresAt, 0),
+			CreatedAt:  created,
+			ExpiresAt:  expires,
 			Mode:       w.Mode,
 		}
 	case "receipt":

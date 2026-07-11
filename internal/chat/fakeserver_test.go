@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
@@ -209,7 +210,15 @@ func (s *fakeTalk) pubkey(w http.ResponseWriter, r *http.Request) {
 }
 
 func envelopeSSE(id, from, ciphertext, mode string) string {
-	b, _ := json.Marshal(envelopeWire{ID: id, From: from, Ciphertext: ciphertext, Mode: mode})
+	// Mirror the real VayuPress relay's wire format: RFC 3339 timestamps
+	// (see ADR-0131). Emitting these here is what exercises the client's
+	// timestamp parse path in tests.
+	now := time.Now().UTC()
+	b, _ := json.Marshal(envelopeWire{
+		ID: id, From: from, Ciphertext: ciphertext, Mode: mode,
+		CreatedAt: now.Format(time.RFC3339),
+		ExpiresAt: now.Add(5 * time.Minute).Format(time.RFC3339),
+	})
 	return "event: envelope\ndata: " + string(b) + "\n\n"
 }
 
