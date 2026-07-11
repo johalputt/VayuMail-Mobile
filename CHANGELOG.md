@@ -6,6 +6,17 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.1] — 2026-07-11
+
+### Fixed
+- **Sideload updates now install over the previous build.** Each test
+  build was signed with a freshly generated key, and Android refuses to
+  update an app when the signature changes — so downloading a newer APK
+  appeared to do nothing (the update silently failed and the old version
+  stayed). Test builds now sign with one committed debug key, so every
+  build updates in place. (First move to this key still needs a one-time
+  uninstall of any earlier build; after that, updates are seamless.)
+
 ### Changed
 - **Every release now ships a Play Store bundle too.** The release
   workflow builds both `vayumail-<version>.apk` (sideload) and
