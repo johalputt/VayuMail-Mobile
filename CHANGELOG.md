@@ -6,6 +6,21 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.6] — 2026-07-11
+
+### Fixed
+- **Encrypted mail no longer sticks on "fetching the locked copy…".** The
+  repair loop had no terminal state: a broken cached row whose re-download
+  produced the same bytes re-fetched forever. The repair now runs exactly
+  once per session; armored bodies decrypt on-device, and mail the server
+  already opened (VayuPress 3.11.33's transparent decryption) displays
+  directly — with the Security row still reading "PGP end-to-end
+  encrypted" via the server's X-VayuPGP marker.
+- **The keyboard no longer covers the sign-in fields.** When the soft
+  keyboard opens, the connect card switches to a compact scrollable
+  layout (smaller logo, tighter spacing), keeping the email and password
+  fields visible above the keyboard.
+
 ### Added
 - **Device-approval onboarding (ADR-0011).** Connecting an account now
   registers this install as a named device with the account's VayuPress
