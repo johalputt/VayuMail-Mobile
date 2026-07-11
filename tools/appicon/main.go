@@ -17,18 +17,26 @@ import (
 )
 
 const (
-	srcPath = "ui/widgets/brand-dark.png"
+	srcPath = "ui/widgets/brand-light.png"
 	dstPath = "cmd/vayumail/appicon.png"
 	// canvas is the icon size gogio expects.
 	canvas = 512
-	// markShare is how much of the canvas height the V mark occupies —
-	// large enough to read at launcher size, small enough to survive
-	// every launcher mask shape.
-	markShare = 0.64
+	// markShare is how much of the canvas height the V mark occupies.
+	// Sized like neighboring launcher glyphs: the tile is filled by the
+	// background, the mark sits comfortably inset (~half the tile) the
+	// way Drive/GitHub/Play Console glyphs do — present, not shouting.
+	markShare = 0.52
 )
 
-// background is the brand deep-navy (theme Dark().Background).
-var background = color.NRGBA{R: 0x0A, G: 0x0E, B: 0x17, A: 0xFF}
+// background fills the whole tile; the launcher mask then shapes it.
+// White matches the light-tile convention of the surrounding icons; the
+// mark is the black (light-mode) artwork.
+var background = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
+
+// markColor is the fill for mark pixels (the light-mode artwork is
+// already near-black; painting a fixed ink keeps output deterministic
+// regardless of artwork color profile).
+var markColor = color.NRGBA{R: 0x0E, G: 0x12, B: 0x20, A: 0xFF}
 
 func main() {
 	f, err := os.Open(srcPath)
@@ -136,7 +144,8 @@ func compose(mark image.Image) *image.NRGBA {
 				return uint8(float64(s)*cov + float64(d)*(1-cov) + 0.5)
 			}
 			out.SetNRGBA(offX+x, offY+y, color.NRGBA{
-				R: blend(0xFF, dst.R), G: blend(0xFF, dst.G), B: blend(0xFF, dst.B), A: 0xFF,
+				R: blend(markColor.R, dst.R), G: blend(markColor.G, dst.G),
+				B: blend(markColor.B, dst.B), A: 0xFF,
 			})
 		}
 	}
