@@ -83,8 +83,11 @@ type AppState struct {
 	searchQuery  string
 	refreshQueue chan struct{}
 	// refetching marks messages with an in-flight body re-download so a
-	// broken row is repaired once, not on every frame the thread is open.
+	// broken row is repaired once, not on every frame the thread is open;
+	// refetched records completed attempts so the repair is terminal —
+	// a row that re-fetches to the same bytes must never loop.
 	refetching  map[int64]bool
+	refetched   map[int64]bool
 	autoWKD     bool
 	lastAutoWKD time.Time
 	locked      bool
@@ -105,6 +108,7 @@ func New(ctx context.Context, db *store.DB, mgr *syncmanager.Manager, lock *appl
 		keyring:      pgp.NewKeyring(),
 		refreshQueue: make(chan struct{}, 1),
 		refetching:   map[int64]bool{},
+		refetched:    map[int64]bool{},
 		snap: Snapshot{Unread: map[int64]int{}, Online: true,
 			NotificationsOn: true, NotifyPreviewOn: true},
 	}
@@ -195,9 +199,11 @@ func (s *AppState) Apply(ev syncmanager.Event) {
 		}
 		return
 	case syncmanager.MessageRefetchedEvent:
-		// Allow another attempt later if this one failed; on success the
-		// reload below picks up the repaired body.
+		// The single repair attempt is complete — success or not, it is
+		// terminal for this session so a row that re-fetched to the same
+		// bytes can never loop. The reload below shows the outcome.
 		delete(s.refetching, e.MessageID)
+		s.refetched[e.MessageID] = true
 	case syncmanager.CredentialUpdatedEvent:
 		// A fresh credential clears the stale auth banner; the reconnect
 		// under way proves it right or re-raises the error.
