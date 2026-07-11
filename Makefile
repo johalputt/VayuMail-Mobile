@@ -68,12 +68,12 @@ icon:
 
 android:
 	$(GO) run gioui.org/cmd/gogio@latest -target android \
-		-appid org.vayumail.mobile -o $(BIN_DIR)/vayumail.apk ./cmd/vayumail
+		-appid com.vayu.mail -o $(BIN_DIR)/vayumail.apk ./cmd/vayumail
 
 # iOS app via gogio. Requires Xcode toolchain on macOS.
 ios:
 	$(GO) run gioui.org/cmd/gogio@latest -target ios \
-		-appid org.vayumail.mobile -o $(BIN_DIR)/vayumail.app ./cmd/vayumail
+		-appid com.vayu.mail -o $(BIN_DIR)/vayumail.app ./cmd/vayumail
 
 clean:
 	rm -rf $(BIN_DIR) coverage.txt

@@ -100,7 +100,7 @@ jobs:
           GOFLAGS: -trimpath   # reproducible builds: no local paths in the binary
         run: |
           gogio -target android -arch arm64,amd64 \
-            -appid org.vayumail.mobile \
+            -appid com.vayu.mail \
             -version ${{ steps.ver.outputs.gogio }} \
             -minsdk 24 -targetsdk 34 \
             -signkey release.keystore -signpass "$SIGN_PASS" \
@@ -112,7 +112,7 @@ jobs:
           GOFLAGS: -trimpath
         run: |
           gogio -target android -arch arm64,amd64 \
-            -appid org.vayumail.mobile \
+            -appid com.vayu.mail \
             -version ${{ steps.ver.outputs.gogio }} \
             -minsdk 24 -targetsdk 34 \
             -signkey release.keystore -signpass "$SIGN_PASS" \
