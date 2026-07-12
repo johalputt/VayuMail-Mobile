@@ -6,6 +6,17 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.10] — 2026-07-12
+
+### Added
+- **Emoji now render.** The app bundles the Noto Color Emoji font (via Gio's
+  official emoji font module) and adds it as a fallback in the text shaper, so
+  emoji show as glyphs instead of empty □ boxes — in chat and everywhere else.
+  Ordinary text still uses the platform's native system font; the emoji font is an
+  additive fallback that Gio uses only for codepoints the system font lacks. Adds
+  ~10 MB to the app download (color-emoji fonts embed bitmaps) — the price of real
+  emoji in a pure-Go UI. Pinned by a shaping test so a regression fails CI.
+
 ## [2.2.9] — 2026-07-12
 
 ### Fixed

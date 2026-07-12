@@ -3,7 +3,9 @@ package theme
 import (
 	"image/color"
 
+	emoji "eliasnaur.com/font/noto/emoji/color"
 	"gioui.org/font"
+	"gioui.org/font/opentype"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/paint"
@@ -51,8 +53,25 @@ type Theme struct {
 	Shaper  *text.Shaper
 }
 
-// New builds the app theme. The shaper is created without an embedded
-// collection so Gio falls back to system fonts.
+// emojiFaces is the Noto Color Emoji fallback, parsed once. Gio shapes each text
+// cluster with whichever collection face COVERS it, so adding this face makes
+// emoji render as glyphs (instead of empty □ boxes) while ordinary text still
+// uses the platform's native system font (SF Pro / Roboto). If the font ever
+// fails to parse, the app degrades to system-only shaping — never a crash.
+var emojiFaces = parseEmojiFaces()
+
+// parseEmojiFaces decodes the embedded Noto Color Emoji font into a Gio face
+// collection, or nil on failure.
+func parseEmojiFaces() []font.FontFace {
+	face, err := opentype.Parse(emoji.TTF)
+	if err != nil {
+		return nil
+	}
+	return []font.FontFace{{Font: font.Font{Typeface: "Noto Color Emoji"}, Face: face}}
+}
+
+// New builds the app theme. The shaper keeps system fonts (native look) and adds
+// the Noto Color Emoji face as an additive fallback so emoji render.
 func New(dark bool) *Theme {
 	p := Light()
 	if dark {
@@ -61,7 +80,7 @@ func New(dark bool) *Theme {
 	return &Theme{
 		Palette: p,
 		Dark:    dark,
-		Shaper:  text.NewShaper(),
+		Shaper:  text.NewShaper(text.WithCollection(emojiFaces)),
 	}
 }
 
