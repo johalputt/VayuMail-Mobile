@@ -4,7 +4,7 @@
     <img src="assets/logo/vayumail.png" alt="VayuMail" width="300">
   </picture>
 
-  <p><strong>A sovereign mobile email client, written in pure Go.</strong></p>
+  <p><strong>A sovereign mobile email & encrypted-chat client, written in pure Go.</strong></p>
 
   <p>
     <a href="https://github.com/johalputt/VayuMail-Mobile/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/johalputt/VayuMail-Mobile/actions/workflows/ci.yml/badge.svg"></a>
@@ -41,6 +41,7 @@ versus stubbed is always truthfully recorded in
 | **Encryption** | PGP built in; auto-encrypts when recipients have keys | Plugin or absent |
 | **Key discovery** | Auto-fetches contacts' PGP keys from their server (WKD), on by default | Manual key exchange |
 | **Real-time mail** | One held IMAP IDLE socket | Battery-hungry polling |
+| **Private chat** | VayuTalk — ephemeral, E2E-encrypted, read-once; same relay as the web console | A separate messaging app & account |
 | **Telemetry** | None. Verifiable — it's open source | "Anonymized analytics" |
 | **Server key pinning** | Optional per-account SPKI pin | Not offered |
 | **App lock** | PIN gate, idle auto-lock, offline brute-force throttle | Rare or subscription-gated |
@@ -138,6 +139,23 @@ go run ./cmd/vayumail-provision -server mail.example.com -users users.txt
 
 See [docs/ADR-0003-qr-provisioning-protocol.md](docs/ADR-0003-qr-provisioning-protocol.md)
 and [docs/ADR-0009-retire-qr-scanning-direct-connect.md](docs/ADR-0009-retire-qr-scanning-direct-connect.md).
+
+## VayuTalk — ephemeral encrypted chat
+
+Beyond mail, the app carries **VayuTalk**: real-time, **PGP end-to-end-encrypted**
+messaging that interoperates with the VayuPress web console over **one shared
+relay** — a message sent from the web appears on the phone and vice-versa. Each
+message is encrypted to the recipient's key, delivered over a held
+**Server-Sent-Events** stream, and **read-once**: it vanishes when revealed or
+when its short TTL (5 min – 1 h) elapses, and nothing is ever written to disk.
+Compare **safety numbers** — yours and your contact's, side by side — over a
+trusted channel to confirm no one is in the middle.
+
+When your server advertises a dedicated, CDN-proxy-off **`talk.<domain>`** relay,
+the app discovers it automatically (confirming it is within your mail domain and
+answering as a live relay) and routes its chat stream there — so real-time
+delivery works even behind a CDN that would otherwise challenge a non-browser
+client. Otherwise it falls back to the mail domain, unchanged.
 
 ## Development
 
