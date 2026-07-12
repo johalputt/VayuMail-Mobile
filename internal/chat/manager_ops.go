@@ -108,6 +108,7 @@ func (m *Manager) handleEnvelope(e Envelope) {
 		Peer:      e.From,
 		ID:        e.ID,
 		Plaintext: string(res.Plaintext),
+		CreatedAt: e.CreatedAt,
 		ExpiresAt: e.ExpiresAt,
 	})
 }

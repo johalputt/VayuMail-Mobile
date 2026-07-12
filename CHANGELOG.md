@@ -6,6 +6,18 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.3] — 2026-07-12
+
+### Added
+- **Message clock time.** Each chat bubble now shows the wall-clock time it was
+  sent (the server's send time, in your local zone), matching what the web
+  shows for the same message — alongside the existing disappear-countdown.
+
+### Fixed
+- **Incoming messages show when they were sent, not when the phone received
+  them.** A message that waited in the queue while you were offline now displays
+  its real send time (from the server), instead of the moment it arrived.
+
 ## [2.2.2] — 2026-07-12
 
 ### Fixed

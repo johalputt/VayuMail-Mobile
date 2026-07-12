@@ -14,6 +14,10 @@ type IncomingMessage struct {
 	Peer      string
 	ID        string
 	Plaintext string
+	// CreatedAt is the server's authoritative send time (from the envelope),
+	// so a message shows when it was SENT, not when this device happened to
+	// receive it — which matters for a message queued while we were offline.
+	CreatedAt time.Time
 	ExpiresAt time.Time
 }
 

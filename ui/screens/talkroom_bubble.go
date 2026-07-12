@@ -102,6 +102,18 @@ func (s *TalkRoom) metaRow(gtx layout.Context, th *theme.Theme, m state.ChatMess
 		arc = th.Palette.Accent
 	}
 	return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+		// Clock time (the server's send time, shown in this device's local zone),
+		// so a bubble reads the same wall-clock time as the same message on the
+		// web — not the device's receive time.
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			if m.CreatedAt.IsZero() {
+				return layout.Dimensions{}
+			}
+			return layout.Inset{Right: theme.XS}.Layout(gtx,
+				func(gtx layout.Context) layout.Dimensions {
+					return th.Label(gtx, theme.Micro, meta, m.CreatedAt.Local().Format("15:04"), 1)
+				})
+		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			if m.ExpiresAt.IsZero() {
 				return layout.Dimensions{}

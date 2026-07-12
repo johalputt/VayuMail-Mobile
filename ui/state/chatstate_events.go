@@ -218,11 +218,15 @@ func (cs *ChatState) applyIncoming(e chat.IncomingMessage) {
 			return
 		}
 	}
+	created := e.CreatedAt
+	if created.IsZero() {
+		created = time.Now()
+	}
 	c.msgs = append(c.msgs, &ChatMessage{
 		ID:        e.ID,
 		Peer:      c.peer,
 		Text:      e.Plaintext,
-		CreatedAt: time.Now(),
+		CreatedAt: created,
 		ExpiresAt: e.ExpiresAt,
 		Status:    MsgSealed,
 	})
