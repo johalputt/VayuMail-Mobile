@@ -6,6 +6,15 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.5] — 2026-07-12
+
+### Fixed
+- **Faster recovery when a key re-sync briefly fails.** The self-heal that
+  re-fetches your key on a decrypt failure now waits only a few seconds before
+  retrying after a *failed* fetch (instead of the full 30-second cooldown used
+  after a successful one), so a momentary network/server blip no longer delays a
+  web-sent message — while a persistent failure still can't hammer the server.
+
 ## [2.2.4] — 2026-07-12
 
 ### Fixed

@@ -124,33 +124,44 @@ func (m *Manager) handleEnvelope(e Envelope) {
 	})
 }
 
-// resyncMinInterval bounds how often a decrypt failure may trigger a key
-// re-fetch, so a stream full of envelopes we can't open can't stampede the
-// key endpoint.
-const resyncMinInterval = 30 * time.Second
+// resyncCooldown is the wait after a SUCCESSFUL key re-fetch before another is
+// allowed — long, because once we hold the current key there is nothing to fix.
+// resyncFailBackoff is the (short) wait after a FAILED fetch, so a transient
+// key-endpoint hiccup doesn't lock recovery out for the full cooldown, while a
+// persistent failure still can't stampede the endpoint.
+const (
+	resyncCooldown    = 30 * time.Second
+	resyncFailBackoff = 5 * time.Second
+)
 
-// resyncOnce re-imports the mailbox's authoritative private key (at most once
-// per resyncMinInterval) and reports whether a fresh key may now be present to
-// retry against. Best-effort: any failure returns false and the caller drops
+// resyncOnce re-imports the mailbox's authoritative private key (rate-limited)
+// and reports whether a fresh key may now be present to retry against. A failed
+// fetch only imposes the short backoff, so recovery isn't delayed by a blip;
+// a success imposes the long cooldown. Best-effort: on failure the caller drops
 // the message, exactly as before.
 func (m *Manager) resyncOnce() bool {
 	if m.resyncKey == nil {
 		return false
 	}
 	m.mu.Lock()
-	if !m.lastResync.IsZero() && time.Since(m.lastResync) < resyncMinInterval {
+	if !m.nextResync.IsZero() && time.Now().Before(m.nextResync) {
 		m.mu.Unlock()
 		return false
 	}
-	m.lastResync = time.Now()
 	m.mu.Unlock()
 
 	ctx, cancel := context.WithTimeout(m.ctx, 20*time.Second)
 	defer cancel()
-	if err := m.resyncKey(ctx); err != nil {
-		return false
+	err := m.resyncKey(ctx)
+
+	m.mu.Lock()
+	if err != nil {
+		m.nextResync = time.Now().Add(resyncFailBackoff)
+	} else {
+		m.nextResync = time.Now().Add(resyncCooldown)
 	}
-	return true
+	m.mu.Unlock()
+	return err == nil
 }
 
 // handleReceipt maps a receipt to a read or expired event.

@@ -63,7 +63,7 @@ type Manager struct {
 	resyncKey  func(context.Context) error
 	tp         *Transport
 
-	lastResync time.Time // guards the decrypt-failure resync (see resyncOnce)
+	nextResync time.Time // earliest time a decrypt-failure resync may run again
 
 	eventCh chan Event
 
