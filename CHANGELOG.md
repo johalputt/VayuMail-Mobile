@@ -6,6 +6,23 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.6] — 2026-07-12
+
+### Added
+- **Verify screen now shows BOTH safety numbers — yours and your contact's.**
+  Previously it showed only the contact's number, so there was nothing to read
+  back to them. It now displays "You" (your own key) above the contact's, exactly
+  like the web console, so the two of you can compare both numbers over a trusted
+  channel and confirm no one is in the middle. Your own number appears as soon as
+  your key has synced.
+
+### Notes
+- Pairs with VayuPress 3.11.47, which stops the web console from consuming
+  messages out of a shared mailbox's queue before this app can receive them (the
+  cause of "an app-to-app message only shows up in the web"). Update the server
+  too, and confirm it is running the new build with
+  `curl -s https://YOUR-DOMAIN/health` → `"version":"3.11.47"`.
+
 ## [2.2.5] — 2026-07-12
 
 ### Fixed

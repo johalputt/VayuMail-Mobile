@@ -135,6 +135,17 @@ func (k *Keyring) SigningEntity(email string) (*openpgp.Entity, error) {
 	return e, nil
 }
 
+// FingerprintForEmail returns the lowercase hex fingerprint of the first key
+// usable for email — used to show the user their OWN safety number on the
+// verify screen (the counterpart to EmailForFingerprint).
+func (k *Keyring) FingerprintForEmail(email string) (string, error) {
+	e, err := k.EntityByEmail(email)
+	if err != nil {
+		return "", err
+	}
+	return fingerprintOf(e), nil
+}
+
 // EmailForFingerprint returns the primary identity email of a key.
 func (k *Keyring) EmailForFingerprint(fingerprint string) (string, error) {
 	e := k.byFingerprint(fingerprint)

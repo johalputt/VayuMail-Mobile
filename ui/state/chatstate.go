@@ -71,13 +71,15 @@ type ChatConversation struct {
 // frame. Slices and maps are freshly built per Snapshot() call so the
 // render loop never races the drain goroutine.
 type ChatSnapshot struct {
-	Connected     bool
-	Online        bool
-	ActivePeer    string
-	Conversations []ChatConversation
-	Messages      []ChatMessage
-	Verified      bool
-	Fingerprint   string
+	Connected       bool
+	Online          bool
+	ActivePeer      string
+	Conversations   []ChatConversation
+	Messages        []ChatMessage
+	Verified        bool
+	Fingerprint     string // the active peer's key fingerprint
+	SelfEmail       string // this mailbox's own address
+	SelfFingerprint string // this mailbox's own key fingerprint (for "your safety number")
 }
 
 // chatConv is the authoritative per-peer record held under the mutex.
@@ -135,6 +137,14 @@ func (cs *ChatState) Snapshot() ChatSnapshot {
 		Connected:  cs.mgr != nil,
 		Online:     cs.online,
 		ActivePeer: cs.activePeer,
+		SelfEmail:  cs.account.EmailAddress,
+	}
+	// Our own safety number, so the verify screen can show both keys (as the
+	// web console does). Best-effort: absent until the key is synced/minted.
+	if cs.keyring != nil && cs.account.EmailAddress != "" {
+		if fp, err := cs.keyring.FingerprintForEmail(cs.account.EmailAddress); err == nil {
+			snap.SelfFingerprint = fp
+		}
 	}
 	convs := make([]ChatConversation, 0, len(cs.convs))
 	for _, c := range cs.convs {

@@ -83,7 +83,7 @@ func (s *TalkVerify) body(gtx layout.Context, env *Env, th *theme.Theme, snap st
 					}),
 					layout.Rigid(layout.Spacer{Height: theme.LG}.Layout),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						return s.numberPanel(gtx, th, snap.Fingerprint)
+						return s.numberPanel(gtx, th, snap)
 					}),
 					layout.Rigid(layout.Spacer{Height: theme.LG}.Layout),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -93,9 +93,11 @@ func (s *TalkVerify) body(gtx layout.Context, env *Env, th *theme.Theme, snap st
 	})
 }
 
-// numberPanel renders the grouped safety number, or a fetch prompt when
-// the key has not been retrieved yet.
-func (s *TalkVerify) numberPanel(gtx layout.Context, th *theme.Theme, fingerprint string) layout.Dimensions {
+// numberPanel renders BOTH safety numbers — the user's own key and the
+// peer's — so they can be compared side by side over a trusted channel,
+// exactly as the web console shows them. The peer row falls back to a fetch
+// prompt until that contact's key has been retrieved.
+func (s *TalkVerify) numberPanel(gtx layout.Context, th *theme.Theme, snap state.ChatSnapshot) layout.Dimensions {
 	return layout.Background{}.Layout(gtx,
 		func(gtx layout.Context) layout.Dimensions {
 			gtx.Constraints.Min.X = gtx.Constraints.Max.X
@@ -105,13 +107,34 @@ func (s *TalkVerify) numberPanel(gtx layout.Context, th *theme.Theme, fingerprin
 		},
 		func(gtx layout.Context) layout.Dimensions {
 			return layout.UniformInset(theme.LG).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				if fingerprint == "" {
-					return th.Label(gtx, theme.Body, th.Palette.Subtle,
-						"No key yet — fetch this contact's key to see the safety number.", 0)
-				}
-				return th.Label(gtx, theme.Title, th.Palette.Accent, state.SafetyNumber(fingerprint), 0)
+				return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return numberRow(gtx, th, "You", snap.SelfFingerprint,
+							"Syncing your key… reopen this screen in a moment.")
+					}),
+					layout.Rigid(layout.Spacer{Height: theme.MD}.Layout),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return numberRow(gtx, th, snap.ActivePeer, snap.Fingerprint,
+							"No key yet — fetch this contact's key to see their safety number.")
+					}))
 			})
 		})
+}
+
+// numberRow renders one labelled safety number, or a hint when its key is
+// not yet available.
+func numberRow(gtx layout.Context, th *theme.Theme, label, fingerprint, empty string) layout.Dimensions {
+	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return th.Label(gtx, theme.Caption, th.Palette.Subtle, label, 1)
+		}),
+		layout.Rigid(layout.Spacer{Height: theme.XS}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			if fingerprint == "" {
+				return th.Label(gtx, theme.Body, th.Palette.Subtle, empty, 0)
+			}
+			return th.Label(gtx, theme.Title, th.Palette.Accent, state.SafetyNumber(fingerprint), 0)
+		}))
 }
 
 // action shows the primary control appropriate to the current state.
