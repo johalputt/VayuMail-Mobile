@@ -2,6 +2,7 @@ package screens
 
 import (
 	"image"
+	"strings"
 
 	"gioui.org/layout"
 	"gioui.org/op/clip"
@@ -128,13 +129,58 @@ func numberRow(gtx layout.Context, th *theme.Theme, label, fingerprint, empty st
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return th.Label(gtx, theme.Caption, th.Palette.Subtle, label, 1)
 		}),
-		layout.Rigid(layout.Spacer{Height: theme.XS}.Layout),
+		layout.Rigid(layout.Spacer{Height: theme.SM}.Layout),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			if fingerprint == "" {
 				return th.Label(gtx, theme.Body, th.Palette.Subtle, empty, 0)
 			}
-			return th.Label(gtx, theme.Title, th.Palette.Accent, state.SafetyNumber(fingerprint), 0)
+			return safetyGrid(gtx, th, fingerprint)
 		}))
+}
+
+// safetyGroupsPerRow is how many 4-character groups sit on one grid line.
+const safetyGroupsPerRow = 5
+
+// safetyGrid lays the safety number out as an aligned grid — each 4-character
+// group in an equal-width, centered cell — so the columns line up cleanly
+// regardless of the system font (a flowing proportional string does not).
+func safetyGrid(gtx layout.Context, th *theme.Theme, fingerprint string) layout.Dimensions {
+	groups := strings.Fields(state.SafetyNumber(fingerprint))
+	if len(groups) == 0 {
+		return layout.Dimensions{}
+	}
+	var rows []layout.FlexChild
+	for i := 0; i < len(groups); i += safetyGroupsPerRow {
+		end := i + safetyGroupsPerRow
+		if end > len(groups) {
+			end = len(groups)
+		}
+		row := groups[i:end]
+		rows = append(rows,
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return safetyRow(gtx, th, row)
+			}),
+			layout.Rigid(layout.Spacer{Height: theme.XS}.Layout),
+		)
+	}
+	return layout.Flex{Axis: layout.Vertical}.Layout(gtx, rows...)
+}
+
+// safetyRow lays one line of up to safetyGroupsPerRow groups in equal cells.
+func safetyRow(gtx layout.Context, th *theme.Theme, row []string) layout.Dimensions {
+	cells := make([]layout.FlexChild, safetyGroupsPerRow)
+	for c := 0; c < safetyGroupsPerRow; c++ {
+		g := ""
+		if c < len(row) {
+			g = row[c]
+		}
+		cells[c] = layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+			return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return th.Label(gtx, theme.BodyStrong, th.Palette.Accent, g, 1)
+			})
+		})
+	}
+	return layout.Flex{Axis: layout.Horizontal}.Layout(gtx, cells...)
 }
 
 // action shows the primary control appropriate to the current state.

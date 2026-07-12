@@ -6,6 +6,25 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.11] — 2026-07-12
+
+### Fixed
+- **Real text renders correctly again — reverted the colour-emoji font.** The
+  bundled Noto Color Emoji font (2.2.10) broke text: this build of Gio does not
+  rasterise its colour glyphs, and the font also claimed the ASCII **digits**
+  (they exist in it for keycap emoji like 1️⃣), so clock times showed as `:` with
+  the numbers blank, safety numbers rendered as scattered letters with the digits
+  gone, and emoji messages showed as empty bubbles. Removing the font restores
+  correct rendering of all letters, digits, times and safety numbers. Emoji again
+  fall back to the platform glyphs; a proper emoji solution needs a monochrome
+  (outline) font this build of Gio can actually draw — tracked as a follow-up.
+
+### Changed
+- **Verify screen: safety numbers now render as a clean, aligned grid.** Each
+  four-character group sits in its own equal-width, centered cell (five per row),
+  so the columns line up neatly instead of flowing as a ragged proportional
+  string — matching the tidy layout of the web console.
+
 ## [2.2.10] — 2026-07-12
 
 ### Added

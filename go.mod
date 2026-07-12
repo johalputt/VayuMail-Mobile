@@ -5,7 +5,6 @@ go 1.25.0
 toolchain go1.25.12
 
 require (
-	eliasnaur.com/font v0.0.0-20230308162249-dd43949cb42d
 	gioui.org v0.10.1
 	gioui.org/x v0.10.1
 	github.com/ProtonMail/go-crypto v1.4.1

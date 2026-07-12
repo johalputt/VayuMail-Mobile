@@ -3,9 +3,7 @@ package theme
 import (
 	"image/color"
 
-	emoji "eliasnaur.com/font/noto/emoji/color"
 	"gioui.org/font"
-	"gioui.org/font/opentype"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/paint"
@@ -53,25 +51,12 @@ type Theme struct {
 	Shaper  *text.Shaper
 }
 
-// emojiFaces is the Noto Color Emoji fallback, parsed once. Gio shapes each text
-// cluster with whichever collection face COVERS it, so adding this face makes
-// emoji render as glyphs (instead of empty □ boxes) while ordinary text still
-// uses the platform's native system font (SF Pro / Roboto). If the font ever
-// fails to parse, the app degrades to system-only shaping — never a crash.
-var emojiFaces = parseEmojiFaces()
-
-// parseEmojiFaces decodes the embedded Noto Color Emoji font into a Gio face
-// collection, or nil on failure.
-func parseEmojiFaces() []font.FontFace {
-	face, err := opentype.Parse(emoji.TTF)
-	if err != nil {
-		return nil
-	}
-	return []font.FontFace{{Font: font.Font{Typeface: "Noto Color Emoji"}, Face: face}}
-}
-
-// New builds the app theme. The shaper keeps system fonts (native look) and adds
-// the Noto Color Emoji face as an additive fallback so emoji render.
+// New builds the app theme. The shaper uses the platform's native system fonts
+// (SF Pro on iOS, Roboto on Android). A bundled colour-emoji font was tried and
+// reverted: Gio (this version) does not rasterise its colour glyphs, and the font
+// also claimed the ASCII digits (used in keycap emoji), so digits, clock times
+// and safety numbers rendered blank. System-only shaping keeps all real text —
+// letters, digits, times — correct; emoji fall back to the platform's own glyphs.
 func New(dark bool) *Theme {
 	p := Light()
 	if dark {
@@ -80,7 +65,7 @@ func New(dark bool) *Theme {
 	return &Theme{
 		Palette: p,
 		Dark:    dark,
-		Shaper:  text.NewShaper(text.WithCollection(emojiFaces)),
+		Shaper:  text.NewShaper(),
 	}
 }
 
