@@ -6,6 +6,25 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.9] — 2026-07-12
+
+### Fixed
+- **Chat is now two-sided: your messages sit on the right, theirs on the left.**
+  Sent and received bubbles were both hugging the left edge. The cause was a
+  layout bug — the flexible spacer that pushes a sent bubble to the right returned
+  a zero-size box, and Gio advances by a child's returned size, so the spacer
+  collapsed and the bubble fell back to the left. The spacer now fills its
+  allocated width, so the thread reads like a normal chat. (Also fixes the
+  outgoing status — “Sending…/Sent/Queued/Read” — aligning to the far edge of the
+  bubble.)
+
+### Known limitation
+- Emoji still render as empty boxes on the phone. This is a limitation of the
+  pure-Go UI toolkit (Gio), which does not use Android's colour-emoji font; the
+  message text itself transmits and decrypts correctly (the web shows the emoji).
+  A bundled emoji font is planned. Plain text and all message delivery are
+  unaffected.
+
 ## [2.2.8] — 2026-07-12
 
 ### Fixed

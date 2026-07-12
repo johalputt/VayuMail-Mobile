@@ -37,7 +37,17 @@ func (s *TalkRoom) bubble(gtx layout.Context, env *Env, th *theme.Theme, m state
 	}
 }
 
-// bubbleRow aligns a bubble to the correct side and caps its width.
+// flexSpacer fills the flexible space its Flex allocates. This MUST return the
+// allocated size, not layout.Dimensions{}: Gio's Flex advances the layout cursor
+// by each child's RETURNED size, so a zero-size Flexed child collapses and a
+// bubble meant to be pushed to the far side lands back at the near side — the
+// cause of "sent and received messages both showing on the left".
+func flexSpacer(gtx layout.Context) layout.Dimensions {
+	return layout.Dimensions{Size: gtx.Constraints.Min}
+}
+
+// bubbleRow aligns a bubble to the correct side (sent → right, received → left)
+// and caps its width so a long message never spans the full column.
 func bubbleRow(gtx layout.Context, self bool, inner layout.Widget) layout.Dimensions {
 	max := gtx.Constraints.Max.X * 78 / 100
 	capped := func(gtx layout.Context) layout.Dimensions {
@@ -48,12 +58,12 @@ func bubbleRow(gtx layout.Context, self bool, inner layout.Widget) layout.Dimens
 		func(gtx layout.Context) layout.Dimensions {
 			if self {
 				return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
-					layout.Flexed(1, func(gtx layout.Context) layout.Dimensions { return layout.Dimensions{} }),
+					layout.Flexed(1, flexSpacer),
 					layout.Rigid(capped))
 			}
 			return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
 				layout.Rigid(capped),
-				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions { return layout.Dimensions{} }))
+				layout.Flexed(1, flexSpacer))
 		})
 }
 
@@ -130,7 +140,7 @@ func (s *TalkRoom) metaRow(gtx layout.Context, th *theme.Theme, m state.ChatMess
 					return th.Label(gtx, theme.Micro, meta, label, 1)
 				})
 		}),
-		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions { return layout.Dimensions{} }),
+		layout.Flexed(1, flexSpacer),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			label := statusLabel(m)
 			if label == "" {
