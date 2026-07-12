@@ -6,6 +6,17 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.4] — 2026-07-12
+
+### Fixed
+- **Messages sent from the web now reliably decrypt on the phone.** If an
+  incoming message can't be opened — because this device's key had drifted from
+  the one the server encrypted to — the app now automatically re-fetches its
+  authoritative key from the server and retries, instead of silently dropping the
+  message. This self-heals a stale key without any manual "sync" step. The
+  re-fetch is rate-limited so a burst of unreadable messages can't hammer the
+  server. (`TestHandleEnvelopeResyncsOnDecryptFailure`.)
+
 ### Added
 - **Automated Google Play publishing.** The release workflow now uploads the
   signed AAB to Google Play on every release (gated on a service-account secret;

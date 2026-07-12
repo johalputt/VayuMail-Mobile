@@ -7,6 +7,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -69,14 +70,20 @@ func (cs *ChatState) startManager(acct store.Account) {
 	// is a best-effort, idempotent self-heal on every chat start: importing the
 	// authoritative key makes the whole keyring able to open anything encrypted
 	// to this mailbox, on either surface.
-	cs.syncOwnKey(acct.EmailAddress, credential)
+	email := acct.EmailAddress
+	sctx, scancel := context.WithTimeout(context.Background(), 20*time.Second)
+	_ = cs.syncOwnKey(sctx, email, credential)
+	scancel()
 
 	mgr := chat.New(chat.Config{
 		Keyring:    cs.keyring,
-		SelfEmail:  acct.EmailAddress,
-		Domain:     domainOf(acct.EmailAddress),
+		SelfEmail:  email,
+		Domain:     domainOf(email),
 		Credential: credential,
 		Settings:   cs.db,
+		// Self-heal: if an incoming message can't be decrypted, our key has
+		// drifted from the server's — re-fetch it and retry rather than dropping.
+		ResyncKey: func(ctx context.Context) error { return cs.syncOwnKey(ctx, email, credential) },
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	mgr.Start(ctx)
@@ -102,23 +109,27 @@ func (cs *ChatState) startManager(acct store.Account) {
 // web composes against the server-held key. Best-effort: on any failure the
 // device keeps whatever key it already has. Runs on startManager's goroutine
 // (already off the frame loop), so the brief network call is fine here.
-func (cs *ChatState) syncOwnKey(email string, credential func() (string, error)) {
+func (cs *ChatState) syncOwnKey(ctx context.Context, email string, credential func() (string, error)) error {
 	if cs.keyring == nil || email == "" {
-		return
+		return errors.New("chat: no keyring or email for key sync")
 	}
 	pw, err := credential()
-	if err != nil || pw == "" {
-		return
+	if err != nil {
+		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
+	if pw == "" {
+		return errors.New("chat: no credential for key sync")
+	}
 	armored, err := account.FetchPrivateKey(ctx, http.DefaultClient, email, pw)
-	if err != nil || armored == "" {
-		return
+	if err != nil {
+		return err
+	}
+	if armored == "" {
+		return errors.New("chat: server returned no private key")
 	}
 	fps, err := cs.keyring.ImportArmored([]byte(armored))
 	if err != nil {
-		return
+		return err
 	}
 	// Persist so the key survives a restart and is available to mail decryption
 	// too, not only this chat session.
@@ -129,6 +140,7 @@ func (cs *ChatState) syncOwnKey(email string, credential func() (string, error))
 			pcancel()
 		}
 	}
+	return nil
 }
 
 // Stop tears VayuTalk down (used on logout). The blocking Close runs on a

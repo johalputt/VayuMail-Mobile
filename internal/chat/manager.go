@@ -41,6 +41,11 @@ type Config struct {
 	// Settings optionally persists verified fingerprints; nil keeps them
 	// in memory only.
 	Settings SettingStore
+	// ResyncKey re-fetches this mailbox's authoritative private key from the
+	// server and imports it into the keyring. It is called (rate-limited) when an
+	// incoming message fails to decrypt, so a device whose key has drifted from
+	// the server's self-heals instead of silently dropping messages. Optional.
+	ResyncKey func(context.Context) error
 	// HTTPClient optionally overrides the transport (test injection).
 	HTTPClient *http.Client
 }
@@ -55,7 +60,10 @@ type Manager struct {
 	domain     string
 	credential func() (string, error)
 	settings   SettingStore
+	resyncKey  func(context.Context) error
 	tp         *Transport
+
+	lastResync time.Time // guards the decrypt-failure resync (see resyncOnce)
 
 	eventCh chan Event
 
@@ -82,6 +90,7 @@ func New(cfg Config) *Manager {
 		domain:      cfg.Domain,
 		credential:  cfg.Credential,
 		settings:    cfg.Settings,
+		resyncKey:   cfg.ResyncKey,
 		tp:          newTransport(base),
 		eventCh:     make(chan Event, 128),
 		sentTo:      make(map[string]string),

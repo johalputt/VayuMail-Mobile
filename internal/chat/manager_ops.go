@@ -102,7 +102,18 @@ func (m *Manager) handleEnvelope(e Envelope) {
 	}
 	res, err := m.keyring.Decrypt(raw)
 	if err != nil {
-		return
+		// Most likely our private key has drifted from the one the server
+		// encrypted to (e.g. it was minted or its resolution changed after our
+		// last sync). Re-fetch the authoritative key and try once more, so a
+		// web-composed message isn't silently dropped. Rate-limited so a burst of
+		// undecryptable envelopes can't hammer the server.
+		if !m.resyncOnce() {
+			return
+		}
+		res, err = m.keyring.Decrypt(raw)
+		if err != nil {
+			return
+		}
 	}
 	m.emit(IncomingMessage{
 		Peer:      e.From,
@@ -111,6 +122,35 @@ func (m *Manager) handleEnvelope(e Envelope) {
 		CreatedAt: e.CreatedAt,
 		ExpiresAt: e.ExpiresAt,
 	})
+}
+
+// resyncMinInterval bounds how often a decrypt failure may trigger a key
+// re-fetch, so a stream full of envelopes we can't open can't stampede the
+// key endpoint.
+const resyncMinInterval = 30 * time.Second
+
+// resyncOnce re-imports the mailbox's authoritative private key (at most once
+// per resyncMinInterval) and reports whether a fresh key may now be present to
+// retry against. Best-effort: any failure returns false and the caller drops
+// the message, exactly as before.
+func (m *Manager) resyncOnce() bool {
+	if m.resyncKey == nil {
+		return false
+	}
+	m.mu.Lock()
+	if !m.lastResync.IsZero() && time.Since(m.lastResync) < resyncMinInterval {
+		m.mu.Unlock()
+		return false
+	}
+	m.lastResync = time.Now()
+	m.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(m.ctx, 20*time.Second)
+	defer cancel()
+	if err := m.resyncKey(ctx); err != nil {
+		return false
+	}
+	return true
 }
 
 // handleReceipt maps a receipt to a read or expired event.
