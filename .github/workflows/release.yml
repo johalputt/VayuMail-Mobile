@@ -195,3 +195,41 @@ jobs:
             vayumail-*.apk
             vayumail-*.aab
           body_path: release-notes.md
+
+      # ── Google Play automated publishing (optional) ──────────────────────────
+      # Turns every git release into a Play release. It runs ONLY when a Play
+      # service-account secret is set AND the AAB was signed with the real upload
+      # key (a test-key build must never reach Play), so it is a safe no-op until
+      # you finish the one-time setup in docs/PLAY-PUBLISHING.md. Placed after the
+      # GitHub release so a Play hiccup never blocks the release or its artifacts.
+      # The track defaults to `internal` (instant, no review — ideal while
+      # iterating); set the repo variable PLAY_TRACK to `production` when ready.
+      - name: Check Play publishing config
+        id: playcfg
+        env:
+          SA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -n "$SA" ] && [ "$SIGN_KIND" = "release" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Play publishing skipped: set the PLAY_SERVICE_ACCOUNT_JSON secret and the release keystore secrets to enable it (see docs/PLAY-PUBLISHING.md)."
+          fi
+
+      - name: Prepare Play "what's new"
+        if: steps.playcfg.outputs.enabled == 'true'
+        run: |
+          mkdir -p distribution/whatsnew
+          # Play caps release notes at 500 characters per locale.
+          head -c 480 release-notes.md > distribution/whatsnew/whatsnew-en-US
+
+      - name: Publish to Google Play
+        if: steps.playcfg.outputs.enabled == 'true'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.vayu.mail
+          releaseFiles: vayumail-${{ steps.ver.outputs.semver }}.aab
+          track: ${{ vars.PLAY_TRACK || 'internal' }}
+          status: completed
+          whatsNewDirectory: distribution/whatsnew

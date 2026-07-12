@@ -6,6 +6,13 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Automated Google Play publishing.** The release workflow now uploads the
+  signed AAB to Google Play on every release (gated on a service-account secret;
+  a no-op until configured). Once set up, a GitHub release becomes a Play release
+  with no manual step, and Play updates the app on every device automatically —
+  no sideloading. One-time setup is documented in `docs/PLAY-PUBLISHING.md`.
+
 ## [2.2.3] — 2026-07-12
 
 ### Added
