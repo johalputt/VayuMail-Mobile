@@ -6,6 +6,24 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.7] — 2026-07-12
+
+### Added
+- **Chat automatically uses your server's proxy-off `talk.<domain>` relay when it
+  exists.** If a CDN (e.g. Cloudflare) sits in front of your server, its bot
+  challenge blocks the app's long-lived chat stream — so the app could send but
+  never receive. When VayuPress advertises a dedicated `talk.` subdomain (set up
+  automatically once you point its DNS), the app now discovers it, confirms it is
+  within your mail domain and answering as a live relay, and routes its chat
+  stream there — bypassing the CDN with no setting to change. If none is
+  advertised (or it isn't reachable), the app keeps using the mail domain exactly
+  as before, so nothing changes for servers without a talk subdomain.
+
+### Notes
+- Pairs with VayuPress 3.11.48, which provisions the `talk.<domain>` vhost + TLS
+  cert and advertises the host on its own. See that release's notes: your only
+  step is one DNS record.
+
 ## [2.2.6] — 2026-07-12
 
 ### Added

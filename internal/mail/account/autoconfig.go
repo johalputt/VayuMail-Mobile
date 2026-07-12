@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // AutoconfigSchema is the version of the first-party VayuMail autoconfig
@@ -31,6 +32,12 @@ type autoconfigDoc struct {
 	UsernameIsEmail bool               `json:"usernameIsEmail"`
 	Auth            string             `json:"auth"`
 	WKD             bool               `json:"wkd"`
+	// Talk is the host the server advertises for the VayuTalk relay — a dedicated
+	// subdomain the operator points straight at the origin with any CDN proxy
+	// OFF, so the app's long-lived SSE stream is never buffered or bot-challenged.
+	// Empty (the common case) means "use the mail domain", so this is fully
+	// backward compatible with servers that predate it.
+	Talk string `json:"talk,omitempty"`
 }
 
 type autoconfigEndpoint struct {
@@ -196,6 +203,97 @@ func tlsModeFromWire(s string) (TLSMode, error) {
 	default:
 		return "", fmt.Errorf("unsupported socket type %q", s)
 	}
+}
+
+// ResolveTalkHost picks the hostname the app should reach the VayuTalk relay on
+// for email. It prefers the talk host advertised in the domain's autoconfig (a
+// dedicated CDN-proxy-off subdomain), and confirms it is actually serving before
+// committing; on anything doubtful it returns the mail domain, so a server
+// without a talk subdomain keeps working exactly as before. The returned value is
+// the host the chat transport talks to — never anything outside the mail domain.
+func ResolveTalkHost(ctx context.Context, client *http.Client, email string) string {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	at := strings.LastIndex(email, "@")
+	if at <= 0 || at == len(email)-1 {
+		return ""
+	}
+	domain := strings.ToLower(strings.TrimSpace(email[at+1:]))
+	if !publicMailDomain(domain) {
+		return ""
+	}
+	adv := advertisedTalkHost(ctx, client, domain)
+	if adv == "" || adv == domain {
+		return domain
+	}
+	// Advertised a dedicated subdomain — use it only if it answers as a live relay
+	// right now (guards against a stale advertisement or an unfinished cert), else
+	// fall back to the mail domain.
+	if probeTalkRelay(ctx, client, adv) {
+		return adv
+	}
+	return domain
+}
+
+// advertisedTalkHost fetches the domain's autoconfig and returns the talk host it
+// advertises, validated to be within the mail domain. "" means none advertised.
+func advertisedTalkHost(ctx context.Context, client *http.Client, domain string) string {
+	noFollow := *client
+	noFollow.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	for _, u := range []string{
+		"https://" + domain + "/.well-known/vayumail/autoconfig.json",
+		"https://autoconfig." + domain + "/.well-known/vayumail/autoconfig.json",
+	} {
+		doc, err := fetchAutoconfig(ctx, &noFollow, u)
+		if err != nil {
+			continue
+		}
+		return talkHostFor(doc.Talk, domain)
+	}
+	return ""
+}
+
+// talkHostFor validates an advertised talk host against the mail domain. Because
+// the app sends the mailbox credential to this host to obtain a token, it is
+// accepted ONLY when it is the mail domain itself or a subdomain of it — a
+// tampered autoconfig document can never redirect the credential-bearing talk
+// connection to a foreign server. "" means "no valid host; use the mail domain".
+func talkHostFor(advertised, domain string) string {
+	h := strings.ToLower(strings.TrimSpace(advertised))
+	if h == "" || !publicMailDomain(h) {
+		return ""
+	}
+	if h == domain || strings.HasSuffix(h, "."+domain) {
+		return h
+	}
+	return ""
+}
+
+// probeTalkRelay reports whether host is serving a live VayuTalk relay right now.
+// It sends an UNAUTHENTICATED GET of the stream endpoint (never a credential): a
+// live relay answers 401 (auth required), whereas a dial/TLS error, a CDN
+// challenge page, or a 404/503 all mean "not a usable relay here". Short-timeout
+// and best-effort.
+func probeTalkRelay(ctx context.Context, client *http.Client, host string) bool {
+	if !publicMailDomain(host) {
+		return false
+	}
+	pctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(pctx, http.MethodGet, "https://"+host+"/api/v1/talk/stream", nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Accept", "text/event-stream")
+	noFollow := *client
+	noFollow.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := noFollow.Do(req)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == http.StatusUnauthorized
 }
 
 // mailHostRe matches a syntactically valid multi-label public DNS hostname. It

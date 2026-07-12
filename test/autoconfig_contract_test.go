@@ -71,6 +71,59 @@ func TestAutoconfigContractParsesServerDocument(t *testing.T) {
 	}
 }
 
+// TestResolveTalkHost exercises the app half of the CDN-proxy-off talk subdomain:
+// it uses the advertised talk host only when it is within the mail domain AND
+// answers as a live relay, and otherwise falls back to the mail domain so a
+// server without a talk subdomain (or one not yet serving) keeps working.
+func TestResolveTalkHost(t *testing.T) {
+	const base = `{"schema":"vayumail-autoconfig/1","domain":"example.com","displayName":"X","imap":{"host":"mail.example.com","port":993,"tls":"tls"},"smtp":{"host":"mail.example.com","port":587,"tls":"starttls"},"usernameIsEmail":true,"auth":"password","wkd":true`
+
+	// talkStatus is the status the fake relay returns for an unauth stream probe;
+	// 401 means "live relay here".
+	newClient := func(t *testing.T, doc string, talkStatus int) *http.Client {
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/.well-known/vayumail/autoconfig.json":
+				w.Header().Set("Content-Type", "application/json; charset=utf-8")
+				_, _ = w.Write([]byte(doc))
+			case "/api/v1/talk/stream":
+				w.WriteHeader(talkStatus)
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		t.Cleanup(srv.Close)
+		c := srv.Client()
+		c.Transport = rewriteHost(c.Transport, srv.Listener.Addr().String())
+		return c
+	}
+
+	t.Run("advertised subdomain that answers is used", func(t *testing.T) {
+		c := newClient(t, base+`,"talk":"talk.example.com"}`, http.StatusUnauthorized)
+		if got := account.ResolveTalkHost(context.Background(), c, "a@example.com"); got != "talk.example.com" {
+			t.Fatalf("got %q, want talk.example.com", got)
+		}
+	})
+	t.Run("no talk advertised falls back to the mail domain", func(t *testing.T) {
+		c := newClient(t, base+`}`, http.StatusUnauthorized)
+		if got := account.ResolveTalkHost(context.Background(), c, "a@example.com"); got != "example.com" {
+			t.Fatalf("got %q, want example.com", got)
+		}
+	})
+	t.Run("advertised but not serving falls back", func(t *testing.T) {
+		c := newClient(t, base+`,"talk":"talk.example.com"}`, http.StatusServiceUnavailable)
+		if got := account.ResolveTalkHost(context.Background(), c, "a@example.com"); got != "example.com" {
+			t.Fatalf("got %q, want example.com (probe must reject non-401)", got)
+		}
+	})
+	t.Run("foreign advertised host is never used", func(t *testing.T) {
+		c := newClient(t, base+`,"talk":"talk.evil.com"}`, http.StatusUnauthorized)
+		if got := account.ResolveTalkHost(context.Background(), c, "a@example.com"); got != "example.com" {
+			t.Fatalf("got %q, want example.com (foreign host must be rejected)", got)
+		}
+	})
+}
+
 // TestAutoconfigSchemaMatchesServer guards the schema constant so a rename can't
 // land without touching this test (and, by the shared value, the server).
 func TestAutoconfigSchemaMatchesServer(t *testing.T) {

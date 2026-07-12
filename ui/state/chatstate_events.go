@@ -75,10 +75,23 @@ func (cs *ChatState) startManager(acct store.Account) {
 	_ = cs.syncOwnKey(sctx, email, credential)
 	scancel()
 
+	// Route the VayuTalk API at the host the server advertises for it — a
+	// dedicated subdomain the operator points straight at the origin with any CDN
+	// proxy OFF, so the app's long-lived SSE stream is never buffered or
+	// bot-challenged. Falls back to the mail domain when none is advertised or
+	// reachable, so servers without a talk subdomain are unaffected. Best-effort
+	// and quick; runs on this goroutine (already off the frame loop).
+	talkDomain := domainOf(email)
+	tctx, tcancel := context.WithTimeout(context.Background(), 12*time.Second)
+	if h := account.ResolveTalkHost(tctx, http.DefaultClient, email); h != "" {
+		talkDomain = h
+	}
+	tcancel()
+
 	mgr := chat.New(chat.Config{
 		Keyring:    cs.keyring,
 		SelfEmail:  email,
-		Domain:     domainOf(email),
+		Domain:     talkDomain,
 		Credential: credential,
 		Settings:   cs.db,
 		// Self-heal: if an incoming message can't be decrypted, our key has
