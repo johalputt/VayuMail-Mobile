@@ -6,6 +6,23 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.1] — 2026-07-12
+
+### Fixed
+- **VayuTalk now delivers in real time and never drops a message.** Two
+  changes make chat feel seamless with the web and other devices:
+  - **Store-and-forward is the default.** A message is delivered live if
+    the other side is connected right now, and otherwise queued and
+    delivered the moment they next connect — nothing is dropped for being
+    offline. (Previously the composer defaulted to “Live”, which silently
+    dropped a message whenever the peer wasn’t connected at that instant.)
+  - **VayuTalk stays connected in the background.** The app now keeps its
+    encrypted VayuTalk stream open for the active account the whole time
+    it’s running — not only while the chat screen is open — so incoming
+    messages arrive immediately and anything queued while you were away
+    drains as soon as you’re back. Reconnects no longer duplicate an
+    unread message.
+
 ## [2.2.0] — 2026-07-11
 
 ### Added

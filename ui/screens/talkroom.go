@@ -48,6 +48,11 @@ func NewTalkRoom() *TalkRoom {
 	r := &TalkRoom{
 		list:      layout.List{Axis: layout.Vertical},
 		msgClicks: map[string]*widget.Clickable{},
+		// Store-and-forward by default: a message is delivered live if the peer
+		// is connected right now, otherwise queued and delivered the moment they
+		// next connect — never dropped for being offline. "Live" (fire-and-forget)
+		// is the opt-in exception, not the default.
+		storeMode: true,
 	}
 	r.input.Submit = true
 	return r

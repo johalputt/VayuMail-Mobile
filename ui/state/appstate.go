@@ -293,6 +293,20 @@ func (s *AppState) reload(ctx context.Context) {
 		selAccount = accounts[0].ID
 	}
 
+	// Keep VayuTalk connected to the active account for the whole time the app
+	// is running — not only while the chat screen is open — so messages arrive
+	// in real time and any queued while we were away drain the moment we're back.
+	// EnsureStarted is idempotent (a no-op once bound to this account), so
+	// calling it on every reload is cheap; switching accounts rebinds it.
+	if s.Chat != nil {
+		for i := range accounts {
+			if accounts[i].ID == selAccount {
+				s.Chat.EnsureStarted(accounts[i])
+				break
+			}
+		}
+	}
+
 	folders, err := s.db.ListFolders(ctx, selAccount)
 	if err != nil {
 		slog.Error("reload folders", "err", err)

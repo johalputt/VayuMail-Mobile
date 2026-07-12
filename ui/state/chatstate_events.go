@@ -162,6 +162,16 @@ func (cs *ChatState) apply(ev chat.Event) {
 func (cs *ChatState) applyIncoming(e chat.IncomingMessage) {
 	cs.mu.Lock()
 	c := cs.conv(e.Peer)
+	// A store-mode envelope stays queued on the server until it is revealed
+	// (that is when we ack it), so a reconnect re-flushes anything unread. Skip
+	// a message we already hold so the persistent connection can reconnect
+	// freely without duplicating un-revealed messages.
+	for _, existing := range c.msgs {
+		if existing.ID == e.ID {
+			cs.mu.Unlock()
+			return
+		}
+	}
 	c.msgs = append(c.msgs, &ChatMessage{
 		ID:        e.ID,
 		Peer:      c.peer,

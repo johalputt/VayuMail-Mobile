@@ -3,7 +3,26 @@ package state
 import (
 	"testing"
 	"time"
+
+	"github.com/johalputt/VayuMail-Mobile/internal/chat"
 )
+
+// applyIncoming must ignore a message it already holds, so the persistent
+// VayuTalk connection can reconnect (which re-flushes un-revealed store-mode
+// envelopes) without duplicating messages in the conversation.
+func TestApplyIncomingDedupe(t *testing.T) {
+	cs := &ChatState{convs: map[string]*chatConv{}}
+	msg := chat.IncomingMessage{Peer: "bob@example.com", ID: "env-1", Plaintext: "hi", ExpiresAt: time.Now().Add(time.Hour)}
+	cs.applyIncoming(msg)
+	cs.applyIncoming(msg) // simulate a reconnect re-flush
+	c := cs.convs["bob@example.com"]
+	if c == nil {
+		t.Fatal("conversation was not created")
+	}
+	if len(c.msgs) != 1 {
+		t.Fatalf("expected 1 message after dedupe, got %d", len(c.msgs))
+	}
+}
 
 func TestClampTTL(t *testing.T) {
 	cases := []struct {
