@@ -6,6 +6,24 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.2] — 2026-07-12
+
+### Fixed
+- **Messages sent from the VayuPress web now arrive on the phone.** The app
+  automatically syncs this mailbox's authoritative private key from your
+  VayuPress server whenever VayuTalk starts, so the device can always decrypt a
+  message the web composed against the server-held key. Previously, if the
+  device's key had drifted from the server's (or was never synced), web→app
+  messages silently failed to open. The synced key also improves on-device mail
+  decryption.
+
+### Changed
+- **One delivery mode, always reliable.** The Live/Store toggle is removed —
+  every message is store-and-forward: delivered live when the other side is
+  connected, otherwise queued and delivered on their next connect. This matches
+  the web and removes the “Live” setting that could silently drop a message to an
+  offline contact.
+
 ## [2.2.1] — 2026-07-12
 
 ### Fixed

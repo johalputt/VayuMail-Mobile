@@ -36,11 +36,9 @@ type TalkRoom struct {
 	input     widget.Editor
 	sendBtn   widgets.Button
 	ttlBtn    widget.Clickable
-	modeBtn   widget.Clickable
 
 	msgClicks map[string]*widget.Clickable
 	ttlIndex  int
-	storeMode bool // false = live, true = store-and-forward
 }
 
 // NewTalkRoom constructs the room screen.
@@ -48,11 +46,6 @@ func NewTalkRoom() *TalkRoom {
 	r := &TalkRoom{
 		list:      layout.List{Axis: layout.Vertical},
 		msgClicks: map[string]*widget.Clickable{},
-		// Store-and-forward by default: a message is delivered live if the peer
-		// is connected right now, otherwise queued and delivered the moment they
-		// next connect — never dropped for being offline. "Live" (fire-and-forget)
-		// is the opt-in exception, not the default.
-		storeMode: true,
 	}
 	r.input.Submit = true
 	return r
@@ -147,9 +140,6 @@ func (s *TalkRoom) composeBar(gtx layout.Context, th *theme.Theme) layout.Dimens
 	if s.ttlBtn.Clicked(gtx) {
 		s.ttlIndex = (s.ttlIndex + 1) % len(ttlOptions)
 	}
-	if s.modeBtn.Clicked(gtx) {
-		s.storeMode = !s.storeMode
-	}
 	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return widgets.Separator(gtx, th, 0)
@@ -159,15 +149,10 @@ func (s *TalkRoom) composeBar(gtx layout.Context, th *theme.Theme) layout.Dimens
 				func(gtx layout.Context) layout.Dimensions {
 					return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							// Lifetime selector only. Delivery is always
+							// store-and-forward (live if online, else queued) —
+							// nothing is dropped for being offline.
 							return s.pillToggle(gtx, th, &s.ttlBtn, widgets.IconClock, ttlOptions[s.ttlIndex].label)
-						}),
-						layout.Rigid(layout.Spacer{Width: theme.XS}.Layout),
-						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							label, icon := "Live", widgets.IconSend
-							if s.storeMode {
-								label, icon = "Store", widgets.IconClock
-							}
-							return s.pillToggle(gtx, th, &s.modeBtn, icon, label)
 						}),
 						layout.Rigid(layout.Spacer{Width: theme.SM}.Layout),
 						layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
@@ -213,15 +198,9 @@ func (s *TalkRoom) handleSend(gtx layout.Context, env *Env, peer string) {
 		return
 	}
 	if env.State.Chat != nil {
-		env.State.Chat.SendMessage(peer, text, ttlOptions[s.ttlIndex].dur, s.sendModeName())
+		// Always store-and-forward: delivered live when the peer is connected,
+		// otherwise queued and delivered on their next connect.
+		env.State.Chat.SendMessage(peer, text, ttlOptions[s.ttlIndex].dur, "store")
 	}
 	s.input.SetText("")
-}
-
-// sendModeName maps the toggle to the engine's mode string.
-func (s *TalkRoom) sendModeName() string {
-	if s.storeMode {
-		return "store"
-	}
-	return "live"
 }

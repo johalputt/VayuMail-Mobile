@@ -7,9 +7,11 @@ package state
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/chat"
+	"github.com/johalputt/VayuMail-Mobile/internal/mail/account"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 )
 
@@ -60,6 +62,15 @@ func (cs *ChatState) startManager(acct store.Account) {
 		}
 		return string(secret), nil
 	}
+	// Make sure this device holds the server's CURRENT private key for the
+	// mailbox before we start receiving. VayuTalk on the web encrypts to the key
+	// the server holds for a recipient, so a device whose key has drifted — or
+	// was never synced — would silently fail to decrypt web-sent messages. This
+	// is a best-effort, idempotent self-heal on every chat start: importing the
+	// authoritative key makes the whole keyring able to open anything encrypted
+	// to this mailbox, on either surface.
+	cs.syncOwnKey(acct.EmailAddress, credential)
+
 	mgr := chat.New(chat.Config{
 		Keyring:    cs.keyring,
 		SelfEmail:  acct.EmailAddress,
@@ -83,6 +94,41 @@ func (cs *ChatState) startManager(acct store.Account) {
 
 	go cs.drain(ctx, mgr)
 	cs.fire()
+}
+
+// syncOwnKey fetches the mailbox's authoritative private key from its VayuPress
+// server and imports it into the shared keyring, so this device can always
+// decrypt anything encrypted to the mailbox — including VayuTalk messages the
+// web composes against the server-held key. Best-effort: on any failure the
+// device keeps whatever key it already has. Runs on startManager's goroutine
+// (already off the frame loop), so the brief network call is fine here.
+func (cs *ChatState) syncOwnKey(email string, credential func() (string, error)) {
+	if cs.keyring == nil || email == "" {
+		return
+	}
+	pw, err := credential()
+	if err != nil || pw == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	armored, err := account.FetchPrivateKey(ctx, http.DefaultClient, email, pw)
+	if err != nil || armored == "" {
+		return
+	}
+	fps, err := cs.keyring.ImportArmored([]byte(armored))
+	if err != nil {
+		return
+	}
+	// Persist so the key survives a restart and is available to mail decryption
+	// too, not only this chat session.
+	if cs.db != nil {
+		for _, fp := range fps {
+			pctx, pcancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = cs.db.UpsertPGPKey(pctx, &store.PGPKey{Fingerprint: fp, Email: email, Armored: armored, IsPrivate: true})
+			pcancel()
+		}
+	}
 }
 
 // Stop tears VayuTalk down (used on logout). The blocking Close runs on a
