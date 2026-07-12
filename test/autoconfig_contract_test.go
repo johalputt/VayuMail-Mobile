@@ -104,22 +104,31 @@ func TestResolveTalkHost(t *testing.T) {
 			t.Fatalf("got %q, want talk.example.com", got)
 		}
 	})
-	t.Run("no talk advertised falls back to the mail domain", func(t *testing.T) {
+	t.Run("convention talk.<domain> used when live even with nothing advertised", func(t *testing.T) {
+		// Autoconfig omits talk (or can't be read behind a CDN), but talk.<domain>
+		// answers as a live relay — the app must still discover and use it.
 		c := newClient(t, base+`}`, http.StatusUnauthorized)
-		if got := account.ResolveTalkHost(context.Background(), c, "a@example.com"); got != "example.com" {
-			t.Fatalf("got %q, want example.com", got)
+		if got := account.ResolveTalkHost(context.Background(), c, "a@example.com"); got != "talk.example.com" {
+			t.Fatalf("got %q, want talk.example.com (convention fallback)", got)
 		}
 	})
-	t.Run("advertised but not serving falls back", func(t *testing.T) {
+	t.Run("no live relay falls back to the mail domain", func(t *testing.T) {
+		// Neither an advertised host nor talk.<domain> answers 401 → use the domain.
 		c := newClient(t, base+`,"talk":"talk.example.com"}`, http.StatusServiceUnavailable)
 		if got := account.ResolveTalkHost(context.Background(), c, "a@example.com"); got != "example.com" {
 			t.Fatalf("got %q, want example.com (probe must reject non-401)", got)
 		}
 	})
 	t.Run("foreign advertised host is never used", func(t *testing.T) {
+		// The evil host is rejected by the domain trust check; the app must never
+		// return it. (It may still fall through to the in-domain convention host.)
 		c := newClient(t, base+`,"talk":"talk.evil.com"}`, http.StatusUnauthorized)
-		if got := account.ResolveTalkHost(context.Background(), c, "a@example.com"); got != "example.com" {
-			t.Fatalf("got %q, want example.com (foreign host must be rejected)", got)
+		got := account.ResolveTalkHost(context.Background(), c, "a@example.com")
+		if got == "talk.evil.com" {
+			t.Fatalf("foreign host talk.evil.com must never be used, got %q", got)
+		}
+		if got != "talk.example.com" && got != "example.com" {
+			t.Fatalf("got %q, want an in-domain host or the mail domain", got)
 		}
 	})
 }

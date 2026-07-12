@@ -6,6 +6,19 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.8] — 2026-07-12
+
+### Fixed
+- **Talk-subdomain discovery no longer depends on a CDN-fronted fetch.** The app
+  learned its proxy-off `talk.<domain>` relay from the main domain's autoconfig —
+  but that fetch can itself be bot-challenged by the very CDN the subdomain exists
+  to bypass, which made discovery circular. The app now also probes the
+  conventional `talk.<domain>` directly (a proxy-off host, so it reaches the origin
+  even when autoconfig can't be read), and uses it once it answers as a live
+  relay. Still trust-constrained to the mail domain and still falls back to the
+  mail domain when no live relay is found, so nothing regresses for servers
+  without a talk subdomain.
+
 ## [2.2.7] — 2026-07-12
 
 ### Added

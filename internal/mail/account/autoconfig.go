@@ -223,17 +223,39 @@ func ResolveTalkHost(ctx context.Context, client *http.Client, email string) str
 	if !publicMailDomain(domain) {
 		return ""
 	}
-	adv := advertisedTalkHost(ctx, client, domain)
-	if adv == "" || adv == domain {
-		return domain
+	// Candidate talk hosts, most-authoritative first:
+	//  1. what the server advertises in autoconfig (when we can read it); then
+	//  2. the conventional talk.<domain>.
+	// The second candidate is what makes discovery robust behind a CDN: the main
+	// domain's autoconfig fetch can itself be bot-challenged (the very problem the
+	// talk subdomain solves), so relying on it alone would be circular. talk.<domain>
+	// is a proxy-off subdomain, so probing it reaches the origin directly even when
+	// autoconfig can't be read. Both candidates are within the mail domain, so the
+	// mailbox credential is never sent to a foreign host; each is used only after it
+	// answers as a live relay.
+	var candidates []string
+	if adv := advertisedTalkHost(ctx, client, domain); adv != "" && adv != domain {
+		candidates = append(candidates, adv)
 	}
-	// Advertised a dedicated subdomain — use it only if it answers as a live relay
-	// right now (guards against a stale advertisement or an unfinished cert), else
-	// fall back to the mail domain.
-	if probeTalkRelay(ctx, client, adv) {
-		return adv
+	if conv := "talk." + domain; conv != domain && !contains(candidates, conv) {
+		candidates = append(candidates, conv)
+	}
+	for _, h := range candidates {
+		if probeTalkRelay(ctx, client, h) {
+			return h
+		}
 	}
 	return domain
+}
+
+// contains reports whether s is in list.
+func contains(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 // advertisedTalkHost fetches the domain's autoconfig and returns the talk host it
