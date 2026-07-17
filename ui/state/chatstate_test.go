@@ -24,20 +24,34 @@ func TestApplyIncomingDedupe(t *testing.T) {
 	}
 }
 
-func TestClampTTL(t *testing.T) {
+func TestClampBurn(t *testing.T) {
 	cases := []struct {
 		in   time.Duration
 		want time.Duration
 	}{
-		{10 * time.Second, 60 * time.Second},     // below floor
+		{1 * time.Second, 5 * time.Second},       // below floor -> 5s
+		{5 * time.Second, 5 * time.Second},       // the floor
 		{5 * time.Minute, 5 * time.Minute},       // in range
 		{2 * time.Hour, 3600 * time.Second},      // above ceiling
 		{3600 * time.Second, 3600 * time.Second}, // exactly the ceiling
 	}
 	for _, c := range cases {
-		if got := clampTTL(c.in); got != c.want {
-			t.Errorf("clampTTL(%v) = %v, want %v", c.in, got, c.want)
+		if got := clampBurn(c.in); got != c.want {
+			t.Errorf("clampBurn(%v) = %v, want %v", c.in, got, c.want)
 		}
+	}
+}
+
+// TestBurnDuration: a live message uses the short grace; others use their timer.
+func TestBurnDuration(t *testing.T) {
+	if got := (&ChatMessage{BurnSeconds: 900}).burnDuration(); got != 15*time.Minute {
+		t.Errorf("store burn = %v, want 15m", got)
+	}
+	if got := (&ChatMessage{BurnSeconds: 900, Mode: "live"}).burnDuration(); got != liveGraceSeconds*time.Second {
+		t.Errorf("live burn = %v, want %ds", got, liveGraceSeconds)
+	}
+	if got := (&ChatMessage{}).burnDuration(); got != defaultBurnSeconds*time.Second {
+		t.Errorf("default burn = %v, want %ds", got, defaultBurnSeconds)
 	}
 }
 

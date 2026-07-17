@@ -19,6 +19,10 @@ type IncomingMessage struct {
 	// receive it — which matters for a message queued while we were offline.
 	CreatedAt time.Time
 	ExpiresAt time.Time
+	// BurnSeconds is the self-destruct timer that starts when this message is
+	// revealed (read), carried from the sender via the envelope.
+	BurnSeconds int
+	Mode        string
 }
 
 // MessageRead reports that a message this client sent was read (acked) by

@@ -1,11 +1,13 @@
 package screens
 
 import (
+	"image"
 	"time"
 
 	"gioui.org/font"
 	"gioui.org/layout"
 	"gioui.org/op"
+	"gioui.org/op/clip"
 	"gioui.org/widget"
 
 	"github.com/johalputt/VayuMail-Mobile/ui/state"
@@ -19,12 +21,20 @@ type ttlOption struct {
 	dur   time.Duration
 }
 
-// ttlOptions are the offered lifetimes; the server clamps to [60s, 3600s].
+// ttlOptions are the offered burn-after-read timers (start counting when the
+// recipient reads the message); the server clamps to [5s, 3600s]. The default
+// selection is 5 minutes (defaultTTLIndex) — safe but usable.
 var ttlOptions = []ttlOption{
+	{"5s", 5 * time.Second},
+	{"1m", time.Minute},
 	{"5m", 5 * time.Minute},
+	{"15m", 15 * time.Minute},
 	{"30m", 30 * time.Minute},
 	{"1h", time.Hour},
 }
+
+// defaultTTLIndex selects the "5m" default in ttlOptions.
+const defaultTTLIndex = 2
 
 // TalkRoom renders one conversation: the message stream with per-message
 // ephemeral countdowns, a verification header, and the compose bar with a
@@ -37,8 +47,10 @@ type TalkRoom struct {
 	sendBtn   widgets.Button
 	ttlBtn    widget.Clickable
 
+	liveBtn   widget.Clickable
 	msgClicks map[string]*widget.Clickable
 	ttlIndex  int
+	live      bool
 }
 
 // NewTalkRoom constructs the room screen.
@@ -46,6 +58,7 @@ func NewTalkRoom() *TalkRoom {
 	r := &TalkRoom{
 		list:      layout.List{Axis: layout.Vertical},
 		msgClicks: map[string]*widget.Clickable{},
+		ttlIndex:  defaultTTLIndex,
 	}
 	r.input.Submit = true
 	return r
@@ -140,21 +153,38 @@ func (s *TalkRoom) composeBar(gtx layout.Context, th *theme.Theme) layout.Dimens
 	if s.ttlBtn.Clicked(gtx) {
 		s.ttlIndex = (s.ttlIndex + 1) % len(ttlOptions)
 	}
+	if s.liveBtn.Clicked(gtx) {
+		s.live = !s.live
+	}
+	// Timer pill label: the clock timer when off, a "🔥 Live" badge when on.
+	timerIcon := widgets.IconClock
+	timerLabel := ttlOptions[s.ttlIndex].label + " · read"
+	if s.live {
+		timerIcon = widgets.IconClock
+		timerLabel = "Live · burns on read"
+	}
 	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return widgets.Separator(gtx, th, 0)
 		}),
+		// Options row: burn-after-read timer selector + Live toggle.
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return layout.Inset{Left: theme.MD, Right: theme.MD, Top: theme.SM, Bottom: theme.SM}.Layout(gtx,
+			return layout.Inset{Left: theme.MD, Right: theme.MD, Top: theme.XS}.Layout(gtx,
 				func(gtx layout.Context) layout.Dimensions {
 					return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							// Lifetime selector only. Delivery is always
-							// store-and-forward (live if online, else queued) —
-							// nothing is dropped for being offline.
-							return s.pillToggle(gtx, th, &s.ttlBtn, widgets.IconClock, ttlOptions[s.ttlIndex].label)
+							return s.pillToggle(gtx, th, &s.ttlBtn, timerIcon, timerLabel)
 						}),
 						layout.Rigid(layout.Spacer{Width: theme.SM}.Layout),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return s.livePill(gtx, th)
+						}))
+				})
+		}),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return layout.Inset{Left: theme.MD, Right: theme.MD, Top: theme.XS, Bottom: theme.SM}.Layout(gtx,
+				func(gtx layout.Context) layout.Dimensions {
+					return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
 						layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 							return s.editor(gtx, th)
 						}),
@@ -165,6 +195,38 @@ func (s *TalkRoom) composeBar(gtx layout.Context, th *theme.Theme) layout.Dimens
 						}))
 				})
 		}))
+}
+
+// livePill draws the Live-mode toggle: subtle when off, warning-filled when on.
+// Live mode stores nothing on the server and burns the message the moment it is
+// read (both parties must be online).
+func (s *TalkRoom) livePill(gtx layout.Context, th *theme.Theme) layout.Dimensions {
+	fill := th.Palette.AccentSubtle
+	fg := th.Palette.Subtle
+	label := "Live off"
+	if s.live {
+		fill = th.Palette.Warning
+		fg = th.Palette.OnAccent
+		label = "Live on"
+	}
+	return s.liveBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return layout.Background{}.Layout(gtx,
+			func(gtx layout.Context) layout.Dimensions {
+				r := gtx.Dp(theme.PillRadius)
+				sz := gtx.Constraints.Min
+				if sz.Y < 2*r {
+					r = sz.Y / 2
+				}
+				defer clip.UniformRRect(image.Rectangle{Max: sz}, r).Push(gtx.Ops).Pop()
+				return widgets.Fill(gtx, fill)
+			},
+			func(gtx layout.Context) layout.Dimensions {
+				return layout.Inset{Left: theme.SM, Right: theme.SM, Top: theme.XS, Bottom: theme.XS}.Layout(gtx,
+					func(gtx layout.Context) layout.Dimensions {
+						return th.Label(gtx, theme.Caption, fg, label, 1)
+					})
+			})
+	})
 }
 
 // editor draws the message input with a hint.
@@ -198,9 +260,13 @@ func (s *TalkRoom) handleSend(gtx layout.Context, env *Env, peer string) {
 		return
 	}
 	if env.State.Chat != nil {
-		// Always store-and-forward: delivered live when the peer is connected,
-		// otherwise queued and delivered on their next connect.
-		env.State.Chat.SendMessage(peer, text, ttlOptions[s.ttlIndex].dur, "store")
+		// store: delivered live when the peer is connected, otherwise queued for
+		// their next connect. live: never stored, delivered only if they're online.
+		mode := "store"
+		if s.live {
+			mode = "live"
+		}
+		env.State.Chat.SendMessage(peer, text, ttlOptions[s.ttlIndex].dur, mode)
 	}
 	s.input.SetText("")
 }

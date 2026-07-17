@@ -22,12 +22,13 @@ type StreamEvent interface{ isStreamEvent() }
 // Envelope is one encrypted message pushed to this client. Ciphertext is
 // base64 of opaque bytes; only the recipient's keyring can open it.
 type Envelope struct {
-	ID         string
-	From       string
-	Ciphertext string
-	CreatedAt  time.Time
-	ExpiresAt  time.Time
-	Mode       string
+	ID          string
+	From        string
+	Ciphertext  string
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
+	BurnSeconds int // self-destruct timer that starts when the message is read
+	Mode        string
 }
 
 // Receipt reports a state change for a message this client sent. Status is
@@ -49,12 +50,13 @@ func (Ping) isStreamEvent()     {}
 // (see ADR-0131). Declaring them as int64 here silently failed every
 // json.Unmarshal, so buildEvent dropped every real envelope.
 type envelopeWire struct {
-	ID         string `json:"id"`
-	From       string `json:"from"`
-	Ciphertext string `json:"ciphertext"`
-	CreatedAt  string `json:"created_at"`
-	ExpiresAt  string `json:"expires_at"`
-	Mode       string `json:"mode"`
+	ID          string `json:"id"`
+	From        string `json:"from"`
+	Ciphertext  string `json:"ciphertext"`
+	CreatedAt   string `json:"created_at"`
+	ExpiresAt   string `json:"expires_at"`
+	BurnSeconds int    `json:"burn_seconds"`
+	Mode        string `json:"mode"`
 }
 
 // OpenStream GETs /stream and returns a channel of typed events. The
@@ -141,12 +143,13 @@ func buildEvent(name, data string) StreamEvent {
 		created, _ := time.Parse(time.RFC3339, w.CreatedAt)
 		expires, _ := time.Parse(time.RFC3339, w.ExpiresAt)
 		return Envelope{
-			ID:         w.ID,
-			From:       w.From,
-			Ciphertext: w.Ciphertext,
-			CreatedAt:  created,
-			ExpiresAt:  expires,
-			Mode:       w.Mode,
+			ID:          w.ID,
+			From:        w.From,
+			Ciphertext:  w.Ciphertext,
+			CreatedAt:   created,
+			ExpiresAt:   expires,
+			BurnSeconds: w.BurnSeconds,
+			Mode:        w.Mode,
 		}
 	case "receipt":
 		var w struct {

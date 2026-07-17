@@ -16,10 +16,12 @@ import (
 // also covers a lazy Connect.
 const opTimeout = 40 * time.Second
 
-// SendMessage encrypts and sends plaintext to peer with the given TTL and
-// mode ("live" or "store"), then records it locally as an outgoing
-// bubble. Failures surface through the snackbar.
-func (cs *ChatState) SendMessage(peer, text string, ttl time.Duration, mode string) {
+// SendMessage encrypts and sends plaintext to peer with the given burn-after-read
+// timer and mode ("live" or "store"), then records it locally as an outgoing
+// bubble. The bubble does NOT start its countdown yet — it burns only once the
+// recipient reads it (a read receipt arms the timer). Failures surface through
+// the snackbar.
+func (cs *ChatState) SendMessage(peer, text string, burn time.Duration, mode string) {
 	peer = strings.ToLower(strings.TrimSpace(peer))
 	text = strings.TrimSpace(text)
 	if peer == "" || text == "" {
@@ -32,7 +34,7 @@ func (cs *ChatState) SendMessage(peer, text string, ttl time.Duration, mode stri
 		cs.note("VayuTalk is not connected yet")
 		return
 	}
-	clamped := clampTTL(ttl)
+	clamped := clampBurn(burn)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 		defer cancel()
@@ -45,14 +47,14 @@ func (cs *ChatState) SendMessage(peer, text string, ttl time.Duration, mode stri
 		cs.mu.Lock()
 		c := cs.conv(peer)
 		c.msgs = append(c.msgs, &ChatMessage{
-			ID:        id,
-			Peer:      c.peer,
-			Self:      true,
-			Text:      text,
-			CreatedAt: now,
-			ExpiresAt: now.Add(clamped),
-			Mode:      mode,
-			Status:    MsgSending,
+			ID:          id,
+			Peer:        c.peer,
+			Self:        true,
+			Text:        text,
+			CreatedAt:   now,
+			BurnSeconds: int(clamped / time.Second),
+			Mode:        mode,
+			Status:      MsgSending,
 		})
 		c.lastActivity = now
 		cs.mu.Unlock()
@@ -60,9 +62,10 @@ func (cs *ChatState) SendMessage(peer, text string, ttl time.Duration, mode stri
 	}()
 }
 
-// RevealMessage uncovers a received message and, because reading destroys
-// it, immediately acknowledges it to the server (read-once). The bubble
-// then shows its plaintext until its TTL runs out.
+// RevealMessage uncovers a received message and, because reading it starts its
+// self-destruct timer, immediately acknowledges it to the server (which clears
+// the stored copy). The bubble then shows its plaintext with a burn countdown
+// that runs for the sender's chosen window, then collapses to a tombstone.
 func (cs *ChatState) RevealMessage(peer, id string) {
 	cs.mu.Lock()
 	mgr := cs.mgr
@@ -70,8 +73,11 @@ func (cs *ChatState) RevealMessage(peer, id string) {
 	if c := cs.convs[strings.ToLower(strings.TrimSpace(peer))]; c != nil {
 		for _, m := range c.msgs {
 			if m.ID == id && !m.Self {
+				now := time.Now()
 				m.Revealed = true
 				m.Status = MsgOpen
+				m.ArmedAt = now
+				m.ExpiresAt = now.Add(m.burnDuration())
 				found = true
 			}
 		}

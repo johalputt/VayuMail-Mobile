@@ -12,11 +12,12 @@ import (
 const settingPrefix = "talk-verified:"
 
 // Send encrypts plaintext to peer (signed by selfEmail), base64-encodes the
-// armored ciphertext, and transmits it. mode is "live" or "store"; ttl is
-// clamped server-side to [60s, 3600s]. Nothing is persisted: plaintext and
+// armored ciphertext, and transmits it. mode is "live" or "store"; burn is the
+// burn-after-read timer (clamped server-side to [5s, 3600s]) that starts when
+// the recipient reads the message. Nothing is persisted: plaintext and
 // ciphertext exist only for the duration of the call. Returns the
 // server-assigned id and emits a Delivered event.
-func (m *Manager) Send(ctx context.Context, peer, plaintext string, ttl time.Duration, mode string) (string, error) {
+func (m *Manager) Send(ctx context.Context, peer, plaintext string, burn time.Duration, mode string) (string, error) {
 	ciphertext, err := m.keyring.Encrypt([]byte(plaintext), []string{peer}, m.selfEmail)
 	if err != nil {
 		return "", err
@@ -26,7 +27,7 @@ func (m *Manager) Send(ctx context.Context, peer, plaintext string, ttl time.Dur
 	if err != nil {
 		return "", err
 	}
-	id, delivered, err := m.tp.Send(ctx, m.domain, tok, peer, b64, int(ttl/time.Second), mode)
+	id, delivered, err := m.tp.Send(ctx, m.domain, tok, peer, b64, int(burn/time.Second), mode)
 	if err != nil {
 		if errors.Is(err, ErrTalkAuth) {
 			m.clearToken()
@@ -116,11 +117,13 @@ func (m *Manager) handleEnvelope(e Envelope) {
 		}
 	}
 	m.emit(IncomingMessage{
-		Peer:      e.From,
-		ID:        e.ID,
-		Plaintext: string(res.Plaintext),
-		CreatedAt: e.CreatedAt,
-		ExpiresAt: e.ExpiresAt,
+		Peer:        e.From,
+		ID:          e.ID,
+		Plaintext:   string(res.Plaintext),
+		CreatedAt:   e.CreatedAt,
+		ExpiresAt:   e.ExpiresAt,
+		BurnSeconds: e.BurnSeconds,
+		Mode:        e.Mode,
 	})
 }
 

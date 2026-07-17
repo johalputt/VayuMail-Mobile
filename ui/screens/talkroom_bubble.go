@@ -31,7 +31,9 @@ func (s *TalkRoom) bubble(gtx layout.Context, env *Env, th *theme.Theme, m state
 		}
 		return s.sealedBubble(gtx, th, click), false
 	default:
-		frac := widgets.RemainingFraction(m.CreatedAt, m.ExpiresAt, now)
+		// The burn ring runs from when the message was READ (ArmedAt), not when it
+		// was sent — an un-armed message (sent, not yet read) shows no ring.
+		frac := widgets.RemainingFraction(m.ArmedAt, m.ExpiresAt, now)
 		live := !m.ExpiresAt.IsZero() && frac > 0
 		return s.contentBubble(gtx, th, m, frac), live
 	}
@@ -166,7 +168,7 @@ func statusLabel(m state.ChatMessage) string {
 	case state.MsgQueued:
 		return "Queued"
 	case state.MsgRead:
-		return "Read · gone"
+		return "Read · burning"
 	default:
 		return ""
 	}
@@ -187,7 +189,7 @@ func (s *TalkRoom) sealedBubble(gtx layout.Context, th *theme.Theme, click *widg
 								}),
 								layout.Rigid(layout.Spacer{Width: theme.SM}.Layout),
 								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-									return th.Label(gtx, theme.Body, th.Palette.Accent, "Tap to reveal · read once", 1)
+									return th.Label(gtx, theme.Body, th.Palette.Accent, "Tap to reveal · then it burns", 1)
 								}))
 						})
 				})

@@ -211,7 +211,16 @@ func (cs *ChatState) apply(ev chat.Event) {
 			}
 		})
 	case chat.MessageRead:
-		cs.setStatusByID(e.ID, func(m *ChatMessage) { m.Status = MsgRead })
+		// The recipient opened it: mark read and start our copy's burn countdown
+		// so the sender's bubble disappears on the same clock as the recipient's.
+		cs.setStatusByID(e.ID, func(m *ChatMessage) {
+			m.Status = MsgRead
+			if m.ExpiresAt.IsZero() {
+				now := time.Now()
+				m.ArmedAt = now
+				m.ExpiresAt = now.Add(m.burnDuration())
+			}
+		})
 	case chat.MessageExpired:
 		cs.setStatusByID(e.ID, func(m *ChatMessage) { m.Status = MsgExpired })
 	case chat.PeerKey:
@@ -248,12 +257,15 @@ func (cs *ChatState) applyIncoming(e chat.IncomingMessage) {
 		created = time.Now()
 	}
 	c.msgs = append(c.msgs, &ChatMessage{
-		ID:        e.ID,
-		Peer:      c.peer,
-		Text:      e.Plaintext,
-		CreatedAt: created,
-		ExpiresAt: e.ExpiresAt,
-		Status:    MsgSealed,
+		ID:          e.ID,
+		Peer:        c.peer,
+		Text:        e.Plaintext,
+		CreatedAt:   created,
+		BurnSeconds: e.BurnSeconds,
+		Mode:        e.Mode,
+		// ExpiresAt stays zero until the message is revealed — the burn-after-read
+		// countdown starts on reveal, not on the server's unread-hold deadline.
+		Status: MsgSealed,
 	})
 	c.lastActivity = time.Now()
 	background := cs.activePeer != c.peer

@@ -6,7 +6,29 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [2.2.11] — 2026-07-12
+## [2.2.12] — 2026-07-17
+
+### Added
+- **VayuTalk self-destruct timers + Live mode.** Messages now burn on a timer
+  that starts **when they're read**, not when they're sent — so a message you
+  send waits (no countdown) until the other person opens it, then both copies
+  disappear on the same clock.
+  - **Timer options:** 5 seconds, 1 minute, 5 minutes, 15 minutes, 30 minutes,
+    1 hour — **default 5 minutes**. Tap the timer pill in the composer to cycle
+    them; each read message shows a countdown ring and remaining time, then
+    collapses to a tombstone.
+  - **Live toggle:** a composer pill for messages that are **never stored on the
+    server** (delivered only while both of you are online) and burn the moment
+    they're read.
+  - The burn countdown now runs from **read time** (reveal for the recipient, the
+    read receipt for the sender) instead of from send. The local timer clamp
+    widened to `[5s, 1h]` to match the relay; the incoming envelope carries the
+    sender's chosen `burn_seconds`. Plaintext still lives in memory only.
+
+### Note
+- Requires a VayuPress relay running **v3.13.56+** for the read-time burn and
+  Live semantics. Against an older relay the app still works (the timer behaves
+  as a send-time lifetime).
 
 ### Fixed
 - **Real text renders correctly again — reverted the colour-emoji font.** The

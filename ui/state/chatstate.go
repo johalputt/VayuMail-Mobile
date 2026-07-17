@@ -19,11 +19,16 @@ import (
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 )
 
-// ttl bounds mirror the server clamp so the local countdown matches what
-// the server enforces.
+// burn bounds mirror the server clamp so the local countdown matches what the
+// server enforces. The timer is the burn-after-read window (see ADR-0131).
 const (
-	minTTLSeconds = 60
-	maxTTLSeconds = 3600
+	minBurnSeconds = 5
+	maxBurnSeconds = 3600
+	// liveGraceSeconds is how long a Live-mode message stays legible after it is
+	// read before it burns — long enough to read, short enough to feel instant.
+	liveGraceSeconds = 5
+	// defaultBurnSeconds is the fallback when a message carries no timer.
+	defaultBurnSeconds = 300
 )
 
 // MsgStatus is the lifecycle state of one chat message.
@@ -45,15 +50,30 @@ const (
 // ChatMessage is one message as the room renders it. Plaintext lives in
 // memory only and is never persisted (ephemeral by construction).
 type ChatMessage struct {
-	ID        string
-	Peer      string
-	Self      bool
-	Text      string
-	CreatedAt time.Time
-	ExpiresAt time.Time
-	Mode      string
-	Status    MsgStatus
-	Revealed  bool
+	ID          string
+	Peer        string
+	Self        bool
+	Text        string
+	CreatedAt   time.Time
+	ExpiresAt   time.Time // burn deadline; zero until the message is read (armed)
+	ArmedAt     time.Time // when the burn countdown started (read time)
+	BurnSeconds int       // self-destruct timer, in seconds after read
+	Mode        string
+	Status      MsgStatus
+	Revealed    bool
+}
+
+// burnDuration is the effective self-destruct window for a message once it is
+// read: a short fixed grace for Live mode, otherwise its chosen timer.
+func (m *ChatMessage) burnDuration() time.Duration {
+	secs := m.BurnSeconds
+	if m.Mode == "live" {
+		secs = liveGraceSeconds
+	}
+	if secs <= 0 {
+		secs = defaultBurnSeconds
+	}
+	return time.Duration(secs) * time.Second
 }
 
 // ChatConversation is one row in the conversation list. It deliberately
@@ -197,15 +217,15 @@ func (cs *ChatState) conv(peer string) *chatConv {
 	return c
 }
 
-// clampTTL matches the server's [60s, 3600s] clamp so the local
-// countdown ends when the server actually purges the message.
-func clampTTL(d time.Duration) time.Duration {
+// clampBurn matches the server's [5s, 3600s] burn-after-read clamp so the local
+// countdown ends when the server actually enforces the timer.
+func clampBurn(d time.Duration) time.Duration {
 	s := int(d / time.Second)
-	if s < minTTLSeconds {
-		s = minTTLSeconds
+	if s < minBurnSeconds {
+		s = minBurnSeconds
 	}
-	if s > maxTTLSeconds {
-		s = maxTTLSeconds
+	if s > maxBurnSeconds {
+		s = maxBurnSeconds
 	}
 	return time.Duration(s) * time.Second
 }
