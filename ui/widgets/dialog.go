@@ -25,7 +25,9 @@ type Dialog struct {
 	Danger  bool
 
 	visible    bool
+	closing    bool
 	enter      anim.Anim
+	leave      anim.Anim
 	confirmBtn Button
 	cancelBtn  Button
 	scrimClick widget.Clickable
@@ -37,15 +39,31 @@ func (d *Dialog) Show(now time.Time, title, body, confirm string, danger bool, o
 	d.Title, d.Body, d.Confirm, d.Danger = title, body, confirm, danger
 	d.onConfirm = onConfirm
 	d.visible = true
-	d.enter.Start(now, 200*time.Millisecond)
+	d.closing = false
+	d.enter.Start(now, anim.DurBase)
 }
 
 // Visible reports whether the dialog is on screen (the back key closes
 // it before popping navigation).
-func (d *Dialog) Visible() bool { return d.visible }
+func (d *Dialog) Visible() bool { return d.visible && !d.closing }
 
-// Dismiss closes the dialog without confirming.
-func (d *Dialog) Dismiss() { d.visible = false }
+// Dismiss closes the dialog without confirming, animating it out.
+func (d *Dialog) Dismiss() { d.beginClose(time.Time{}) }
+
+// beginClose starts the exit animation; the modal stays laid out until it
+// settles, then removes itself. A zero now (back-key path) falls back to an
+// immediate close since it has no frame time to anchor the animation.
+func (d *Dialog) beginClose(now time.Time) {
+	if d.closing {
+		return
+	}
+	if now.IsZero() {
+		d.visible = false
+		return
+	}
+	d.closing = true
+	d.leave.Start(now, anim.DurFast)
+}
 
 // Layout draws the dialog above the current screen when visible.
 func (d *Dialog) Layout(gtx layout.Context, th *theme.Theme) {
@@ -53,21 +71,34 @@ func (d *Dialog) Layout(gtx layout.Context, th *theme.Theme) {
 		return
 	}
 	p := th.Palette
-	if d.scrimClick.Clicked(gtx) {
-		d.visible = false
-	}
-	if d.cancelBtn.Clicked(gtx) {
-		d.visible = false
-	}
-	if d.confirmBtn.Clicked(gtx) {
-		d.visible = false
-		if d.onConfirm != nil {
-			d.onConfirm()
+	if !d.closing {
+		if d.scrimClick.Clicked(gtx) {
+			d.beginClose(gtx.Now)
+		}
+		if d.cancelBtn.Clicked(gtx) {
+			d.beginClose(gtx.Now)
+		}
+		if d.confirmBtn.Clicked(gtx) {
+			if d.onConfirm != nil {
+				d.onConfirm()
+			}
+			d.beginClose(gtx.Now)
 		}
 	}
 
 	t, settled := d.enter.Progress(gtx.Now, anim.OutBack)
 	fade, _ := d.enter.Progress(gtx.Now, anim.OutQuad)
+	if d.closing {
+		// Reverse the entrance: scale and fade back out, then remove.
+		lt, ldone := d.leave.Progress(gtx.Now, anim.InCubic)
+		t = 1 - lt
+		fade = 1 - lt
+		settled = ldone
+		if ldone {
+			d.visible = false
+			d.closing = false
+		}
+	}
 	if !settled {
 		gtx.Execute(op.InvalidateCmd{})
 	}

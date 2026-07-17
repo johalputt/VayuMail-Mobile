@@ -6,6 +6,23 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **A spring-based motion system — the app now moves with one coherent,
+  physical feel.** A new `anim.Spring` primitive (velocity-carrying, settles
+  under damping, side-effect-free sampling) and a set of shared motion tokens
+  (durations + spring presets) sit under every interaction:
+  - **Buttons, the FAB and the PIN keys** dip and spring back on a shared
+    `PressScale`, carrying velocity across a fast double-tap so nothing snaps.
+  - **Top-bar and action icon buttons** gained an animated press: the halo fades
+    in and out and the glyph dips, instead of a hard on/off highlight.
+  - **Message rows** fade their press tint in and out rather than flashing it.
+  - **The dialog now animates closed** (scale + scrim fade) instead of vanishing
+    in one frame, matching its entrance.
+  - **The sync progress bar glides** to each new position with a spring, so
+    chunky per-message progress reads as one smooth sweep.
+  All of it keeps the app's core discipline: frames are requested only while a
+  spring is unsettled, so an idle screen still renders — and costs — nothing.
+
 ### Changed
 - **Enterprise-grade performance pass — the app stays smooth during sync,
   scrolling and search.** Several paths that quietly did per-frame work now do it

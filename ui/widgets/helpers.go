@@ -3,13 +3,16 @@ package widgets
 import (
 	"image"
 	"image/color"
+	"sync"
 
 	"gioui.org/layout"
+	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
 	"gioui.org/unit"
 	"gioui.org/widget"
 
+	"github.com/johalputt/VayuMail-Mobile/ui/anim"
 	"github.com/johalputt/VayuMail-Mobile/ui/theme"
 )
 
@@ -44,21 +47,58 @@ func Separator(gtx layout.Context, th *theme.Theme, leftInset unit.Dp) layout.Di
 	return layout.Dimensions{Size: image.Pt(width, height)}
 }
 
-// IconButton lays out a tappable icon with a TouchTarget-sized hit area
-// and a pressed-state halo, so every tap answers instantly.
+// iconBtnAnim holds one icon button's press animation: a halo that fades
+// in/out and a slight icon dip. IconButton is a free function taking only a
+// *widget.Clickable, so its animation state is keyed by that stable pointer
+// (the clickables are long-lived screen fields) rather than threaded
+// through every call site.
+type iconBtnAnim struct {
+	halo  anim.Bool
+	press PressScale
+	held  bool
+}
+
+var iconBtnAnims sync.Map // *widget.Clickable -> *iconBtnAnim
+
+func iconBtnAnimFor(click *widget.Clickable) *iconBtnAnim {
+	if v, ok := iconBtnAnims.Load(click); ok {
+		return v.(*iconBtnAnim)
+	}
+	a := &iconBtnAnim{}
+	actual, _ := iconBtnAnims.LoadOrStore(click, a)
+	return actual.(*iconBtnAnim)
+}
+
+// IconButton lays out a tappable icon with a TouchTarget-sized hit area, an
+// animated press halo that fades in and out, and a subtle icon dip — so
+// every tap answers instantly and feels physical. Frames are requested only
+// while the halo or dip is settling.
 func IconButton(gtx layout.Context, th *theme.Theme, click *widget.Clickable, icon Icon, c color.NRGBA) layout.Dimensions {
+	a := iconBtnAnimFor(click)
+	held := click.Pressed()
+	if held != a.held {
+		a.held = held
+		a.halo.Set(held, gtx.Now, anim.DurFast)
+	}
+	haloT, haloDone := a.halo.Progress(gtx.Now, anim.OutCubic)
+	if !haloDone {
+		gtx.Execute(op.InvalidateCmd{})
+	}
 	return click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		target := gtx.Dp(theme.TouchTarget)
 		gtx.Constraints = layout.Exact(image.Pt(target, target))
-		if click.Pressed() {
-			d := gtx.Dp(36)
+		if haloT > 0.001 {
+			d := int(float32(gtx.Dp(38)) * (0.7 + 0.3*haloT))
 			off := (target - d) / 2
-			paint.FillShape(gtx.Ops, th.Palette.AccentSubtle, clip.Ellipse{
+			halo := theme.WithAlpha(th.Palette.AccentSubtle, uint8(haloT*float32(th.Palette.AccentSubtle.A)))
+			paint.FillShape(gtx.Ops, halo, clip.Ellipse{
 				Min: image.Pt(off, off), Max: image.Pt(off+d, off+d),
 			}.Op(gtx.Ops))
 		}
-		return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-			return DrawIcon(gtx, icon, c, 24)
+		return a.press.Layout(gtx, click, 0.90, func(gtx layout.Context) layout.Dimensions {
+			return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return DrawIcon(gtx, icon, c, 24)
+			})
 		})
 	})
 }

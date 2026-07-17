@@ -2,15 +2,11 @@ package widgets
 
 import (
 	"image"
-	"time"
 
-	"gioui.org/f32"
 	"gioui.org/layout"
-	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/widget"
 
-	"github.com/johalputt/VayuMail-Mobile/ui/anim"
 	"github.com/johalputt/VayuMail-Mobile/ui/theme"
 )
 
@@ -26,20 +22,15 @@ const (
 	ButtonDanger
 )
 
-// Button is a pill button with a press-scale animation: it compresses
-// to 97% while held and springs back with a slight overshoot. The
-// animation runs only across the press and release frames.
+// Button is a pill button with a spring press-scale: it compresses to 96%
+// while held and springs back with a whisper of overshoot, carrying
+// velocity across a quick tap so a fast double-press never snaps. The
+// spring requests frames only while it is unsettled.
 type Button struct {
 	Click widget.Clickable
 
-	press   anim.Bool
-	wasHeld bool
+	press PressScale
 }
-
-const (
-	pressIn  = 70 * time.Millisecond
-	pressOut = 240 * time.Millisecond
-)
 
 // Clicked reports and consumes a completed click.
 func (b *Button) Clicked(gtx layout.Context) bool { return b.Click.Clicked(gtx) }
@@ -50,30 +41,10 @@ func (b *Button) Layout(gtx layout.Context, th *theme.Theme, style ButtonStyle, 
 	if disabled {
 		gtx = gtx.Disabled()
 	}
-	held := b.Click.Pressed()
-	if held != b.wasHeld {
-		b.wasHeld = held
-		d := pressOut
-		if held {
-			d = pressIn
-		}
-		b.press.Set(held, gtx.Now, d)
-	}
-	t, settled := b.press.Progress(gtx.Now, anim.OutCubic)
-	if !settled {
-		gtx.Execute(op.InvalidateCmd{})
-	}
-	scale := anim.Lerp(1, 0.97, t)
-
 	return b.Click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		macro := op.Record(gtx.Ops)
-		dims := b.draw(gtx, th, style, label, wide, disabled)
-		call := macro.Stop()
-
-		origin := f32.Pt(float32(dims.Size.X)/2, float32(dims.Size.Y)/2)
-		defer op.Affine(f32.Affine2D{}.Scale(origin, f32.Pt(scale, scale))).Push(gtx.Ops).Pop()
-		call.Add(gtx.Ops)
-		return dims
+		return b.press.Layout(gtx, &b.Click, 0.96, func(gtx layout.Context) layout.Dimensions {
+			return b.draw(gtx, th, style, label, wide, disabled)
+		})
 	})
 }
 

@@ -60,6 +60,10 @@ type MessageList struct {
 type rowState struct {
 	click widget.Clickable
 	swipe Swipeable
+	// pressT fades the row's press tint in and out instead of a binary
+	// on/off fill, so a tap leaves a soft highlight that settles smoothly.
+	pressT   anim.Bool
+	pressHad bool
 }
 
 // NewMessageList constructs a vertical list with swipe enabled.
@@ -108,9 +112,20 @@ func (ml *MessageList) Layout(gtx layout.Context, th *theme.Theme, msgs []store.
 			actions = append(actions, ListAction{Kind: ActionOpen, Message: msg})
 		}
 
+		// Fade the press tint rather than snapping it on/off.
+		held := row.click.Pressed()
+		if held != row.pressHad {
+			row.pressHad = held
+			row.pressT.Set(held, now, anim.DurFast)
+		}
+		pt, pdone := row.pressT.Progress(now, anim.OutCubic)
+		if !pdone {
+			gtx.Execute(op.InvalidateCmd{})
+		}
+
 		rowWidget := func(gtx layout.Context) layout.Dimensions {
 			return row.click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return messageRow(gtx, th, msg, row.click.Pressed(), rowText[msg.ID], now)
+				return messageRow(gtx, th, msg, pt, rowText[msg.ID], now)
 			})
 		}
 
@@ -183,14 +198,15 @@ func (ml *MessageList) entranceWrap(w layout.Widget, i, count int) layout.Widget
 //
 // Unread rows carry a 3dp accent bar on the leading edge and full-strength
 // text; read rows recede to OnSurface/Subtle.
-func messageRow(gtx layout.Context, th *theme.Theme, msg store.Message, pressed bool, line string, now time.Time) layout.Dimensions {
+func messageRow(gtx layout.Context, th *theme.Theme, msg store.Message, pressT float32, line string, now time.Time) layout.Dimensions {
 	height := gtx.Dp(theme.RowHeight)
 	width := gtx.Constraints.Max.X
 	gtx.Constraints = layout.Exact(image.Pt(width, height))
 	p := th.Palette
 
-	if pressed {
-		paint.FillShape(gtx.Ops, p.Surface, clip.Rect{Max: image.Pt(width, height)}.Op())
+	if pressT > 0.001 {
+		tint := theme.WithAlpha(p.Surface, uint8(pressT*float32(p.Surface.A)))
+		paint.FillShape(gtx.Ops, tint, clip.Rect{Max: image.Pt(width, height)}.Op())
 	}
 	if !msg.IsRead {
 		bar := gtx.Dp(3)

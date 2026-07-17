@@ -2,9 +2,7 @@ package widgets
 
 import (
 	"image"
-	"time"
 
-	"gioui.org/f32"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
@@ -25,11 +23,11 @@ type PinPadAction struct {
 }
 
 // PinPad is the 4x3 numeric keypad of the lock screen: circular keys
-// that dip on press. Layout order: 1-9, submit, 0, backspace.
+// that dip on press with the shared spring feel. Layout order: 1-9,
+// submit, 0, backspace.
 type PinPad struct {
-	keys    [12]widget.Clickable
-	press   [12]anim.Bool
-	wasHeld [12]bool
+	keys  [12]widget.Clickable
+	press [12]PressScale
 }
 
 // Layout draws the pad; canSubmit lights the confirm key.
@@ -72,59 +70,44 @@ func (pp *PinPad) Layout(gtx layout.Context, th *theme.Theme, canSubmit bool) (P
 	return action, dims
 }
 
-// key draws one circular pad key with the press-dip animation.
+// key draws one circular pad key with the shared spring press-dip.
 func (pp *PinPad) key(gtx layout.Context, th *theme.Theme, i int, r rune, canSubmit bool) layout.Dimensions {
 	p := th.Palette
-	held := pp.keys[i].Pressed()
-	if held != pp.wasHeld[i] {
-		pp.wasHeld[i] = held
-		d := 200 * time.Millisecond
-		if held {
-			d = 60 * time.Millisecond
-		}
-		pp.press[i].Set(held, gtx.Now, d)
-	}
-	t, settled := pp.press[i].Progress(gtx.Now, anim.OutCubic)
-	if !settled {
-		gtx.Execute(op.InvalidateCmd{})
-	}
-	scale := anim.Lerp(1, 0.90, t)
-
 	return pp.keys[i].Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		d := gtx.Dp(68)
-		size := image.Pt(d, d)
-		origin := f32.Pt(float32(d)/2, float32(d)/2)
-		defer op.Affine(f32.Affine2D{}.Scale(origin, f32.Pt(scale, scale))).Push(gtx.Ops).Pop()
-		defer clip.Ellipse{Max: size}.Push(gtx.Ops).Pop()
+		return pp.press[i].Layout(gtx, &pp.keys[i], 0.90, func(gtx layout.Context) layout.Dimensions {
+			d := gtx.Dp(68)
+			size := image.Pt(d, d)
+			defer clip.Ellipse{Max: size}.Push(gtx.Ops).Pop()
 
-		fillGtx := gtx
-		fillGtx.Constraints.Min = size
-		switch {
-		case r == 'S' && canSubmit:
-			FillGradient(fillGtx, p.Accent, p.AccentAlt)
-		case r == 'S' || r == 'B':
-			// Function keys stay transparent until usable.
-		default:
-			Fill(fillGtx, p.Surface)
-		}
-
-		inner := gtx
-		inner.Constraints = layout.Exact(size)
-		layout.Center.Layout(inner, func(gtx layout.Context) layout.Dimensions {
-			switch r {
-			case 'S':
-				c := p.Subtle
-				if canSubmit {
-					c = p.OnAccent
-				}
-				return DrawIcon(gtx, IconCheck, c, 24)
-			case 'B':
-				return DrawIcon(gtx, IconBackspace, p.OnSurface, 24)
+			fillGtx := gtx
+			fillGtx.Constraints.Min = size
+			switch {
+			case r == 'S' && canSubmit:
+				FillGradient(fillGtx, p.Accent, p.AccentAlt)
+			case r == 'S' || r == 'B':
+				// Function keys stay transparent until usable.
 			default:
-				return th.Label(gtx, theme.Numeral, p.OnBackground, string(r), 1)
+				Fill(fillGtx, p.Surface)
 			}
+
+			inner := gtx
+			inner.Constraints = layout.Exact(size)
+			layout.Center.Layout(inner, func(gtx layout.Context) layout.Dimensions {
+				switch r {
+				case 'S':
+					c := p.Subtle
+					if canSubmit {
+						c = p.OnAccent
+					}
+					return DrawIcon(gtx, IconCheck, c, 24)
+				case 'B':
+					return DrawIcon(gtx, IconBackspace, p.OnSurface, 24)
+				default:
+					return th.Label(gtx, theme.Numeral, p.OnBackground, string(r), 1)
+				}
+			})
+			return layout.Dimensions{Size: size}
 		})
-		return layout.Dimensions{Size: size}
 	})
 }
 
