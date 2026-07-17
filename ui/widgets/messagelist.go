@@ -91,11 +91,14 @@ func (ml *MessageList) AtTop() bool {
 }
 
 // Layout renders the list and returns any actions performed this frame.
-func (ml *MessageList) Layout(gtx layout.Context, th *theme.Theme, msgs []store.Message) []ListAction {
+// rowText carries each message's precomputed display line keyed by ID (see
+// RowLine); a missing entry is rebuilt inline so the list is never wrong.
+func (ml *MessageList) Layout(gtx layout.Context, th *theme.Theme, msgs []store.Message, rowText map[int64]string) []ListAction {
 	if len(ml.rows) < len(msgs) {
 		ml.rows = append(ml.rows, make([]rowState, len(msgs)-len(ml.rows))...)
 	}
 	var actions []ListAction
+	now := gtx.Now
 
 	ml.list.Layout(gtx, len(msgs), func(gtx layout.Context, i int) layout.Dimensions {
 		msg := msgs[i]
@@ -107,14 +110,14 @@ func (ml *MessageList) Layout(gtx layout.Context, th *theme.Theme, msgs []store.
 
 		rowWidget := func(gtx layout.Context) layout.Dimensions {
 			return row.click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return messageRow(gtx, th, msg, row.click.Pressed())
+				return messageRow(gtx, th, msg, row.click.Pressed(), rowText[msg.ID], now)
 			})
 		}
 
 		var dims layout.Dimensions
 		if ml.Swipe {
 			var result SwipeResult
-			result, dims = row.swipe.Layout(gtx, th, ml.entranceWrap(rowWidget, i))
+			result, dims = row.swipe.Layout(gtx, th, ml.entranceWrap(rowWidget, i, len(msgs)))
 			switch result {
 			case SwipeArchive:
 				actions = append(actions, ListAction{Kind: ActionArchive, Message: msg})
@@ -126,7 +129,7 @@ func (ml *MessageList) Layout(gtx layout.Context, th *theme.Theme, msgs []store.
 				actions = append(actions, ListAction{Kind: ActionOpen, Message: msg})
 			}
 		} else {
-			dims = ml.entranceWrap(rowWidget, i)(gtx)
+			dims = ml.entranceWrap(rowWidget, i, len(msgs))(gtx)
 		}
 
 		sepGtx := gtx
@@ -139,13 +142,22 @@ func (ml *MessageList) Layout(gtx layout.Context, th *theme.Theme, msgs []store.
 
 // entranceWrap applies the cascade fade+rise to row i while the
 // entrance is live; settled rows pay nothing.
-func (ml *MessageList) entranceWrap(w layout.Widget, i int) layout.Widget {
+func (ml *MessageList) entranceWrap(w layout.Widget, i, count int) layout.Widget {
 	if !ml.entranceLive || i >= entranceRows {
 		return w
 	}
+	// The last animating row is the last on-screen row within the cascade
+	// window — min(entranceRows, count)-1. Keying only on entranceRows-1
+	// left entranceLive stuck true forever for lists shorter than the
+	// window (that row never lays out), so every row kept paying the
+	// closure and Stagger on every frame.
+	last := entranceRows
+	if count < last {
+		last = count
+	}
 	return func(gtx layout.Context) layout.Dimensions {
 		t, done := anim.Stagger(gtx.Now, ml.entranceStart, i, entranceStep, entranceDur, anim.OutCubic)
-		if i == entranceRows-1 && done {
+		if i == last-1 && done {
 			ml.entranceLive = false
 		}
 		if done {
@@ -171,7 +183,7 @@ func (ml *MessageList) entranceWrap(w layout.Widget, i int) layout.Widget {
 //
 // Unread rows carry a 3dp accent bar on the leading edge and full-strength
 // text; read rows recede to OnSurface/Subtle.
-func messageRow(gtx layout.Context, th *theme.Theme, msg store.Message, pressed bool) layout.Dimensions {
+func messageRow(gtx layout.Context, th *theme.Theme, msg store.Message, pressed bool, line string, now time.Time) layout.Dimensions {
 	height := gtx.Dp(theme.RowHeight)
 	width := gtx.Constraints.Max.X
 	gtx.Constraints = layout.Exact(image.Pt(width, height))
@@ -196,11 +208,11 @@ func messageRow(gtx layout.Context, th *theme.Theme, msg store.Message, pressed 
 				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 					return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return rowLine1(gtx, th, msg)
+							return rowLine1(gtx, th, msg, now)
 						}),
 						layout.Rigid(layout.Spacer{Height: theme.XS}.Layout),
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return rowLine2(gtx, th, msg)
+							return rowLine2(gtx, th, msg, line)
 						}))
 				}))
 		})

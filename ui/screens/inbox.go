@@ -34,6 +34,16 @@ type Inbox struct {
 	// pendingHidden holds message IDs swiped away but not yet committed;
 	// they are hidden immediately and restored on undo.
 	pendingHidden map[int64]bool
+
+	// Memoized per-frame strings: the title and the entrance key are
+	// rebuilt only when their inputs change, not with a fmt.Sprintf every
+	// frame (they render on every scroll/animation frame otherwise).
+	titleCache    string
+	titleFolder   int64
+	titleUnread   int
+	entranceCache string
+	entranceAcct  int64
+	entranceFldr  int64
 }
 
 // NewInbox constructs the inbox screen.
@@ -76,16 +86,27 @@ func (s *Inbox) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 		env.Snack.ShowInfo("Syncing…")
 	}
 
-	title := snap.CurrentFolder.Name
-	if title == "" {
-		title = "Inbox"
+	// Title: rebuilt only when the folder or its unread count changes.
+	unread := snap.Unread[snap.CurrentFolder.ID]
+	if s.titleCache == "" || s.titleFolder != snap.CurrentFolder.ID || s.titleUnread != unread {
+		title := snap.CurrentFolder.Name
+		if title == "" {
+			title = "Inbox"
+		}
+		if unread > 0 {
+			title = fmt.Sprintf("%s · %d", title, unread)
+		}
+		s.titleCache, s.titleFolder, s.titleUnread = title, snap.CurrentFolder.ID, unread
 	}
-	if n := snap.Unread[snap.CurrentFolder.ID]; n > 0 {
-		title = fmt.Sprintf("%s · %d", title, n)
-	}
+	title := s.titleCache
 
-	// Arm the entrance cascade when the folder identity changes.
-	s.list.BeginEntrance(fmt.Sprintf("%d/%d", snap.SelectedAccount, snap.CurrentFolder.ID), gtx.Now)
+	// Arm the entrance cascade when the folder identity changes; the key is
+	// rebuilt only on that change, not per frame.
+	if s.entranceCache == "" || s.entranceAcct != snap.SelectedAccount || s.entranceFldr != snap.CurrentFolder.ID {
+		s.entranceCache = fmt.Sprintf("%d/%d", snap.SelectedAccount, snap.CurrentFolder.ID)
+		s.entranceAcct, s.entranceFldr = snap.SelectedAccount, snap.CurrentFolder.ID
+	}
+	s.list.BeginEntrance(s.entranceCache, gtx.Now)
 
 	visible := s.visibleMessages(snap.Messages)
 	syncing := snap.ManualSyncing ||
@@ -113,7 +134,7 @@ func (s *Inbox) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 						return emptyState(gtx, th, widgets.IconEnvelope, true,
 							"All clear.", "New messages will appear here.")
 					}
-					for _, action := range s.list.Layout(gtx, th, visible) {
+					for _, action := range s.list.Layout(gtx, th, visible, snap.RowText) {
 						s.handleAction(gtx, env, snap, action)
 					}
 					return layout.Dimensions{Size: gtx.Constraints.Max}

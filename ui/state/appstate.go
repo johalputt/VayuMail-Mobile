@@ -7,7 +7,6 @@ package state
 
 import (
 	"context"
-	"log/slog"
 	"sync"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/johalputt/VayuMail-Mobile/internal/mail/pgp"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
+	"github.com/johalputt/VayuMail-Mobile/ui/widgets"
 )
 
 // Snapshot is one consistent view of everything the screens render. It is
@@ -26,10 +26,19 @@ type Snapshot struct {
 	CurrentFolder store.Folder
 	Messages      []store.Message
 	Thread        []store.Message
+	// ThreadBodies holds each thread message's pre-parsed display body,
+	// keyed by message ID. Built once per thread load off the frame loop so
+	// the view never tokenizes HTML or splits quotes while rendering.
+	ThreadBodies  map[int64]widgets.MessageBody
 	SearchResults []store.Message
-	Online        bool
-	SyncDone      int
-	SyncTotal     int
+	// RowText holds each list row's precomputed "subject — snippet" line,
+	// keyed by message ID, so the list never concatenates it per frame (the
+	// concat result is the text shaper's cache key, so a per-frame concat
+	// defeated the shape cache). Covers Messages and SearchResults.
+	RowText   map[int64]string
+	Online    bool
+	SyncDone  int
+	SyncTotal int
 	// ManualSyncing is true while a user-requested full sync runs
 	// (pull-to-refresh, "Sync now") — bracketed by the SyncStarted /
 	// SyncFinished events, so the indicator spins and the list reloads
@@ -86,6 +95,10 @@ type AppState struct {
 	selThread    string
 	searchQuery  string
 	refreshQueue chan struct{}
+	// searchQueue triggers the lightweight search-only reload; searchTimer
+	// debounces per-keystroke queries (guarded by mu).
+	searchQueue chan struct{}
+	searchTimer *time.Timer
 	// refetching marks messages with an in-flight body re-download so a
 	// broken row is repaired once, not on every frame the thread is open;
 	// refetched records completed attempts so the repair is terminal —
@@ -111,6 +124,7 @@ func New(ctx context.Context, db *store.DB, mgr *syncmanager.Manager, lock *appl
 		lock:         lock,
 		keyring:      pgp.NewKeyring(),
 		refreshQueue: make(chan struct{}, 1),
+		searchQueue:  make(chan struct{}, 1),
 		refetching:   map[int64]bool{},
 		refetched:    map[int64]bool{},
 		snap: Snapshot{Unread: map[int64]int{}, Online: true,
@@ -157,19 +171,35 @@ func (s *AppState) Send(cmd syncmanager.Cmd) {
 	}
 }
 
-// Apply folds one sync event into the state. Called from the frame loop;
-// it must stay non-blocking (map updates and refresh scheduling only).
+// Apply folds one sync event into the state. Called from the event pump
+// goroutine (any goroutine is safe — everything is mutex-guarded); it must
+// stay non-blocking (map updates and refresh scheduling only).
+//
+// Transient events that only patch snapshot fields the frame loop already
+// reads (connection state, sync progress, auth banner, manual-sync
+// bracketing) return without scheduling a store reload: during a large
+// sync the progress ticker used to trigger a full snapshot rebuild — a
+// dozen SQLite queries — per fetched message. The list itself refreshes on
+// the NewMessageEvent/SyncFinishedEvent that actually change it.
 func (s *AppState) Apply(ev syncmanager.Event) {
 	s.mu.Lock()
 	switch e := ev.(type) {
 	case syncmanager.ConnectionEvent:
 		s.snap.Online = e.Online
+		s.mu.Unlock()
+		return
 	case syncmanager.SyncProgressEvent:
 		s.snap.SyncDone, s.snap.SyncTotal = e.Done, e.Total
+		s.mu.Unlock()
+		return
 	case syncmanager.AuthErrorEvent:
 		s.snap.AuthError = true
+		s.mu.Unlock()
+		return
 	case syncmanager.SyncStartedEvent:
 		s.snap.ManualSyncing = true
+		s.mu.Unlock()
+		return
 	case syncmanager.SyncFinishedEvent:
 		s.snap.ManualSyncing = false
 	case syncmanager.NewMessageEvent:
@@ -252,132 +282,6 @@ func (s *AppState) Refresh() {
 	case s.refreshQueue <- struct{}{}:
 	default:
 	}
-}
-
-// loaderLoop is the only goroutine that reads the store for the UI.
-func (s *AppState) loaderLoop(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-s.refreshQueue:
-			s.reload(ctx)
-			if s.invalidate != nil {
-				s.invalidate()
-			}
-		}
-	}
-}
-
-// reload rebuilds the snapshot from the store.
-func (s *AppState) reload(ctx context.Context) {
-	s.mu.Lock()
-	selAccount, selFolder := s.selAccount, s.selFolder
-	selThread, query := s.selThread, s.searchQuery
-	s.mu.Unlock()
-
-	next := Snapshot{Unread: map[int64]int{}}
-
-	accounts, err := s.db.ListAccounts(ctx)
-	if err != nil {
-		slog.Error("reload accounts", "err", err)
-		return
-	}
-	next.Accounts = accounts
-	s.loadPrefs(ctx, &next)
-	if len(accounts) == 0 {
-		s.commit(next)
-		return
-	}
-	if selAccount == 0 {
-		selAccount = accounts[0].ID
-	}
-
-	// Keep VayuTalk connected to the active account for the whole time the app
-	// is running — not only while the chat screen is open — so messages arrive
-	// in real time and any queued while we were away drain the moment we're back.
-	// EnsureStarted is idempotent (a no-op once bound to this account), so
-	// calling it on every reload is cheap; switching accounts rebinds it.
-	if s.Chat != nil {
-		for i := range accounts {
-			if accounts[i].ID == selAccount {
-				s.Chat.EnsureStarted(accounts[i])
-				break
-			}
-		}
-	}
-
-	folders, err := s.db.ListFolders(ctx, selAccount)
-	if err != nil {
-		slog.Error("reload folders", "err", err)
-		return
-	}
-	next.Folders = folders
-	for _, f := range folders {
-		n, err := s.db.UnreadCount(ctx, f.ID)
-		if err == nil {
-			next.Unread[f.ID] = n
-		}
-		if (selFolder == 0 && f.IsInbox) || f.ID == selFolder {
-			next.CurrentFolder = f
-		}
-	}
-	if unified, err := s.db.UnifiedUnreadCount(ctx); err == nil {
-		next.Unread[UnifiedFolderID] = unified
-	}
-	if selFolder == UnifiedFolderID {
-		next.CurrentFolder = store.Folder{ID: UnifiedFolderID, Name: "All inboxes"}
-		msgs, err := s.db.ListUnifiedInbox(ctx, 0, 200)
-		if err != nil {
-			slog.Error("reload unified inbox", "err", err)
-			return
-		}
-		next.Messages = msgs
-	} else if next.CurrentFolder.ID != 0 {
-		msgs, err := s.db.ListMessages(ctx, next.CurrentFolder.ID, 0, 200)
-		if err != nil {
-			slog.Error("reload messages", "err", err)
-			return
-		}
-		next.Messages = msgs
-	}
-	if keys, err := s.db.ListPGPKeys(ctx); err == nil {
-		next.PGPKeys = keys
-	}
-	if urlStr, err := s.db.GetSetting(ctx, store.SettingPGPKeyDirectoryURL); err == nil {
-		next.PGPKeyDirURL = urlStr
-	}
-	next.SelectedAccount = selAccount
-	s.mu.Lock()
-	next.AutoWKD = s.autoWKD
-	s.mu.Unlock()
-	if selThread != "" {
-		thread, err := s.db.ListThread(ctx, selAccount, selThread)
-		if err == nil {
-			next.Thread = s.decryptThread(thread)
-		}
-	}
-	if query != "" {
-		results, err := s.db.Search(ctx, selAccount, query, 50)
-		if err == nil {
-			for _, r := range results {
-				next.SearchResults = append(next.SearchResults, r.Message)
-			}
-		}
-	}
-	s.commit(next)
-}
-
-// commit swaps in the new snapshot, preserving transient flags.
-func (s *AppState) commit(next Snapshot) {
-	s.mu.Lock()
-	next.Online = s.snap.Online
-	next.AuthError = s.snap.AuthError
-	next.SyncDone, next.SyncTotal = s.snap.SyncDone, s.snap.SyncTotal
-	next.ManualSyncing = s.snap.ManualSyncing
-	next.Locked = s.locked
-	s.snap = next
-	s.mu.Unlock()
 }
 
 func (s *AppState) notify(msg string) {

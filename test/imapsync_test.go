@@ -140,8 +140,18 @@ func TestSyncFoldersAndMessages(t *testing.T) {
 	if simple.FromAddr != "alice@example.com" || simple.FromName != "Alice Example" {
 		t.Errorf("envelope mapping: %+v", simple)
 	}
-	if simple.Snippet == "" || simple.BodyText == "" {
-		t.Errorf("body not fetched: %+v", simple)
+	if simple.Snippet == "" {
+		t.Errorf("snippet not derived: %+v", simple)
+	}
+	// ListMessages is a header projection (bodies intentionally empty);
+	// the stored body is asserted through the full-row read the thread
+	// view uses.
+	full, err := db.GetMessage(ctx, simple.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if full.BodyText == "" {
+		t.Errorf("body not fetched: %+v", full)
 	}
 	multi := bySubject["Multipart with attachment"]
 	if !multi.HasAttachments {

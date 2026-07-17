@@ -34,20 +34,25 @@ var logoLightPNG []byte
 
 var (
 	logoOnce sync.Once
-	logoImg  image.Image
+	logoOp   paint.ImageOp
+	logoSize image.Point
 )
 
-// brandLogo decodes the embedded logo once and returns it.
-func brandLogo() image.Image {
+// brandLogoOp decodes the embedded logo once and returns a cached
+// paint.ImageOp. Building the op per frame re-copied the bitmap and minted
+// a fresh GPU-texture handle every time, re-uploading the texture on every
+// splash frame; a cached op uploads once and is free afterwards.
+func brandLogoOp() (paint.ImageOp, image.Point) {
 	logoOnce.Do(func() {
 		img, err := png.Decode(bytes.NewReader(logoLightPNG))
 		if err != nil {
 			slog.Error("decode splash logo", "err", err)
 			return
 		}
-		logoImg = img
+		logoOp = paint.NewImageOp(img)
+		logoSize = img.Bounds().Size()
 	})
-	return logoImg
+	return logoOp, logoSize
 }
 
 // Boot owns the window event loop from the very first frame. On Android
@@ -159,13 +164,12 @@ func (b *Boot) Shutdown() {
 
 // frame draws the splash: the original logo (mark + wordmark) shown
 // statically, and a status line ("starting…" or, on failure, the fatal
-// error). No animation — the logo is presented exactly as provided while
-// the engine loads. The single InvalidateCmd only keeps the loop
-// repainting so it can notice when the engine finishes attaching; it
-// produces no visible motion.
+// error). No animation, and no per-frame invalidation: Attach and Fail
+// both call window.Invalidate, so the splash renders a handful of frames
+// during exactly the phase where the CPU is busiest (DB open, keystore,
+// sync start) instead of spinning at full frame rate.
 func (b *Boot) frame(gtx layout.Context) {
 	widgets.FillMax(gtx, b.th.Palette.Background)
-	gtx.Execute(op.InvalidateCmd{})
 
 	layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Vertical, Alignment: layout.Middle}.Layout(gtx,
@@ -184,22 +188,18 @@ func (b *Boot) frame(gtx layout.Context) {
 
 // drawBrandLogo paints the embedded original logo, scaled to widthDp and
 // centered, preserving its aspect ratio. It draws the real PNG artwork —
-// no vector reconstruction.
+// no vector reconstruction — through the cached ImageOp, so the GPU
+// texture is uploaded once for the process lifetime.
 func drawBrandLogo(gtx layout.Context, widthDp int) layout.Dimensions {
-	img := brandLogo()
-	if img == nil {
+	imgOp, size := brandLogoOp()
+	if size.X == 0 {
 		return layout.Dimensions{}
 	}
 	w := gtx.Dp(unit.Dp(widthDp))
-	src := img.Bounds().Dx()
-	if src == 0 {
-		return layout.Dimensions{}
-	}
-	scale := float32(w) / float32(src)
-	h := int(float32(img.Bounds().Dy()) * scale)
+	scale := float32(w) / float32(size.X)
+	h := int(float32(size.Y) * scale)
 
 	defer op.Affine(f32.Affine2D{}.Scale(f32.Pt(0, 0), f32.Pt(scale, scale))).Push(gtx.Ops).Pop()
-	imgOp := paint.NewImageOp(img)
 	imgOp.Add(gtx.Ops)
 	paint.PaintOp{}.Add(gtx.Ops)
 	return layout.Dimensions{Size: image.Pt(w, h)}

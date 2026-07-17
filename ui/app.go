@@ -47,7 +47,6 @@ type UI struct {
 	talkRoom   *screens.TalkRoom
 	talkVerify *screens.TalkVerify
 
-	events    <-chan syncmanager.Event
 	notify    *mailNotifier
 	lastFrame time.Time
 }
@@ -63,7 +62,7 @@ func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Mana
 	st := state.New(ctx, db, mgr, applock.New(ks, db))
 	st.SetInvalidate(w.Invalidate)
 
-	snack := &widgets.Snackbar{}
+	snack := &widgets.Snackbar{Wake: w.Invalidate}
 	st.Notify = func(msg string) {
 		snack.ShowInfo(msg)
 		w.Invalidate()
@@ -111,7 +110,6 @@ func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Mana
 		talk:       screens.NewTalk(),
 		talkRoom:   screens.NewTalkRoom(),
 		talkVerify: screens.NewTalkVerify(),
-		events:     mgr.Events(),
 		notify:     newMailNotifier(ctx, db),
 	}
 	ui.notify.enabled = st.NotificationsEnabled
@@ -119,13 +117,37 @@ func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Mana
 	// Incoming VayuTalk messages post a content-free notification (privacy:
 	// never the sender or the text), gated by the notifications setting.
 	chatState.OnIncoming = ui.notify.notifyChat
+
+	// Event pump: sync events are folded the moment they arrive and the
+	// window is woken explicitly. Gio renders on demand — when the drain
+	// lived in Frame, a new message that arrived while the app sat idle
+	// stayed invisible (and un-notified) until some input produced a frame.
+	// Apply and the notifier are safe off the UI thread (mutex-guarded /
+	// own goroutine); the frame loop just reads the resulting snapshot.
+	go func() {
+		events := mgr.Events()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case ev, ok := <-events:
+				if !ok {
+					return
+				}
+				st.Apply(ev)
+				ui.notify.observe(ev)
+				w.Invalidate()
+			}
+		}
+	}()
+
 	st.Refresh() // SQLite on first paint: cached mail renders immediately.
 	return ui
 }
 
 // Frame renders one UI frame into the boot loop's context (Section 3 of
-// the architecture): it drains sync events non-blockingly, applies the
-// idle auto-lock, then draws.
+// the architecture): it applies the idle auto-lock, then draws. Sync
+// events are folded by the event pump goroutine (see New), never here.
 func (ui *UI) Frame(gtx layout.Context) {
 	// A long gap between frames means the app was backgrounded or the
 	// device idle — re-arm the lock before drawing anything.
@@ -133,18 +155,6 @@ func (ui *UI) Frame(gtx layout.Context) {
 		ui.st.MaybeAutoLock(gtx.Now.Sub(ui.lastFrame))
 	}
 	ui.lastFrame = gtx.Now
-
-	// Drain eventCh non-blockingly before drawing.
-drain:
-	for {
-		select {
-		case ev := <-ui.events:
-			ui.st.Apply(ev)
-			ui.notify.observe(ev)
-		default:
-			break drain
-		}
-	}
 	ui.layout(gtx)
 }
 

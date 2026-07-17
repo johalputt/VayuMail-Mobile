@@ -63,7 +63,7 @@ func (db *DB) Search(ctx context.Context, accountID int64, query string, limit i
 	q := fmt.Sprintf(`
 		SELECT %s, %s AS rank FROM messages m %s
 		WHERE %s ORDER BY %s LIMIT ?`,
-		prefixedMessageCols, rankExpr, ftsJoin,
+		prefixedHeaderCols, rankExpr, ftsJoin,
 		strings.Join(where, " AND "), orderBy)
 
 	rows, err := db.sql.QueryContext(ctx, q, args...)
@@ -86,14 +86,13 @@ func (db *DB) Search(ctx context.Context, accountID int64, query string, limit i
 	return out, nil
 }
 
-// prefixedMessageCols mirrors messageCols with an explicit table alias so
-// joined queries are unambiguous. Keep in sync with messageCols.
-const prefixedMessageCols = `m.id, m.account_id, m.folder_id, m.uid,
+// prefixedHeaderCols mirrors messageHeaderCols (empty bodies) with the
+// table alias joined queries need. Keep in sync with messageHeaderCols.
+const prefixedHeaderCols = `m.id, m.account_id, m.folder_id, m.uid,
 	COALESCE(m.thread_id,''), COALESCE(m.message_id,''),
 	COALESCE(m.in_reply_to,''), m.from_addr, COALESCE(m.from_name,''),
 	m.to_addrs, COALESCE(m.cc_addrs,''), COALESCE(m.subject,''),
-	COALESCE(m.snippet,''), COALESCE(m.body_text,''),
-	COALESCE(m.body_html,''), m.has_attachments,
+	COALESCE(m.snippet,''), '', '', m.has_attachments,
 	COALESCE(m.pgp_status,''), m.is_read, m.is_flagged, m.is_deleted,
 	m.date, COALESCE(m.size_bytes,0), COALESCE(m.flags,''),
 	m.has_trackers, m.is_list, COALESCE(m.list_unsubscribe,''),

@@ -7,6 +7,8 @@ package state
 // loop directly.
 
 import (
+	"time"
+
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
 )
@@ -52,14 +54,35 @@ func (s *AppState) OpenThread(threadID string) {
 	s.Refresh()
 }
 
-// SetSearch updates the live search query.
+// searchDebounce delays the FTS query while the user is still typing; each
+// keystroke used to run a full snapshot rebuild plus an FTS query.
+const searchDebounce = 220 * time.Millisecond
+
+// SetSearch updates the live search query. The query itself is recorded
+// immediately (the stale-answer guard in reloadSearch compares against
+// it), but the FTS run is debounced. Clearing the query applies at once
+// so leaving the search screen never shows ghost results.
 func (s *AppState) SetSearch(query string) {
 	s.mu.Lock()
 	changed := s.searchQuery != query
 	s.searchQuery = query
+	if changed && s.searchTimer != nil {
+		s.searchTimer.Stop()
+		s.searchTimer = nil
+	}
+	if changed && query != "" {
+		s.searchTimer = time.AfterFunc(searchDebounce, func() {
+			select {
+			case s.searchQueue <- struct{}{}:
+			default:
+			}
+		})
+	}
 	s.mu.Unlock()
-	if changed {
-		s.Refresh()
+	if changed && query == "" {
+		s.mu.Lock()
+		s.snap.SearchResults = nil
+		s.mu.Unlock()
 	}
 }
 

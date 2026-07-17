@@ -8,9 +8,10 @@ import (
 
 // ListUnifiedInbox returns the newest messages across every account's
 // inbox — the "All inboxes" view. Snoozed and deleted rows are excluded.
+// Rows carry header data only (empty bodies), like ListMessages.
 func (db *DB) ListUnifiedInbox(ctx context.Context, offset, limit int) ([]Message, error) {
 	rows, err := db.sql.QueryContext(ctx, `
-		SELECT `+prefixedMessageCols+` FROM messages m
+		SELECT `+prefixedHeaderCols+` FROM messages m
 		JOIN folders f ON f.id = m.folder_id
 		WHERE f.is_inbox = 1 AND m.is_deleted = 0
 			AND m.snooze_until <= unixepoch()
@@ -139,7 +140,7 @@ func (db *DB) SetPGPTrust(ctx context.Context, fingerprint string, level int) er
 	return nil
 }
 
-// collectPrefixedMessages scans rows selected with prefixedMessageCols.
+// collectPrefixedMessages scans rows selected with prefixedHeaderCols.
 func collectPrefixedMessages(rows interface {
 	Next() bool
 	Scan(...any) error

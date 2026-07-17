@@ -62,7 +62,7 @@ func (s *Search) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 				// The message is complete: no secondary text.
 				return emptyState(gtx, th, 0, false, "Nothing found.", "")
 			}
-			for _, action := range s.results.Layout(gtx, th, snap.SearchResults) {
+			for _, action := range s.results.Layout(gtx, th, snap.SearchResults, snap.RowText) {
 				if action.Kind == widgets.ActionOpen {
 					msg := action.Message
 					if !msg.IsRead {
