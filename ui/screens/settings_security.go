@@ -85,6 +85,24 @@ func (s *Settings) securityRows(gtx layout.Context, env *Env, snap state.Snapsho
 				return th.Label(gtx, theme.Caption, th.Palette.Accent,
 					autoLockLabel(snap.AppLockTimeout), 1)
 			}))
+
+		// Fingerprint / face unlock — only offered when the device supports
+		// it. It is a faster way through the same PIN gate; the PIN always
+		// stays available as the fallback.
+		if snap.BiometricAvailable {
+			rows = append(rows, func(gtx layout.Context) layout.Dimensions {
+				inner := s.item(th, "Fingerprint unlock",
+					"Unlock with your fingerprint or face — your PIN still works as a fallback",
+					func(gtx layout.Context) layout.Dimensions {
+						dims, toggled := s.biometricSwitch.Layout(gtx, th, snap.BiometricEnabled)
+						if toggled {
+							env.State.SetBiometric(!snap.BiometricEnabled)
+						}
+						return dims
+					})
+				return inner(gtx)
+			})
+		}
 	}
 
 	// Two-factor unlock is always listed so it is discoverable; when the

@@ -52,6 +52,7 @@ const (
 	IconEyeOff
 	IconFolder
 	IconChat
+	IconFingerprint
 )
 
 // DrawIcon renders an icon at the given size, stroked in c. All icons are

@@ -6,7 +6,19 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.0] — 2026-07-17
+
 ### Added
+- **Fingerprint / face unlock (Android).** When the device supports biometrics,
+  a new **Fingerprint unlock** switch appears under Settings → Security. With it
+  on, the lock screen prompts for a fingerprint or face the moment it appears
+  (and via a **Use fingerprint** key), and a match opens the app. It is a faster
+  way through the *same* PIN gate — the PIN and its verifier are unchanged and
+  always available as the fallback, a biometric never bypasses the brute-force
+  lockout window or an enrolled two-factor code, and no biometric data ever
+  leaves the OS. Built on the framework `BiometricPrompt` over JNI with no
+  AndroidX dependency (`internal/biometric`), with a clean no-op stub on every
+  other platform. *(See COMPLIANCE-TRACKER for the manifest-permission note.)*
 - **A spring-based motion system — the app now moves with one coherent,
   physical feel.** A new `anim.Spring` primitive (velocity-carrying, settles
   under damping, side-effect-free sampling) and a set of shared motion tokens

@@ -17,9 +17,11 @@ import (
 	"time"
 
 	"gioui.org/app"
+	"gioui.org/io/event"
 	"gioui.org/x/explorer"
 	xtheme "gioui.org/x/pref/theme"
 
+	"github.com/johalputt/VayuMail-Mobile/internal/biometric"
 	appcrypto "github.com/johalputt/VayuMail-Mobile/internal/crypto"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
@@ -47,7 +49,13 @@ func run(window *app.Window) int {
 	exp := explorer.NewExplorer(window)
 
 	boot := ui.NewBoot(ctx, window)
-	boot.SetEventListener(exp.ListenEvents)
+	// Both the file picker and the biometric backend need to observe the
+	// Android view lifecycle (BiometricPrompt needs the Activity behind the
+	// current view), so the boot loop fans every event out to both.
+	boot.SetEventListener(func(e event.Event) {
+		exp.ListenEvents(e)
+		biometric.HandleViewEvent(e)
+	})
 	go initEngine(ctx, window, boot, func() (io.ReadCloser, error) { return exp.ChooseFile() })
 
 	err := boot.Run()

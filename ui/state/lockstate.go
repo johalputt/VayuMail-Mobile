@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/johalputt/VayuMail-Mobile/internal/biometric"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
 )
@@ -28,6 +29,12 @@ func (s *AppState) loadPrefs(ctx context.Context, next *Snapshot) {
 	if s.lock != nil {
 		next.AppLockEnabled = s.lock.Enabled(ctx)
 		next.TOTPEnabled = s.lock.TOTPEnabled(ctx)
+	}
+	// Fingerprint/face unlock: availability is a device fact; enabled is the
+	// user's stored preference. Both only matter when the app lock is on.
+	next.BiometricAvailable = biometric.Available()
+	if v, err := s.db.GetSetting(ctx, store.SettingBiometricUnlock); err == nil && v == "1" {
+		next.BiometricEnabled = true
 	}
 	next.AppLockTimeout = 60 // default window until the user picks one
 	if v, err := s.db.GetSetting(ctx, store.SettingAppLockTimeout); err == nil && v != "" {
@@ -268,6 +275,65 @@ func (s *AppState) RemovePIN(done func(err error)) {
 			s.invalidate()
 		}
 	}()
+}
+
+// SetBiometric persists the fingerprint-unlock preference. It only records
+// a choice — the PIN gate and verifier are untouched — so turning it on or
+// off can never lock the user out.
+func (s *AppState) SetBiometric(on bool) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		v := "0"
+		if on {
+			v = "1"
+		}
+		if err := s.db.SetSetting(ctx, store.SettingBiometricUnlock, v); err != nil {
+			s.notify("Could not save setting")
+			return
+		}
+		s.Refresh()
+	}()
+}
+
+// UnlockWithBiometric prompts for a fingerprint/face on a background
+// goroutine (the OS sheet blocks) and, on success, opens the same gate a
+// correct PIN would — but only when biometric unlock is actually enabled and
+// available, and never while the lockout window is open (so biometrics can't
+// sidestep the PIN's brute-force throttle). done(ok) reports the outcome so
+// the lock screen can fall back to the PIN pad. A biometric never bypasses an
+// enrolled second factor: TOTP is still required afterwards.
+func (s *AppState) UnlockWithBiometric(done func(ok bool, totpNext bool)) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		snap := s.Snapshot()
+		if s.lock == nil || !snap.AppLockEnabled || !snap.BiometricEnabled ||
+			!snap.BiometricAvailable || s.lock.RetryDelay(ctx) > 0 {
+			done(false, false)
+			return
+		}
+		ok := biometric.Authenticate("Unlock VayuMail", "Use your fingerprint or face")
+		totpNext := false
+		if ok {
+			if s.lock.TOTPEnabled(ctx) {
+				totpNext = true
+			} else {
+				s.unlock()
+			}
+		}
+		done(ok, totpNext)
+		if s.invalidate != nil {
+			s.invalidate()
+		}
+	}()
+}
+
+// BiometricUnlockReady reports whether a biometric prompt should be offered
+// on the lock screen right now: enabled, available, and not locked out.
+func (s *AppState) BiometricUnlockReady() bool {
+	snap := s.Snapshot()
+	return snap.AppLockEnabled && snap.BiometricEnabled && snap.BiometricAvailable
 }
 
 // SetAppLockTimeout persists the auto-lock idle window in seconds.

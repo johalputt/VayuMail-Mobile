@@ -56,6 +56,14 @@ type Snapshot struct {
 	// TOTPEnabled reports whether the authenticator second factor is
 	// enrolled on top of the PIN.
 	TOTPEnabled bool
+	// BiometricAvailable reports whether the device can do fingerprint/face
+	// unlock (hardware present and a credential enrolled); the UI only offers
+	// the toggle when true.
+	BiometricAvailable bool
+	// BiometricEnabled mirrors the user's fingerprint-unlock preference. It
+	// only enables an alternate way to pass the PIN gate — the PIN is always
+	// the fallback.
+	BiometricEnabled bool
 	// AppLockTimeout is the auto-lock idle window in seconds (0 = every
 	// time the app is left).
 	AppLockTimeout int
