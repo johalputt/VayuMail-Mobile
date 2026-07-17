@@ -6,6 +6,70 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.0] — 2026-07-17
+
+### Added
+- **Fingerprint / face unlock (Android).** When the device supports biometrics,
+  a new **Fingerprint unlock** switch appears under Settings → Security. With it
+  on, the lock screen prompts for a fingerprint or face the moment it appears
+  (and via a **Use fingerprint** key), and a match opens the app. It is a faster
+  way through the *same* PIN gate — the PIN and its verifier are unchanged and
+  always available as the fallback, a biometric never bypasses the brute-force
+  lockout window or an enrolled two-factor code, and no biometric data ever
+  leaves the OS. Built on the framework `BiometricPrompt` over JNI with no
+  AndroidX dependency (`internal/biometric`), with a clean no-op stub on every
+  other platform. *(See COMPLIANCE-TRACKER for the manifest-permission note.)*
+- **A spring-based motion system — the app now moves with one coherent,
+  physical feel.** A new `anim.Spring` primitive (velocity-carrying, settles
+  under damping, side-effect-free sampling) and a set of shared motion tokens
+  (durations + spring presets) sit under every interaction:
+  - **Buttons, the FAB and the PIN keys** dip and spring back on a shared
+    `PressScale`, carrying velocity across a fast double-tap so nothing snaps.
+  - **Top-bar and action icon buttons** gained an animated press: the halo fades
+    in and out and the glyph dips, instead of a hard on/off highlight.
+  - **Message rows** fade their press tint in and out rather than flashing it.
+  - **The dialog now animates closed** (scale + scrim fade) instead of vanishing
+    in one frame, matching its entrance.
+  - **The sync progress bar glides** to each new position with a spring, so
+    chunky per-message progress reads as one smooth sweep.
+  All of it keeps the app's core discipline: frames are requested only while a
+  spring is unsettled, so an idle screen still renders — and costs — nothing.
+
+### Changed
+- **Enterprise-grade performance pass — the app stays smooth during sync,
+  scrolling and search.** Several paths that quietly did per-frame work now do it
+  once, off the frame loop:
+  - **Sync events wake the UI directly.** A dedicated event pump folds each sync
+    event and invalidates the window the moment it arrives, so new mail (and its
+    notification) appears immediately instead of waiting for the next
+    input-driven frame. Transient events (connection, sync progress, auth,
+    manual-sync bracketing) now patch snapshot fields without triggering a full
+    store rebuild — a long sync no longer runs a dozen SQLite queries per fetched
+    message.
+  - **The message list stopped loading message bodies.** List/unified/search
+    reads use a header projection (empty bodies), so a 200-row inbox reload no
+    longer drags up to 512 KB of body text per row into memory; the thread view
+    still loads full bodies on demand.
+  - **The thread view no longer re-parses bodies every frame.** HTML
+    tokenization, quote splitting and attachment-JSON decoding happen once when a
+    thread loads; the view renders the precomputed result. Row display lines and
+    relative timestamps are likewise precomputed, and the frame clock replaces
+    per-row `time.Now()` calls.
+  - **Flag refresh is diff-aware.** A single unilateral IMAP flag notification
+    updates only the rows whose flags actually changed instead of rewriting (and
+    re-indexing) the whole mailbox; the FTS trigger no longer rewrites body-sized
+    documents when a message is merely marked read.
+  - **New database indexes** make per-folder queries (list, unread count, UID
+    lookups) index-backed instead of full table scans (migration v5).
+  - **Search is debounced** (~220 ms) and runs a lightweight FTS-only reload,
+    not a full snapshot rebuild per keystroke.
+  - **The splash and brand logos upload their GPU texture once** instead of
+    rebuilding the image op every frame, and the boot splash no longer repaints
+    at full frame rate during startup.
+  - **The snackbar animates only while it slides** — its ~3.75 s hold now costs
+    zero frames, where before every toast forced the whole app to repaint at
+    60 fps for four seconds.
+
 ## [2.2.12] — 2026-07-17
 
 ### Added
@@ -29,6 +93,8 @@ project uses [Semantic Versioning](https://semver.org/).
 - Requires a VayuPress relay running **v3.13.56+** for the read-time burn and
   Live semantics. Against an older relay the app still works (the timer behaves
   as a send-time lifetime).
+
+## [2.2.11] — 2026-07-12
 
 ### Fixed
 - **Real text renders correctly again — reverted the colour-emoji font.** The

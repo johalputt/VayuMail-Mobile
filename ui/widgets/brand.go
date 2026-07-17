@@ -28,51 +28,54 @@ var brandLightPNG []byte
 var brandDarkPNG []byte
 
 var (
-	brandOnce  sync.Once
-	brandLight image.Image
-	brandDark  image.Image
+	brandOnce      sync.Once
+	brandLightOp   paint.ImageOp
+	brandLightSize image.Point
+	brandDarkOp    paint.ImageOp
+	brandDarkSize  image.Point
 )
 
-// brandImage decodes both variants once and returns the one for the
-// active theme.
-func brandImage(dark bool) image.Image {
+// brandImageOp decodes both variants once and returns the cached ImageOp
+// for the active theme. Building paint.NewImageOp per frame re-copied the
+// bitmap and minted a fresh GPU-texture handle each time — a full texture
+// re-upload on every frame the logo was visible. The cached ops upload
+// once for the process lifetime.
+func brandImageOp(dark bool) (paint.ImageOp, image.Point) {
 	brandOnce.Do(func() {
 		if img, err := png.Decode(bytes.NewReader(brandLightPNG)); err == nil {
-			brandLight = img
+			brandLightOp = paint.NewImageOp(img)
+			brandLightOp.Filter = paint.FilterLinear
+			brandLightSize = img.Bounds().Size()
 		} else {
 			slog.Error("decode brand logo (light)", "err", err)
 		}
 		if img, err := png.Decode(bytes.NewReader(brandDarkPNG)); err == nil {
-			brandDark = img
+			brandDarkOp = paint.NewImageOp(img)
+			brandDarkOp.Filter = paint.FilterLinear
+			brandDarkSize = img.Bounds().Size()
 		} else {
 			slog.Error("decode brand logo (dark)", "err", err)
 		}
 	})
 	if dark {
-		return brandDark
+		return brandDarkOp, brandDarkSize
 	}
-	return brandLight
+	return brandLightOp, brandLightSize
 }
 
 // BrandLogo draws the theme-correct VayuMail logo scaled to widthDp,
 // preserving aspect ratio. It renders the real artwork — no vector
 // reconstruction — and costs one texture upload after first decode.
 func BrandLogo(gtx layout.Context, th *theme.Theme, widthDp unit.Dp) layout.Dimensions {
-	img := brandImage(th.Dark)
-	if img == nil {
+	imgOp, size := brandImageOp(th.Dark)
+	if size.X == 0 {
 		return layout.Dimensions{}
 	}
 	w := gtx.Dp(widthDp)
-	src := img.Bounds().Dx()
-	if src == 0 {
-		return layout.Dimensions{}
-	}
-	scale := float32(w) / float32(src)
-	h := int(float32(img.Bounds().Dy()) * scale)
+	scale := float32(w) / float32(size.X)
+	h := int(float32(size.Y) * scale)
 
 	defer op.Affine(f32.Affine2D{}.Scale(f32.Pt(0, 0), f32.Pt(scale, scale))).Push(gtx.Ops).Pop()
-	imgOp := paint.NewImageOp(img)
-	imgOp.Filter = paint.FilterLinear
 	imgOp.Add(gtx.Ops)
 	paint.PaintOp{}.Add(gtx.Ops)
 	return layout.Dimensions{Size: image.Pt(w, h)}

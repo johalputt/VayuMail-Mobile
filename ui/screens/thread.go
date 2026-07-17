@@ -77,7 +77,7 @@ func (s *Thread) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 			if len(snap.Thread) == 0 {
 				return emptyState(gtx, th, 0, false, "Nothing here.", "")
 			}
-			return s.view.Layout(gtx, th, snap.Thread)
+			return s.view.Layout(gtx, th, snap.Thread, snap.ThreadBodies)
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			if latest == nil {

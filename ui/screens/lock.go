@@ -7,6 +7,7 @@ import (
 
 	"gioui.org/layout"
 	"gioui.org/op"
+	"gioui.org/widget"
 
 	"github.com/johalputt/VayuMail-Mobile/ui/anim"
 	"github.com/johalputt/VayuMail-Mobile/ui/theme"
@@ -70,6 +71,12 @@ type Lock struct {
 	lockedTil time.Time
 	finished  bool
 
+	// bioBtn triggers the biometric prompt; bioPrompted guards the one
+	// automatic prompt shown when the unlock screen first appears, so it
+	// isn't re-shown every frame or after the user declines.
+	bioBtn      widget.Clickable
+	bioPrompted bool
+
 	mu      sync.Mutex
 	pending *lockOutcome
 }
@@ -88,12 +95,32 @@ func (l *Lock) Begin(intent LockIntent) {
 	l.busy, l.finished = false, false
 	l.errText = ""
 	l.stage = stageCurrent
+	l.bioPrompted = false
 	if intent == LockIntentEnroll {
 		l.stage = stageNew
 	}
 	l.mu.Lock()
 	l.pending = nil
 	l.mu.Unlock()
+}
+
+// promptBiometric fires the fingerprint/face prompt on the unlock flow.
+// The result folds through the same async outcome mailbox the PIN uses.
+func (l *Lock) promptBiometric(env *Env) {
+	if l.busy {
+		return
+	}
+	l.busy = true
+	l.errText = ""
+	env.State.UnlockWithBiometric(func(ok bool, totpNext bool) {
+		o := &lockOutcome{ok: ok, totpNext: totpNext}
+		if !ok {
+			// A declined or failed biometric is not an error to shout about —
+			// the PIN pad is right there. Keep the line quiet.
+			o.errMsg = ""
+		}
+		l.deliver(o, env)
+	})
 }
 
 // title is the prompt for the current stage.
@@ -129,6 +156,16 @@ func (l *Lock) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 	waiting := wait > 0
 	if waiting {
 		gtx.Execute(op.InvalidateCmd{})
+	}
+
+	// Offer biometrics on the unlock flow only. Auto-prompt once when the
+	// gate first appears (the platform-native UX), and let the user re-trigger
+	// it with the fingerprint key if they dismiss it.
+	bioReady := l.intent == LockIntentUnlock && l.stage == stageCurrent &&
+		env.State.BiometricUnlockReady()
+	if bioReady && !l.bioPrompted && !l.busy && !waiting {
+		l.bioPrompted = true
+		l.promptBiometric(env)
 	}
 
 	dims := layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
@@ -167,6 +204,27 @@ func (l *Lock) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 				action, padDims := l.pad.Layout(gtx, th, len(l.pin) >= 4)
 				l.applyKey(gtx, env, action)
 				return padDims
+			}),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				if !bioReady {
+					return layout.Dimensions{}
+				}
+				if l.bioBtn.Clicked(gtx) && !l.busy && !waiting {
+					l.bioPrompted = true
+					l.promptBiometric(env)
+				}
+				return layout.Inset{Top: theme.MD}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					return l.bioBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								return widgets.DrawIcon(gtx, widgets.IconFingerprint, p.Accent, 20)
+							}),
+							layout.Rigid(layout.Spacer{Width: theme.SM}.Layout),
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								return th.Label(gtx, theme.Caption, p.Accent, "Use fingerprint", 1)
+							}))
+					})
+				})
 			}))
 	})
 	return dims
@@ -259,7 +317,11 @@ func (l *Lock) foldOutcome(gtx layout.Context, env *Env) {
 		if o.retryAfter > 0 {
 			l.lockedTil = time.Now().Add(o.retryAfter)
 		}
-		l.shake.Start(gtx.Now, 400*time.Millisecond)
+		// A silent failure (a declined/failed biometric carries no message
+		// and no lockout) doesn't shake the pad — the user just uses the PIN.
+		if o.errMsg != "" || o.retryAfter > 0 {
+			l.shake.Start(gtx.Now, 400*time.Millisecond)
+		}
 		return
 	}
 	l.errText = ""

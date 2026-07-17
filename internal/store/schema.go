@@ -15,6 +15,7 @@ var migrations = []string{
 	migrationV2,
 	migrationV3,
 	migrationV4,
+	migrationV5,
 }
 
 const migrationV1 = `
@@ -175,6 +176,31 @@ CREATE TABLE settings (
 // keystore, never in this column (Rule 6).
 const migrationV4 = `
 ALTER TABLE accounts ADD COLUMN auth_mech TEXT NOT NULL DEFAULT '';
+`
+
+// migrationV5 makes the hot read paths index-backed and stops flag-only
+// updates from rewriting body-sized FTS documents:
+//   - Folder-leading indexes: the per-folder queries (message list, unread
+//     count, UID lookups, highest-UID) filter by folder_id alone, but every
+//     existing index leads with account_id, so each one was a full table
+//     scan. The partial unread index mirrors UnreadCount's exact predicate.
+//   - The FTS update trigger now fires only when an indexed content column
+//     changes; read/flag/delete/snooze flips previously deleted and
+//     reinserted the whole full-text document — including the message body —
+//     for every toggled row.
+const migrationV5 = `
+CREATE INDEX idx_messages_folder_date ON messages(folder_id, date DESC);
+CREATE INDEX idx_messages_folder_uid ON messages(folder_id, uid);
+CREATE INDEX idx_messages_folder_unread ON messages(folder_id)
+  WHERE is_read = 0 AND is_deleted = 0;
+DROP TRIGGER messages_fts_au;
+CREATE TRIGGER messages_fts_au AFTER UPDATE OF
+  from_addr, from_name, subject, snippet, body_text ON messages BEGIN
+  INSERT INTO messages_fts(messages_fts,rowid,from_addr,from_name,subject,snippet,body_text)
+  VALUES ('delete',old.id,old.from_addr,old.from_name,old.subject,old.snippet,old.body_text);
+  INSERT INTO messages_fts(rowid,from_addr,from_name,subject,snippet,body_text)
+  VALUES (new.id,new.from_addr,new.from_name,new.subject,new.snippet,new.body_text);
+END;
 `
 
 // migrate brings the schema to the newest version, applying each pending

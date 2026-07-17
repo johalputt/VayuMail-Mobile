@@ -57,6 +57,20 @@ const messageCols = `id, account_id, folder_id, uid, COALESCE(thread_id,''),
 	COALESCE(flags,''), has_trackers, is_list,
 	COALESCE(list_unsubscribe,''), snooze_until, COALESCE(attachments,'')`
 
+// messageHeaderCols mirrors messageCols but projects empty bodies. List
+// surfaces render only the snippet, yet the shared column list used to drag
+// every row's full body_text/body_html (up to 512 KB each) into each
+// 200-row snapshot rebuild. Same column count and order, so scanMessage
+// works unchanged; the thread/detail paths keep the full projection.
+const messageHeaderCols = `id, account_id, folder_id, uid,
+	COALESCE(thread_id,''), COALESCE(message_id,''),
+	COALESCE(in_reply_to,''), from_addr, COALESCE(from_name,''), to_addrs,
+	COALESCE(cc_addrs,''), COALESCE(subject,''), COALESCE(snippet,''),
+	'', '', has_attachments, COALESCE(pgp_status,''),
+	is_read, is_flagged, is_deleted, date, COALESCE(size_bytes,0),
+	COALESCE(flags,''), has_trackers, is_list,
+	COALESCE(list_unsubscribe,''), snooze_until, COALESCE(attachments,'')`
+
 func scanMessage(row interface{ Scan(...any) error }) (Message, error) {
 	var m Message
 	var date, snooze int64
@@ -161,10 +175,11 @@ func (db *DB) GetMessage(ctx context.Context, id int64) (Message, error) {
 
 // ListMessages returns messages in a folder, newest first, excluding
 // locally deleted rows. offset/limit page the result for the virtualized
-// list.
+// list. Rows carry header data only (empty bodies) — the list renders the
+// snippet, and the thread view loads full bodies via ListThread/GetMessage.
 func (db *DB) ListMessages(ctx context.Context, folderID int64, offset, limit int) ([]Message, error) {
 	rows, err := db.sql.QueryContext(ctx, `
-		SELECT `+messageCols+` FROM messages
+		SELECT `+messageHeaderCols+` FROM messages
 		WHERE folder_id = ? AND is_deleted = 0
 			AND snooze_until <= unixepoch()
 		ORDER BY date DESC, uid DESC LIMIT ? OFFSET ?`,
@@ -309,74 +324,4 @@ func (db *DB) DeleteLocalMessage(ctx context.Context, id int64) error {
 		return ErrNotFound
 	}
 	return nil
-}
-
-// DeleteMessageByUID removes the cached row for a server-expunged UID.
-func (db *DB) DeleteMessageByUID(ctx context.Context, folderID int64, uid uint32) error {
-	_, err := db.sql.ExecContext(ctx,
-		`DELETE FROM messages WHERE folder_id = ? AND uid = ?`, folderID, uid)
-	if err != nil {
-		return fmt.Errorf("store: delete message uid %d: %w", uid, err)
-	}
-	return nil
-}
-
-// UpdateMessageFlags applies server-reported flag state to a cached row,
-// keyed by (folder, UID). Rows not yet cached are ignored.
-func (db *DB) UpdateMessageFlags(ctx context.Context, m *Message) error {
-	_, err := db.sql.ExecContext(ctx, `
-		UPDATE messages SET flags = ?, is_read = ?, is_flagged = ?
-		WHERE folder_id = ? AND uid = ?`,
-		m.Flags, m.IsRead, m.IsFlagged, m.FolderID, m.UID)
-	if err != nil {
-		return fmt.Errorf("store: update flags uid %d: %w", m.UID, err)
-	}
-	return nil
-}
-
-// DeleteMessagesNotIn removes cached rows for a folder whose UIDs are not
-// in live — the reconciliation step after a server expunge.
-func (db *DB) DeleteMessagesNotIn(ctx context.Context, folderID int64, live map[uint32]bool) error {
-	rows, err := db.sql.QueryContext(ctx,
-		`SELECT id, uid FROM messages WHERE folder_id = ? AND uid > 0`, folderID)
-	if err != nil {
-		return fmt.Errorf("store: list uids: %w", err)
-	}
-	var stale []int64
-	for rows.Next() {
-		var id int64
-		var uid uint32
-		if err := rows.Scan(&id, &uid); err != nil {
-			rows.Close()
-			return fmt.Errorf("store: scan uid: %w", err)
-		}
-		if !live[uid] {
-			stale = append(stale, id)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return fmt.Errorf("store: list uids: %w", err)
-	}
-	rows.Close()
-	for _, id := range stale {
-		if _, err := db.sql.ExecContext(ctx,
-			`DELETE FROM messages WHERE id = ?`, id); err != nil {
-			return fmt.Errorf("store: delete stale message %d: %w", id, err)
-		}
-	}
-	return nil
-}
-
-// HighestUID returns the largest cached UID in a folder, or 0 when the
-// folder is empty. The sync engine fetches everything above it.
-func (db *DB) HighestUID(ctx context.Context, folderID int64) (uint32, error) {
-	var uid uint32
-	err := db.sql.QueryRowContext(ctx, `
-		SELECT COALESCE(MAX(uid),0) FROM messages WHERE folder_id = ?`,
-		folderID).Scan(&uid)
-	if err != nil {
-		return 0, fmt.Errorf("store: highest uid: %w", err)
-	}
-	return uid, nil
 }

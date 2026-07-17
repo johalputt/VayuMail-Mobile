@@ -133,5 +133,17 @@ func extraIconPath(p *clip.Path, icon Icon, pt func(x, y float32) f32.Point, s f
 		p.LineTo(pt(6, 16))
 		p.LineTo(pt(4, 16))
 		p.LineTo(pt(4, 5))
+	case IconFingerprint:
+		// Concentric fingerprint ridges — three nested arcs over a core.
+		p.MoveTo(pt(5, 13))
+		p.CubeTo(pt(5, 6), pt(19, 6), pt(19, 13))
+		p.MoveTo(pt(8, 14))
+		p.CubeTo(pt(8, 9), pt(16, 9), pt(16, 14))
+		p.MoveTo(pt(11, 14.5))
+		p.CubeTo(pt(11, 12), pt(13, 12), pt(13, 14.5))
+		p.MoveTo(pt(7, 18))
+		p.LineTo(pt(7, 17))
+		p.MoveTo(pt(17, 18))
+		p.LineTo(pt(17, 16))
 	}
 }

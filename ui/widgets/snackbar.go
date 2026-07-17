@@ -10,20 +10,31 @@ import (
 	"gioui.org/op/clip"
 	"gioui.org/widget"
 
+	"github.com/johalputt/VayuMail-Mobile/ui/anim"
 	"github.com/johalputt/VayuMail-Mobile/ui/theme"
 )
 
 const (
 	snackbarLifetime = 4 * time.Second
-	snackbarSlideIn  = 150 * time.Millisecond
-	snackbarSlideOut = 100 * time.Millisecond
+	snackbarSlideIn  = 220 * time.Millisecond
+	snackbarSlideOut = 120 * time.Millisecond
 )
 
 // Snackbar shows one transient status message pinned to the bottom of
 // the screen, optionally with an Undo action. When the message expires
 // (4s) the commit callback fires; tapping Undo fires the undo callback
 // instead. Safe for concurrent Show calls from loader goroutines.
+//
+// Frames are requested only while the bar is actually sliding; the ~3.75s
+// static hold costs zero frames. The expiry is driven by a one-shot timer
+// through Wake, not by per-frame polling — a visible toast used to force
+// the whole app to repaint at full frame rate for its entire lifetime.
 type Snackbar struct {
+	// Wake re-renders the window from any goroutine (window.Invalidate).
+	// Set once by the app root; nil is tolerated (the slide-out then starts
+	// on the next input-driven frame).
+	Wake func()
+
 	mu       sync.Mutex
 	msg      string
 	shownAt  time.Time
@@ -32,6 +43,7 @@ type Snackbar struct {
 	hideAt   time.Time
 	onUndo   func()
 	onCommit func()
+	expiry   *time.Timer
 	undoBtn  widget.Clickable
 }
 
@@ -50,6 +62,14 @@ func (s *Snackbar) Show(msg string, onUndo, onCommit func()) {
 	s.shownAt = time.Now()
 	s.visible = true
 	s.hiding = false
+	// One wake at expiry so the slide-out starts (and commits) on time even
+	// when the app is otherwise idle and scheduling no frames.
+	if s.expiry != nil {
+		s.expiry.Stop()
+	}
+	if s.Wake != nil {
+		s.expiry = time.AfterFunc(snackbarLifetime, s.Wake)
+	}
 }
 
 // ShowInfo displays a plain status message with no action.
@@ -81,9 +101,14 @@ func (s *Snackbar) Layout(gtx layout.Context, th *theme.Theme) layout.Dimensions
 	msg := s.msg
 	hasUndo := s.onUndo != nil
 	progress := s.slideProgress(now)
+	sliding := s.hiding || now.Sub(s.shownAt) < snackbarSlideIn
 	s.mu.Unlock()
 
-	gtx.Execute(op.InvalidateCmd{})
+	// Animate only the slide phases; the static hold renders zero frames
+	// (the expiry timer wakes the window when it is time to slide out).
+	if sliding {
+		gtx.Execute(op.InvalidateCmd{})
+	}
 
 	if s.undoBtn.Clicked(gtx) {
 		s.mu.Lock()
@@ -114,21 +139,16 @@ func (s *Snackbar) Layout(gtx layout.Context, th *theme.Theme) layout.Dimensions
 	})
 }
 
-// slideProgress returns [0,1]: rising during slide-in (ease-out), falling
-// during slide-out (ease-in).
+// slideProgress returns [0,1]: rising during slide-in (the signature
+// OutBack — the bar lands with a whisper of overshoot), falling during
+// slide-out (ease-in, receding surfaces accelerate away).
 func (s *Snackbar) slideProgress(now time.Time) float32 {
 	if s.hiding {
-		t := float32(now.Sub(s.hideAt)) / float32(snackbarSlideOut)
-		if t > 1 {
-			t = 1
-		}
-		return 1 - t*t
+		t := anim.Clamp01(float32(now.Sub(s.hideAt)) / float32(snackbarSlideOut))
+		return 1 - anim.InQuad(t)
 	}
-	t := float32(now.Sub(s.shownAt)) / float32(snackbarSlideIn)
-	if t > 1 {
-		t = 1
-	}
-	return 1 - (1-t)*(1-t)
+	t := anim.Clamp01(float32(now.Sub(s.shownAt)) / float32(snackbarSlideIn))
+	return anim.OutBack(t)
 }
 
 func (s *Snackbar) layoutBar(gtx layout.Context, th *theme.Theme, msg string, hasUndo bool) layout.Dimensions {

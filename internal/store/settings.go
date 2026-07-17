@@ -33,6 +33,11 @@ const (
 	// subject ("" or "1") or only a generic "New mail" line ("0") — the
 	// privacy option for lock screens. Consumed by the UI.
 	SettingNotifyPreview = "notify_preview"
+	// SettingBiometricUnlock toggles fingerprint/face unlock on the lock
+	// screen ("1" = on, "" or "0" = off). It only enables an alternate way to
+	// pass the existing PIN gate — the PIN and its verifier are unchanged, and
+	// the PIN is always available as the fallback. Consumed by the UI.
+	SettingBiometricUnlock = "biometric_unlock"
 	// SettingDeviceIDPrefix keys the per-account device ID granted by a
 	// VayuPress server during device-approval onboarding (ADR-0011); the
 	// full key is the prefix plus the account's email address. Only the

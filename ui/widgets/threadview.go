@@ -14,6 +14,32 @@ import (
 	"github.com/johalputt/VayuMail-Mobile/ui/theme"
 )
 
+// MessageBody is a message's body pre-parsed for display: the HTML/quote
+// work that used to run per message PER FRAME (HTML tokenization, quote
+// splitting, attachment JSON decode) is done once when the thread loads
+// and handed to the view. See ParseMessageBody.
+type MessageBody struct {
+	Visible     string
+	Quoted      string
+	Attachments []mime.AttachmentRef
+	HasBody     bool
+}
+
+// ParseMessageBody derives a message's display body once, off the frame
+// loop. The thread view renders the result verbatim.
+func ParseMessageBody(m store.Message) MessageBody {
+	body := mime.DisplayText(m.BodyText, m.BodyHTML)
+	visible, quoted := splitQuoted(body)
+	mb := MessageBody{Visible: visible, Quoted: quoted, HasBody: visible != "" || quoted != ""}
+	if m.Attachments != "" {
+		var refs []mime.AttachmentRef
+		if err := json.Unmarshal([]byte(m.Attachments), &refs); err == nil {
+			mb.Attachments = refs
+		}
+	}
+	return mb
+}
+
 // ThreadView renders a conversation: every message expanded, quoted
 // history folded behind a per-message toggle, PGP status inline.
 type ThreadView struct {
@@ -53,8 +79,11 @@ func (tv *ThreadView) DownloadRequests() []DownloadRequest {
 	return out
 }
 
-// Layout renders the messages oldest-first.
-func (tv *ThreadView) Layout(gtx layout.Context, th *theme.Theme, msgs []store.Message) layout.Dimensions {
+// Layout renders the messages oldest-first. bodies carries each message's
+// pre-parsed display body keyed by message ID (see ParseMessageBody); a
+// message missing from the map is parsed inline as a fallback so the view
+// is never wrong, only slower.
+func (tv *ThreadView) Layout(gtx layout.Context, th *theme.Theme, msgs []store.Message, bodies map[int64]MessageBody) layout.Dimensions {
 	if len(tv.toggles) < len(msgs) {
 		grow := len(msgs) - len(tv.toggles)
 		tv.toggles = append(tv.toggles, make([]widget.Clickable, grow)...)
@@ -62,19 +91,23 @@ func (tv *ThreadView) Layout(gtx layout.Context, th *theme.Theme, msgs []store.M
 	}
 	tv.requests = tv.requests[:0]
 	return tv.list.Layout(gtx, len(msgs), func(gtx layout.Context, i int) layout.Dimensions {
-		return tv.message(gtx, th, &tv.toggles[i], &tv.detailBtns[i], msgs[i])
+		msg := msgs[i]
+		mb, ok := bodies[msg.ID]
+		if !ok {
+			mb = ParseMessageBody(msg)
+		}
+		return tv.message(gtx, th, &tv.toggles[i], &tv.detailBtns[i], msg, mb)
 	})
 }
 
-func (tv *ThreadView) message(gtx layout.Context, th *theme.Theme, toggle, dBtn *widget.Clickable, msg store.Message) layout.Dimensions {
+func (tv *ThreadView) message(gtx layout.Context, th *theme.Theme, toggle, dBtn *widget.Clickable, msg store.Message, mb MessageBody) layout.Dimensions {
 	if toggle.Clicked(gtx) {
 		tv.shown[msg.ID] = !tv.shown[msg.ID]
 	}
 	if dBtn.Clicked(gtx) {
 		tv.details[msg.ID] = !tv.details[msg.ID]
 	}
-	body := mime.DisplayText(msg.BodyText, msg.BodyHTML)
-	visible, quoted := splitQuoted(body)
+	visible, quoted := mb.Visible, mb.Quoted
 	showQuoted := tv.shown[msg.ID]
 
 	return layout.Inset{Left: theme.LG, Right: theme.LG, Top: theme.MD, Bottom: theme.MD}.Layout(gtx,
@@ -84,7 +117,7 @@ func (tv *ThreadView) message(gtx layout.Context, th *theme.Theme, toggle, dBtn 
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					return dBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 						gtx.Constraints.Min.X = gtx.Constraints.Max.X
-						return tv.header(gtx, th, msg, tv.details[msg.ID])
+						return tv.header(gtx, th, msg, tv.details[msg.ID], gtx.Now)
 					})
 				}),
 				// Full addressing + security panel (the Gmail-style
@@ -127,7 +160,7 @@ func (tv *ThreadView) message(gtx layout.Context, th *theme.Theme, toggle, dBtn 
 				}),
 				// Attachments: one chip per file, tap to download.
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return tv.attachmentChips(gtx, th, msg)
+					return tv.attachmentChips(gtx, th, msg.ID, mb.Attachments)
 				}),
 				// Body text.
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -169,7 +202,7 @@ func (tv *ThreadView) message(gtx layout.Context, th *theme.Theme, toggle, dBtn 
 		})
 }
 
-func (tv *ThreadView) header(gtx layout.Context, th *theme.Theme, msg store.Message, expanded bool) layout.Dimensions {
+func (tv *ThreadView) header(gtx layout.Context, th *theme.Theme, msg store.Message, expanded bool, now time.Time) layout.Dimensions {
 	sender := msg.FromName
 	if sender == "" {
 		sender = msg.FromAddr
@@ -190,7 +223,7 @@ func (tv *ThreadView) header(gtx layout.Context, th *theme.Theme, msg store.Mess
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return th.Label(gtx, theme.Caption, th.Palette.Subtle,
-				RelativeTime(msg.Date, time.Now()), 1)
+				RelativeTime(msg.Date, now), 1)
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			icon := IconChevronDown
@@ -251,25 +284,22 @@ func pgpLabel(status string) string {
 }
 
 // attachmentChips renders a tappable row per attachment, recording taps
-// as download requests.
-func (tv *ThreadView) attachmentChips(gtx layout.Context, th *theme.Theme, msg store.Message) layout.Dimensions {
-	if msg.Attachments == "" {
+// as download requests. refs are pre-parsed (ParseMessageBody), so this
+// does no JSON work per frame.
+func (tv *ThreadView) attachmentChips(gtx layout.Context, th *theme.Theme, msgID int64, refs []mime.AttachmentRef) layout.Dimensions {
+	if len(refs) == 0 {
 		return layout.Dimensions{}
 	}
-	var refs []mime.AttachmentRef
-	if err := json.Unmarshal([]byte(msg.Attachments), &refs); err != nil || len(refs) == 0 {
-		return layout.Dimensions{}
-	}
-	clicks := tv.attachClicks[msg.ID]
+	clicks := tv.attachClicks[msgID]
 	if len(clicks) < len(refs) {
 		clicks = append(clicks, make([]widget.Clickable, len(refs)-len(clicks))...)
-		tv.attachClicks[msg.ID] = clicks
+		tv.attachClicks[msgID] = clicks
 	}
 	children := make([]layout.FlexChild, 0, len(refs))
 	for i, ref := range refs {
 		i, ref := i, ref
 		if clicks[i].Clicked(gtx) {
-			tv.requests = append(tv.requests, DownloadRequest{MessageID: msg.ID, Index: i})
+			tv.requests = append(tv.requests, DownloadRequest{MessageID: msgID, Index: i})
 		}
 		children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return clicks[i].Layout(gtx, func(gtx layout.Context) layout.Dimensions {

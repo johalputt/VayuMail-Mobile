@@ -18,8 +18,23 @@ import (
 	"github.com/johalputt/VayuMail-Mobile/ui/theme"
 )
 
-// rowLine1: sender (strong when unread) … timestamp.
-func rowLine1(gtx layout.Context, th *theme.Theme, msg store.Message) layout.Dimensions {
+// RowLine builds a row's "subject — snippet" display line. Called once per
+// message when the snapshot loads (off the frame loop): the result is the
+// text shaper's cache key, so building it per frame defeated the cache.
+func RowLine(msg store.Message) string {
+	subject := strings.TrimSpace(msg.Subject)
+	if subject == "" {
+		subject = "(no subject)"
+	}
+	if snip := strings.TrimSpace(msg.Snippet); snip != "" {
+		return subject + " — " + snip
+	}
+	return subject
+}
+
+// rowLine1: sender (strong when unread) … timestamp. now is the frame time
+// (gtx.Now), never a fresh time.Now() syscall per row.
+func rowLine1(gtx layout.Context, th *theme.Theme, msg store.Message, now time.Time) layout.Dimensions {
 	c := th.Palette.OnSurface
 	timeC := th.Palette.Subtle
 	if !msg.IsRead {
@@ -35,21 +50,17 @@ func rowLine1(gtx layout.Context, th *theme.Theme, msg store.Message) layout.Dim
 			return th.Label(gtx, theme.BodyStrong, c, sender, 1)
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return th.Label(gtx, theme.Caption, timeC, RelativeTime(msg.Date, time.Now()), 1)
+			return th.Label(gtx, theme.Caption, timeC, RelativeTime(msg.Date, now), 1)
 		}))
 }
 
 // rowLine2: subject — snippet … [shield] [clip] [unread dot]. Subject and
 // snippet share one truncated line so every row keeps its fixed height.
-func rowLine2(gtx layout.Context, th *theme.Theme, msg store.Message) layout.Dimensions {
+// line is precomputed (RowLine); an empty string falls back to building it.
+func rowLine2(gtx layout.Context, th *theme.Theme, msg store.Message, line string) layout.Dimensions {
 	p := th.Palette
-	subject := strings.TrimSpace(msg.Subject)
-	if subject == "" {
-		subject = "(no subject)"
-	}
-	line := subject
-	if snip := strings.TrimSpace(msg.Snippet); snip != "" {
-		line = subject + " — " + snip
+	if line == "" {
+		line = RowLine(msg)
 	}
 	col := p.OnSurface
 	if !msg.IsRead {

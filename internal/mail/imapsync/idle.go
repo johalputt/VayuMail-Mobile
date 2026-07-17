@@ -205,9 +205,16 @@ func deltaSync(ctx context.Context, client *imapclient.Client, db *store.DB, ev 
 
 // refreshFlags re-reads the flags of every cached message in the folder
 // and applies changes locally. Flags-only FETCH is cheap even for large
-// folders.
+// folders; the answer is diffed against the cached flag state so only rows
+// that actually changed pay an UPDATE and emit a FlagChange event — a
+// single unilateral notification used to rewrite (and re-notify) the whole
+// mailbox.
 func refreshFlags(ctx context.Context, client *imapclient.Client, db *store.DB, ev Events, accountID int64, folderName string) error {
 	folder, err := db.GetFolderByFullName(ctx, accountID, folderName)
+	if err != nil {
+		return err
+	}
+	cached, err := db.FolderFlags(ctx, folder.ID)
 	if err != nil {
 		return err
 	}
@@ -218,19 +225,30 @@ func refreshFlags(ctx context.Context, client *imapclient.Client, db *store.DB, 
 		return fmt.Errorf("imapsync: refresh flags: %w", err)
 	}
 	for _, buf := range bufs {
-		msg := store.Message{
-			AccountID: accountID,
-			FolderID:  folder.ID,
-			UID:       uint32(buf.UID),
+		uid := uint32(buf.UID)
+		next := store.FlagState{
 			Flags:     joinFlags(buf.Flags),
 			IsRead:    hasFlag(buf.Flags, imap.FlagSeen),
 			IsFlagged: hasFlag(buf.Flags, imap.FlagFlagged),
+		}
+		prev, known := cached[uid]
+		if !known || prev == next {
+			// Unknown UIDs belong to the delta sync; unchanged rows are done.
+			continue
+		}
+		msg := store.Message{
+			AccountID: accountID,
+			FolderID:  folder.ID,
+			UID:       uid,
+			Flags:     next.Flags,
+			IsRead:    next.IsRead,
+			IsFlagged: next.IsFlagged,
 		}
 		if err := db.UpdateMessageFlags(ctx, &msg); err != nil {
 			return err
 		}
 		if ev.FlagChange != nil {
-			ev.FlagChange(uint32(buf.UID), splitFlags(msg.Flags))
+			ev.FlagChange(uid, splitFlags(msg.Flags))
 		}
 	}
 	return nil

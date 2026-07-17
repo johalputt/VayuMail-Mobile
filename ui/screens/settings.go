@@ -32,14 +32,15 @@ type Settings struct {
 	pwField   *widgets.TextField
 	pwSaveBtn widgets.Button
 
-	lockSwitch    widgets.Switch
-	changePinBtn  widget.Clickable
-	autoLockBtn   widget.Clickable
-	lockNowBtn    widget.Clickable
-	notifySwitch  widgets.Switch
-	previewSwitch widgets.Switch
-	syncAllBtn    widget.Clickable
-	autoWKDSwitch widgets.Switch
+	lockSwitch      widgets.Switch
+	changePinBtn    widget.Clickable
+	autoLockBtn     widget.Clickable
+	lockNowBtn      widget.Clickable
+	biometricSwitch widgets.Switch
+	notifySwitch    widgets.Switch
+	previewSwitch   widgets.Switch
+	syncAllBtn      widget.Clickable
+	autoWKDSwitch   widgets.Switch
 
 	// Two-factor unlock enrollment/disable state (settings_security.go).
 	totpSwitch widgets.Switch
