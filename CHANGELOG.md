@@ -6,6 +6,24 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.1] — 2026-07-21
+
+### Added
+- **Real mailbox pictures.** Avatars now show a mailbox's actual profile picture
+  — an uploaded photo or a prebuilt cartoon — fetched from the server's federated
+  avatar endpoint, in the drawer, message list, thread view and VayuTalk. It falls
+  back to the letter avatar until the picture loads (or when there is none). The
+  server's self-contained cartoon SVGs are rasterised on-device. Privacy: only
+  addresses on a domain you are signed into are ever requested, so opening a
+  message never pings a stranger's server.
+- **VayuTalk message sender in notifications.** An incoming chat message you are
+  not looking at now names the sender in its notification when the lock-screen
+  preview option is on (still never the message text; content-free when preview is
+  off) — matching how mail notifications respect that setting.
+
+### Changed
+- SVG rasterisation adds `github.com/srwiley/oksvg` + `rasterx` (pure Go, no cgo).
+
 ## [2.3.0] — 2026-07-17
 
 ### Added

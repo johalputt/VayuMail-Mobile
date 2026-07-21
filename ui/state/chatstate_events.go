@@ -275,7 +275,7 @@ func (cs *ChatState) applyIncoming(e chat.IncomingMessage) {
 	cs.mu.Unlock()
 
 	if background && cs.OnIncoming != nil {
-		cs.OnIncoming()
+		cs.OnIncoming(c.peer)
 	}
 }
 

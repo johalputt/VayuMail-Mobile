@@ -119,9 +119,11 @@ type ChatState struct {
 	ks         appcrypto.Keystore
 	invalidate func()
 	notify     func(string)
-	// OnIncoming fires (off the frame loop) when a new message arrives, so
-	// the root can post a content-free system notification.
-	OnIncoming func()
+	// OnIncoming fires (off the frame loop) when a new message arrives for a
+	// conversation that is not open, so the root can post a system notification.
+	// The peer address is passed so the notification can name the sender (the
+	// root still decides whether to show it, per the privacy setting).
+	OnIncoming func(peer string)
 
 	mu            sync.Mutex
 	mgr           *chat.Manager

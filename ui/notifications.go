@@ -77,12 +77,13 @@ func (n *mailNotifier) observe(ev syncmanager.Event) {
 	}
 }
 
-// notifyChat posts a deliberately content-free notification for an
-// incoming VayuTalk message. It carries no sender and no text — VayuTalk
-// messages are ephemeral and end-to-end encrypted, so nothing about them
-// belongs on a lock screen. Gated by the same notifications setting and
-// startup grace as mail. Safe to call from any goroutine.
-func (n *mailNotifier) notifyChat() {
+// notifyChat posts a notification for an incoming VayuTalk message. It names the
+// sender only when the lock-screen preview option is on (the same privacy gate as
+// mail); otherwise it stays content-free. It never carries the message text —
+// VayuTalk messages are ephemeral and end-to-end encrypted, so their content never
+// belongs on a lock screen. Gated by the notifications setting and startup grace.
+// Safe to call from any goroutine.
+func (n *mailNotifier) notifyChat(peer string) {
 	if n.notifier == nil {
 		return
 	}
@@ -92,7 +93,11 @@ func (n *mailNotifier) notifyChat() {
 	if n.enabled != nil && !n.enabled() {
 		return
 	}
-	if _, err := n.notifier.CreateNotification("VayuTalk", "New VayuTalk message"); err != nil {
+	body := "New VayuTalk message"
+	if peer != "" && (n.preview == nil || n.preview()) {
+		body = "New message from " + peer
+	}
+	if _, err := n.notifier.CreateNotification("VayuTalk", body); err != nil {
 		slog.Debug("post chat notification", "err", err)
 	}
 }

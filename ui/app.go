@@ -7,6 +7,8 @@ import (
 	"context"
 	"image"
 	"io"
+	"sort"
+	"strings"
 	"time"
 
 	"gioui.org/app"
@@ -18,6 +20,7 @@ import (
 	"gioui.org/op/paint"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/applock"
+	"github.com/johalputt/VayuMail-Mobile/internal/avatarimg"
 	appcrypto "github.com/johalputt/VayuMail-Mobile/internal/crypto"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
@@ -48,6 +51,8 @@ type UI struct {
 	talkVerify *screens.TalkVerify
 
 	notify    *mailNotifier
+	avatars   *avatarimg.Cache
+	avatarSig string // account-domain signature, to refresh the avatar allow-list on change
 	lastFrame time.Time
 }
 
@@ -93,7 +98,15 @@ func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Mana
 	chatState := state.NewChatState(db, st.Keyring(), ks, w.Invalidate, st.Notify)
 	st.Chat = chatState
 
+	// Real mailbox pictures (uploaded photos or prebuilt cartoons) are fetched from
+	// the server's federated avatar endpoint and shown in place of letter avatars.
+	// Restricted to the domains the app is signed into (privacy: never pings a
+	// stranger's server); the allow-list is refreshed each frame as accounts change.
+	avatars := avatarimg.New(w.Invalidate)
+	widgets.SetAvatarStore(avatars)
+
 	ui := &UI{
+		avatars:    avatars,
 		window:     w,
 		th:         th,
 		st:         st,
@@ -164,6 +177,12 @@ func (ui *UI) layout(gtx layout.Context) {
 	widgets.FillMax(gtx, ui.th.Palette.Background)
 
 	snap := ui.st.Snapshot()
+	// Keep the avatar allow-list in step with the signed-in accounts (cheap; only
+	// re-applies when the set of domains actually changes).
+	if doms, sig := accountDomains(snap.Accounts); sig != ui.avatarSig {
+		ui.avatarSig = sig
+		ui.avatars.SetAllowedDomains(doms)
+	}
 	if snap.Locked {
 		// The gate replaces the whole frame: no mail pixels render while
 		// locked, so app switchers screenshot nothing sensitive.
@@ -288,4 +307,26 @@ func (ui *UI) layoutScreen(gtx layout.Context, s state.Screen) {
 	default:
 		ui.inbox.Layout(gtx, ui.env)
 	}
+}
+
+// accountDomains returns the lowercased domains of the signed-in accounts and a
+// stable signature over them, so the avatar allow-list is only re-applied when the
+// set of domains actually changes.
+func accountDomains(accounts []store.Account) ([]string, string) {
+	seen := map[string]bool{}
+	var doms []string
+	for _, a := range accounts {
+		email := strings.ToLower(strings.TrimSpace(a.EmailAddress))
+		at := strings.LastIndexByte(email, '@')
+		if at <= 0 || at == len(email)-1 {
+			continue
+		}
+		d := email[at+1:]
+		if !seen[d] {
+			seen[d] = true
+			doms = append(doms, d)
+		}
+	}
+	sort.Strings(doms)
+	return doms, strings.Join(doms, ",")
 }
