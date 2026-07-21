@@ -127,6 +127,9 @@ func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Mana
 	}
 	ui.notify.enabled = st.NotificationsEnabled
 	ui.notify.preview = st.NotifyPreviewEnabled
+	// A notification tap sets a pending mailbox target off-frame; wake the window
+	// so the jump is immediate even if the app was already visible.
+	setMailNavWake(w.Invalidate)
 	// Incoming VayuTalk messages post a content-free notification (privacy:
 	// never the sender or the text), gated by the notifications setting.
 	chatState.OnIncoming = ui.notify.notifyChat
@@ -202,6 +205,20 @@ func (ui *UI) layout(gtx layout.Context) {
 	}
 	if len(snap.Accounts) > 0 && current == state.ScreenSetup && ui.nav.Depth() == 1 {
 		ui.nav.Replace(state.ScreenInbox)
+		current = state.ScreenInbox
+	}
+
+	// A tapped notification (Android) leaves a pending mailbox target — open it:
+	// select that account and folder and reset to the inbox screen. Consumed once,
+	// so it never fights the user's own navigation.
+	if acct, folder, ok := consumeMailNavTarget(); ok && len(snap.Accounts) > 0 {
+		ui.st.SelectAccount(acct)
+		if folder > 0 {
+			ui.st.SelectFolder(folder)
+		}
+		if ui.nav.Current() != state.ScreenInbox {
+			ui.nav.Replace(state.ScreenInbox)
+		}
 		current = state.ScreenInbox
 	}
 

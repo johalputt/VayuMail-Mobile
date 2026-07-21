@@ -8,6 +8,7 @@ import (
 
 	"gioui.org/x/notify"
 
+	"github.com/johalputt/VayuMail-Mobile/internal/pushnotify"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
 )
@@ -129,12 +130,20 @@ func (n *mailNotifier) loop(ctx context.Context) {
 }
 
 // post renders one or a summary notification for the batch and hands it to the
-// system notifier.
+// system notifier. On Android it uses the tappable bridge (pushnotify) so a tap
+// opens the mailbox; it falls back to the plain notifier if that bridge is
+// unavailable or fails (or on desktop).
 func (n *mailNotifier) post(ctx context.Context, batch []syncmanager.NewMessageEvent) {
+	title, body := n.render(ctx, batch)
+	if len(batch) > 0 && pushnotify.Available() {
+		ev := batch[0] // the mailbox a tap should open (first of the batch)
+		if pushnotify.Post(int(ev.FolderID), title, body, ev.AccountID, ev.FolderID) {
+			return
+		}
+	}
 	if n.notifier == nil {
 		return
 	}
-	title, body := n.render(ctx, batch)
 	if _, err := n.notifier.CreateNotification(title, body); err != nil {
 		slog.Debug("post notification", "err", err)
 	}

@@ -6,6 +6,25 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.3] — 2026-07-21
+
+### Added
+- **Tapping a new-mail notification opens that mailbox (Android).** New package
+  `internal/pushnotify` posts a notification carrying the mailbox (account +
+  folder) as intent extras; a tap re-launches the app, the bridge reads and
+  clears the extras, and the app opens that account and folder. The app-side of
+  the deep-link (a pending-nav consumed once by the frame loop) is pure Go and
+  unit-tested. The bridge degrades safely: with no helper jar it falls back to
+  the plain notifier (still notifies, just not tappable), never crashing.
+
+  ⚠️ The Android bridge (`notify_android.go` + `VayuNotify.java`) is **unverified**
+  — it was not compiled or run (no Android SDK/NDK here; CI does not build the
+  APK). Before it works on device you must build `VayuNotify.jar` and add the
+  `POST_NOTIFICATIONS` permission (Android 13+); see
+  `internal/pushnotify/README.md`. Reliable delivery when the app is fully closed
+  still needs a foreground service (documented there) and is not part of this
+  change.
+
 ## [2.3.2] — 2026-07-21
 
 ### Changed

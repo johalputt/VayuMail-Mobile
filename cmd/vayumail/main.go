@@ -23,6 +23,7 @@ import (
 
 	"github.com/johalputt/VayuMail-Mobile/internal/biometric"
 	appcrypto "github.com/johalputt/VayuMail-Mobile/internal/crypto"
+	"github.com/johalputt/VayuMail-Mobile/internal/pushnotify"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
 	"github.com/johalputt/VayuMail-Mobile/ui"
@@ -52,9 +53,14 @@ func run(window *app.Window) int {
 	// Both the file picker and the biometric backend need to observe the
 	// Android view lifecycle (BiometricPrompt needs the Activity behind the
 	// current view), so the boot loop fans every event out to both.
+	// A tapped new-mail notification opens its mailbox: the bridge reads the
+	// tapped mailbox off the (re)launch intent on a view event and hands it to the
+	// UI's pending-nav (no-op off Android).
+	pushnotify.SetTapHandler(ui.SetMailNavTarget)
 	boot.SetEventListener(func(e event.Event) {
 		exp.ListenEvents(e)
 		biometric.HandleViewEvent(e)
+		pushnotify.HandleViewEvent(e)
 	})
 	go initEngine(ctx, window, boot, func() (io.ReadCloser, error) { return exp.ChooseFile() })
 
