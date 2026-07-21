@@ -6,6 +6,17 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.2] — 2026-07-21
+
+### Changed
+- **New-mail notifications now name the mailbox.** A notification for a new
+  message names the sender and subject as before, and now also the mailbox it
+  landed in (the account address, with a non-Inbox folder appended), so a user
+  with several mailboxes can see at a glance which inbox got mail. A burst into
+  one mailbox reads "N new messages in you@domain". The lock-screen privacy mode
+  (preview off) stays content-free — no sender, subject, or mailbox. The message
+  composition is now unit-tested.
+
 ## [2.3.1] — 2026-07-21
 
 ### Added

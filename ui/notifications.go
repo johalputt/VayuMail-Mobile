@@ -128,21 +128,37 @@ func (n *mailNotifier) loop(ctx context.Context) {
 	}
 }
 
-// post renders one or a summary notification for the batch.
+// post renders one or a summary notification for the batch and hands it to the
+// system notifier.
 func (n *mailNotifier) post(ctx context.Context, batch []syncmanager.NewMessageEvent) {
-	title, body := "New mail", ""
-	if n.preview != nil && !n.preview() {
-		// Privacy mode: never put sender or subject on the lock screen.
-		if len(batch) > 1 {
-			body = fmt.Sprintf("%d new messages", len(batch))
-		}
-		if _, err := n.notifier.CreateNotification(title, body); err != nil {
-			slog.Debug("post notification", "err", err)
-		}
+	if n.notifier == nil {
 		return
+	}
+	title, body := n.render(ctx, batch)
+	if _, err := n.notifier.CreateNotification(title, body); err != nil {
+		slog.Debug("post notification", "err", err)
+	}
+}
+
+// render composes the notification title and body for a batch. It is split out
+// from post so it can be unit-tested without a system notifier. Preview-off keeps
+// it content-free (lock-screen privacy); otherwise it names the sender, the
+// subject, and — so a user with several mailboxes knows WHICH inbox got mail —
+// the mailbox it landed in.
+func (n *mailNotifier) render(ctx context.Context, batch []syncmanager.NewMessageEvent) (title, body string) {
+	if len(batch) == 0 {
+		return "New mail", ""
+	}
+	if n.preview != nil && !n.preview() {
+		// Privacy mode: never put sender, subject or mailbox on the lock screen.
+		if len(batch) > 1 {
+			return "New mail", fmt.Sprintf("%d new messages", len(batch))
+		}
+		return "New mail", ""
 	}
 	if len(batch) == 1 {
 		ev := batch[0]
+		title = "New mail"
 		lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		msg, err := n.db.GetMessageByUID(lookupCtx, ev.FolderID, ev.UID)
 		cancel()
@@ -151,16 +167,63 @@ func (n *mailNotifier) post(ctx context.Context, batch []syncmanager.NewMessageE
 			if sender == "" {
 				sender = msg.FromAddr
 			}
-			title = sender
+			if sender != "" {
+				title = sender
+			}
 			body = msg.Subject
 			if body == "" {
 				body = "(no subject)"
 			}
 		}
-	} else {
-		body = fmt.Sprintf("%d new messages", len(batch))
+		if label := n.mailboxLabel(ctx, ev.AccountID, ev.FolderID); label != "" {
+			if body != "" {
+				body += "  ·  " + label
+			} else {
+				body = label
+			}
+		}
+		return title, body
 	}
-	if _, err := n.notifier.CreateNotification(title, body); err != nil {
-		slog.Debug("post notification", "err", err)
+	// Summary: name the mailbox when every message landed in the same one, so a
+	// burst into one inbox still reads "N new messages in you@domain".
+	body = fmt.Sprintf("%d new messages", len(batch))
+	sameAccount := batch[0].AccountID
+	for _, ev := range batch[1:] {
+		if ev.AccountID != sameAccount {
+			sameAccount = 0
+			break
+		}
 	}
+	if sameAccount != 0 {
+		if label := n.mailboxLabel(ctx, sameAccount, 0); label != "" {
+			body = fmt.Sprintf("%d new messages in %s", len(batch), label)
+		}
+	}
+	return "New mail", body
+}
+
+// mailboxLabel names the mailbox a new message landed in — the account's address,
+// with a non-Inbox folder appended (e.g. "you@example.com/Archive"). folderID 0
+// skips the folder lookup (account-level label). Best-effort: an unknown account
+// yields "".
+func (n *mailNotifier) mailboxLabel(ctx context.Context, accountID, folderID int64) string {
+	if n.db == nil || accountID == 0 {
+		return ""
+	}
+	lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	acct, err := n.db.GetAccount(lookupCtx, accountID)
+	if err != nil {
+		return ""
+	}
+	label := acct.EmailAddress
+	if label == "" {
+		label = acct.DisplayName
+	}
+	if folderID != 0 {
+		if f, ferr := n.db.GetFolder(lookupCtx, folderID); ferr == nil && !f.IsInbox && f.Name != "" {
+			label += "/" + f.Name
+		}
+	}
+	return label
 }
