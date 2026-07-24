@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/applock"
+	appcrypto "github.com/johalputt/VayuMail-Mobile/internal/crypto"
 	"github.com/johalputt/VayuMail-Mobile/internal/mail/pgp"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
@@ -81,6 +82,10 @@ type AppState struct {
 	db   *store.DB
 	mgr  *syncmanager.Manager
 	lock *applock.Manager
+	// ks seals PGP private-key material at rest (audit H6). Never nil in
+	// production; may be nil in headless tests, where private keys fall
+	// back to the legacy in-DB path.
+	ks appcrypto.Keystore
 
 	// invalidate wakes the window after an async snapshot update.
 	invalidate func()
@@ -125,11 +130,12 @@ const autoWKDInterval = 10 * time.Minute
 // New creates the state and starts its single loader goroutine, which
 // serializes all store reads triggered by Refresh. lock may be nil in
 // headless tests; the UI then never locks.
-func New(ctx context.Context, db *store.DB, mgr *syncmanager.Manager, lock *applock.Manager) *AppState {
+func New(ctx context.Context, db *store.DB, mgr *syncmanager.Manager, lock *applock.Manager, ks appcrypto.Keystore) *AppState {
 	s := &AppState{
 		db:           db,
 		mgr:          mgr,
 		lock:         lock,
+		ks:           ks,
 		keyring:      pgp.NewKeyring(),
 		refreshQueue: make(chan struct{}, 1),
 		searchQueue:  make(chan struct{}, 1),

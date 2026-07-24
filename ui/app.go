@@ -64,7 +64,7 @@ type UI struct {
 // picker for composer attachments; nil when no picker is available.
 func New(ctx context.Context, w *app.Window, db *store.DB, mgr *syncmanager.Manager, ks appcrypto.Keystore, dark bool, pickFile func() (io.ReadCloser, error)) *UI {
 	th := theme.New(dark)
-	st := state.New(ctx, db, mgr, applock.New(ks, db))
+	st := state.New(ctx, db, mgr, applock.New(ks, db), ks)
 	st.SetInvalidate(w.Invalidate)
 
 	snack := &widgets.Snackbar{Wake: w.Invalidate}

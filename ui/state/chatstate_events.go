@@ -146,11 +146,21 @@ func (cs *ChatState) syncOwnKey(ctx context.Context, email string, credential fu
 		return err
 	}
 	// Persist so the key survives a restart and is available to mail decryption
-	// too, not only this chat session.
+	// too, not only this chat session. The armored PRIVATE key is sealed in the
+	// platform keystore (audit H6), never written to SQLite; the pgp_keys row is
+	// only the empty-armored index/metadata pointer. Without a keystore (headless
+	// tests) fall back to the legacy in-DB path so the key is not lost.
 	if cs.db != nil {
 		for _, fp := range fps {
+			dbArmored := armored
+			if cs.ks != nil {
+				if err := sealPrivateKey(cs.ks, fp, armored); err != nil {
+					continue
+				}
+				dbArmored = ""
+			}
 			pctx, pcancel := context.WithTimeout(context.Background(), 5*time.Second)
-			_ = cs.db.UpsertPGPKey(pctx, &store.PGPKey{Fingerprint: fp, Email: email, Armored: armored, IsPrivate: true})
+			_ = cs.db.UpsertPGPKey(pctx, &store.PGPKey{Fingerprint: fp, Email: email, Armored: dbArmored, IsPrivate: true})
 			pcancel()
 		}
 	}

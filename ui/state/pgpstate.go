@@ -29,13 +29,45 @@ func (s *AppState) loadPGPKeys(ctx context.Context) {
 		return
 	}
 	for _, k := range keys {
-		if _, err := s.keyring.ImportArmored([]byte(k.Armored)); err != nil {
+		armored := k.Armored
+		if k.IsPrivate && s.ks != nil {
+			// Private material lives in the sealed keystore, not SQLite (audit
+			// H6). Prefer the sealed copy; if a legacy row still carries the
+			// armored private key inline, migrate it into the vault and blank
+			// the DB column so the cleartext copy stops existing.
+			if sealed, err := openPrivateKey(s.ks, k.Fingerprint); err == nil && sealed != "" {
+				armored = sealed
+			} else if isPrivateArmored(k.Armored) {
+				s.migrateLegacyPrivateKey(ctx, k)
+				armored = k.Armored
+			}
+		}
+		if _, err := s.keyring.ImportArmored([]byte(armored)); err != nil {
 			slog.Warn("import stored pgp key", "fingerprint", k.Fingerprint, "err", err)
 			continue
 		}
 		if err := s.keyring.SetTrust(k.Fingerprint, pgp.TrustLevel(k.TrustLevel)); err != nil {
 			slog.Warn("restore pgp trust", "fingerprint", k.Fingerprint, "err", err)
 		}
+	}
+}
+
+// migrateLegacyPrivateKey moves a private key that a previous version wrote
+// to SQLite in cleartext into the sealed keystore, then blanks the DB
+// column (audit H6). Best-effort: if sealing fails the row is left as-is so
+// the key is never lost.
+func (s *AppState) migrateLegacyPrivateKey(ctx context.Context, k store.PGPKey) {
+	if s.ks == nil {
+		return
+	}
+	if err := sealPrivateKey(s.ks, k.Fingerprint, k.Armored); err != nil {
+		slog.Warn("seal legacy private key", "fingerprint", k.Fingerprint, "err", err)
+		return
+	}
+	blanked := k
+	blanked.Armored = ""
+	if err := s.db.UpsertPGPKey(ctx, &blanked); err != nil {
+		slog.Warn("blank legacy private key row", "fingerprint", k.Fingerprint, "err", err)
 	}
 }
 
@@ -212,6 +244,9 @@ func (s *AppState) DeletePGPKey(fingerprint string) {
 			s.notify("Could not delete key")
 			return
 		}
+		// Drop any sealed private copy too, so a deleted identity leaves no
+		// key material behind (audit H6).
+		deleteSealedPrivateKey(s.ks, fingerprint)
 		s.notify("Key deleted")
 		s.Refresh()
 	}()
@@ -219,7 +254,7 @@ func (s *AppState) DeletePGPKey(fingerprint string) {
 
 // persistKeyring saves imported key material to the store.
 func (s *AppState) persistKeyring(fingerprints []string, armored string) {
-	isPrivate := strings.Contains(armored, "PRIVATE KEY BLOCK")
+	isPrivate := isPrivateArmored(armored)
 	for _, fp := range fingerprints {
 		stored := armored
 		if !isPrivate {
@@ -236,12 +271,25 @@ func (s *AppState) storeKeyRow(fingerprint, armored string, isPrivate bool) {
 	if e, err := s.keyring.EmailForFingerprint(fingerprint); err == nil {
 		email = e
 	}
+	// Private material never touches SQLite (audit H6): seal the armored
+	// blob in the platform keystore and store only an empty-armored row as
+	// the index/metadata pointer. If no keystore is available (headless
+	// tests), fall back to the legacy in-DB path so nothing is silently
+	// lost.
+	dbArmored := armored
+	if isPrivate && s.ks != nil {
+		if err := sealPrivateKey(s.ks, fingerprint, armored); err != nil {
+			slog.Error("seal private pgp key", "err", err)
+			return
+		}
+		dbArmored = ""
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	err := s.db.UpsertPGPKey(ctx, &store.PGPKey{
 		Fingerprint: fingerprint,
 		Email:       email,
-		Armored:     armored,
+		Armored:     dbArmored,
 		IsPrivate:   isPrivate,
 	})
 	if err != nil {

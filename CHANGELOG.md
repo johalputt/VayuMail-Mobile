@@ -6,6 +6,24 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.5] — 2026-07-24
+
+### Security
+- **PGP private keys are sealed in the platform keystore, never in SQLite
+  (audit H6).** Private key material — imported keys and the mailbox's own key
+  auto-synced for VayuTalk decryption — was written **armored in cleartext** into
+  the `pgp_keys` table, contradicting that table's own contract ("private key
+  armored form is kept in the sealed keystore, not here"). Anything able to read
+  the app database after a device compromise could lift every private key and
+  decrypt all past and future mail and chat. Private material now goes through the
+  platform keystore (Android Keystore / iOS Keychain in production, an
+  AES-256-GCM sealed file otherwise), keyed by fingerprint; the `pgp_keys` row
+  keeps only the public metadata pointer with an empty `armored` column. On first
+  launch after upgrade, any legacy private key still stored inline is transparently
+  migrated into the sealed keystore and its SQLite copy blanked, so the cleartext
+  copy stops existing. Deleting a key now also removes its sealed private copy.
+  Public keys — not secret — continue to live in SQLite unchanged.
+
 ## [2.3.4] — 2026-07-24
 
 ### Security
