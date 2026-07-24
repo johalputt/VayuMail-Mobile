@@ -6,9 +6,8 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [2.3.5] — 2026-07-24
-
 ### Security
+
 - **PGP private keys are sealed in the platform keystore, never in SQLite
   (audit H6).** Private key material — imported keys and the mailbox's own key
   auto-synced for VayuTalk decryption — was written **armored in cleartext** into
@@ -24,9 +23,6 @@ project uses [Semantic Versioning](https://semver.org/).
   copy stops existing. Deleting a key now also removes its sealed private copy.
   Public keys — not secret — continue to live in SQLite unchanged.
 
-## [2.3.4] — 2026-07-24
-
-### Security
 - **VayuTalk now authenticates the sender of every incoming message.** The
   receive path decrypted an envelope and displayed it using the server-supplied
   `From` field while **discarding the OpenPGP signature verdict** — so a malicious
@@ -41,9 +37,8 @@ project uses [Semantic Versioning](https://semver.org/).
   never silently dropped, so a legitimate first-contact message before the peer's
   key is known still appears — just without a trust mark).
 
-## [2.3.3] — 2026-07-21
-
 ### Added
+
 - **Tapping a new-mail notification opens that mailbox (Android).** New package
   `internal/pushnotify` posts a notification carrying the mailbox (account +
   folder) as intent extras; a tap re-launches the app, the bridge reads and
@@ -60,20 +55,6 @@ project uses [Semantic Versioning](https://semver.org/).
   still needs a foreground service (documented there) and is not part of this
   change.
 
-## [2.3.2] — 2026-07-21
-
-### Changed
-- **New-mail notifications now name the mailbox.** A notification for a new
-  message names the sender and subject as before, and now also the mailbox it
-  landed in (the account address, with a non-Inbox folder appended), so a user
-  with several mailboxes can see at a glance which inbox got mail. A burst into
-  one mailbox reads "N new messages in you@domain". The lock-screen privacy mode
-  (preview off) stays content-free — no sender, subject, or mailbox. The message
-  composition is now unit-tested.
-
-## [2.3.1] — 2026-07-21
-
-### Added
 - **Real mailbox pictures.** Avatars now show a mailbox's actual profile picture
   — an uploaded photo or a prebuilt cartoon — fetched from the server's federated
   avatar endpoint, in the drawer, message list, thread view and VayuTalk. It falls
@@ -86,12 +67,6 @@ project uses [Semantic Versioning](https://semver.org/).
   preview option is on (still never the message text; content-free when preview is
   off) — matching how mail notifications respect that setting.
 
-### Changed
-- SVG rasterisation adds `github.com/srwiley/oksvg` + `rasterx` (pure Go, no cgo).
-
-## [2.3.0] — 2026-07-17
-
-### Added
 - **Fingerprint / face unlock (Android).** When the device supports biometrics,
   a new **Fingerprint unlock** switch appears under Settings → Security. With it
   on, the lock screen prompts for a fingerprint or face the moment it appears
@@ -119,6 +94,17 @@ project uses [Semantic Versioning](https://semver.org/).
   spring is unsettled, so an idle screen still renders — and costs — nothing.
 
 ### Changed
+
+- **New-mail notifications now name the mailbox.** A notification for a new
+  message names the sender and subject as before, and now also the mailbox it
+  landed in (the account address, with a non-Inbox folder appended), so a user
+  with several mailboxes can see at a glance which inbox got mail. A burst into
+  one mailbox reads "N new messages in you@domain". The lock-screen privacy mode
+  (preview off) stays content-free — no sender, subject, or mailbox. The message
+  composition is now unit-tested.
+
+- SVG rasterisation adds `github.com/srwiley/oksvg` + `rasterx` (pure Go, no cgo).
+
 - **Enterprise-grade performance pass — the app stays smooth during sync,
   scrolling and search.** Several paths that quietly did per-frame work now do it
   once, off the frame loop:
