@@ -61,6 +61,12 @@ type ChatMessage struct {
 	Mode        string
 	Status      MsgStatus
 	Revealed    bool
+	// Unauthenticated is set when an incoming message could not be cryptographically
+	// tied to this conversation's peer: it carried no valid signature, or (in a
+	// Verified conversation) its signing key did not match the verified fingerprint.
+	// The UI must show such a message with a warning, never as an authentic message
+	// from the peer (audit H7).
+	Unauthenticated bool
 }
 
 // burnDuration is the effective self-destruct window for a message once it is

@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/chat"
@@ -256,6 +257,17 @@ func (cs *ChatState) applyIncoming(e chat.IncomingMessage) {
 	if created.IsZero() {
 		created = time.Now()
 	}
+	// Bind the message to this conversation's cryptographic identity (audit H7).
+	// A message is trustworthy only if it is validly signed; and when the user has
+	// out-of-band Verified this peer, the signing key MUST equal the verified
+	// fingerprint, or it is an impersonation attempt by the relay. Either failure
+	// marks the message Unauthenticated so it is shown with a warning rather than
+	// as an authentic message from the (possibly green-shielded) peer.
+	unauth := !e.Authentic
+	if c.verified && c.fingerprint != "" &&
+		!strings.EqualFold(strings.TrimSpace(e.SenderFingerprint), strings.TrimSpace(c.fingerprint)) {
+		unauth = true
+	}
 	c.msgs = append(c.msgs, &ChatMessage{
 		ID:          e.ID,
 		Peer:        c.peer,
@@ -265,7 +277,8 @@ func (cs *ChatState) applyIncoming(e chat.IncomingMessage) {
 		Mode:        e.Mode,
 		// ExpiresAt stays zero until the message is revealed — the burn-after-read
 		// countdown starts on reveal, not on the server's unread-hold deadline.
-		Status: MsgSealed,
+		Status:          MsgSealed,
+		Unauthenticated: unauth,
 	})
 	c.lastActivity = time.Now()
 	background := cs.activePeer != c.peer

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/johalputt/VayuMail-Mobile/internal/mail/pgp"
 )
 
 // settingPrefix keys per-fingerprint verified flags in the settings store.
@@ -116,14 +118,29 @@ func (m *Manager) handleEnvelope(e Envelope) {
 			return
 		}
 	}
+	// Authenticate the sender (audit H7). The protocol signs outbound messages, so
+	// a genuine message from a known correspondent verifies here. A message that is
+	// unsigned, invalidly signed, or signed by a key we do not hold is delivered as
+	// NOT authentic (Authentic=false) — never dropped, so a legitimate first-contact
+	// message before we have the peer's key still appears, just without a trust
+	// mark. The trusted sender identity is the SIGNING key's fingerprint, not the
+	// server-controlled e.From. The UI (applyIncoming) refuses to render a message
+	// as coming from a Verified peer unless this fingerprint matches.
+	authentic := res.Signature == pgp.SigValid
+	fp := ""
+	if authentic {
+		fp = res.SignedByFingerprint
+	}
 	m.emit(IncomingMessage{
-		Peer:        e.From,
-		ID:          e.ID,
-		Plaintext:   string(res.Plaintext),
-		CreatedAt:   e.CreatedAt,
-		ExpiresAt:   e.ExpiresAt,
-		BurnSeconds: e.BurnSeconds,
-		Mode:        e.Mode,
+		Peer:              e.From,
+		ID:                e.ID,
+		Plaintext:         string(res.Plaintext),
+		Authentic:         authentic,
+		SenderFingerprint: fp,
+		CreatedAt:         e.CreatedAt,
+		ExpiresAt:         e.ExpiresAt,
+		BurnSeconds:       e.BurnSeconds,
+		Mode:              e.Mode,
 	})
 }
 

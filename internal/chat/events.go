@@ -14,6 +14,16 @@ type IncomingMessage struct {
 	Peer      string
 	ID        string
 	Plaintext string
+	// Authentic is true only when the envelope carried a VALID OpenPGP signature
+	// from a key in our keyring. The server-supplied Peer/From is NOT proof of
+	// origin — a malicious relay can set any From and encrypt to our public key —
+	// so the UI must never present an inauthentic message as coming from a
+	// verified peer (audit H7).
+	Authentic bool
+	// SenderFingerprint is the hex fingerprint of the signing key when Authentic;
+	// it is the real, cryptographic sender identity, to be matched against a
+	// conversation's verified fingerprint.
+	SenderFingerprint string
 	// CreatedAt is the server's authoritative send time (from the envelope),
 	// so a message shows when it was SENT, not when this device happened to
 	// receive it — which matters for a message queued while we were offline.

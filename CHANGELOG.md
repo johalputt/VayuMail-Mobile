@@ -6,6 +6,23 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.4] — 2026-07-24
+
+### Security
+- **VayuTalk now authenticates the sender of every incoming message.** The
+  receive path decrypted an envelope and displayed it using the server-supplied
+  `From` field while **discarding the OpenPGP signature verdict** — so a malicious
+  or compromised relay (the exact party E2E encryption defends against) could
+  encrypt arbitrary text to your public key, label it `from: <a trusted contact>`,
+  and have it render inside that contact's conversation — even one you had marked
+  **Verified**. Incoming messages are now bound to cryptographic identity: a
+  message is trusted only when it carries a **valid signature from a known key**,
+  and in a Verified conversation the **signing fingerprint must match** the
+  verified peer's fingerprint. A message that fails either check is shown with a
+  clear "⚠ Unverified sender" warning instead of as an authentic message (it is
+  never silently dropped, so a legitimate first-contact message before the peer's
+  key is known still appears — just without a trust mark).
+
 ## [2.3.3] — 2026-07-21
 
 ### Added

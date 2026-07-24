@@ -95,7 +95,15 @@ func (s *TalkRoom) contentBubble(gtx layout.Context, th *theme.Theme, m state.Ch
 					func(gtx layout.Context) layout.Dimensions {
 						return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-								return th.Label(gtx, theme.Body, fg, m.Text, 0)
+								// Audit H7: a peer message not validly signed by this contact
+								// (or, in a Verified conversation, signed by the wrong key) may be
+								// a relay impersonation — warn inline so it is never read as an
+								// authentic message from the contact.
+								txt := m.Text
+								if m.Unauthenticated && !m.Self {
+									txt = "⚠ Unverified sender — not cryptographically signed by this contact:\n" + m.Text
+								}
+								return th.Label(gtx, theme.Body, fg, txt, 0)
 							}),
 							layout.Rigid(layout.Spacer{Height: theme.XS}.Layout),
 							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
