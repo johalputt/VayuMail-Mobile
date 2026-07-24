@@ -9,6 +9,7 @@ package state
 import (
 	"strings"
 
+	"github.com/johalputt/VayuMail-Mobile/internal/mail/pgp"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
 )
@@ -52,6 +53,11 @@ func (s *AppState) decryptThread(msgs []store.Message) []store.Message {
 			// runs it through mime.DisplayText, so plain text is enough.
 			m.BodyText = string(res.Plaintext)
 			m.BodyHTML = ""
+			// Real signature verdict (audit M17): the keyring verified the
+			// embedded signature against a known key while decrypting. This —
+			// not the MIME structure — is what lets the UI claim the sender is
+			// authenticated.
+			m.PGPSigVerified = res.Signature == pgp.SigValid
 			continue
 		}
 		if isJunkEncryptedBody(body) {

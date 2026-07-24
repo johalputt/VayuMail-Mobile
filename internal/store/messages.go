@@ -28,6 +28,13 @@ type Message struct {
 	BodyHTML       string
 	HasAttachments bool
 	PGPStatus      string // "", "signed", "encrypted", "signed+encrypted"
+	// PGPSigVerified is a TRANSIENT (never persisted) flag set at
+	// decrypt-on-display time when the message's OpenPGP signature actually
+	// verified against a known key (audit M17). It is the ONLY basis for
+	// claiming the sender is cryptographically authenticated: a bare
+	// PGPStatus of "signed" comes from the MIME structure alone and is NOT
+	// verified, so it must never be shown as trusted on its own.
+	PGPSigVerified bool
 	IsRead         bool
 	IsFlagged      bool
 	IsDeleted      bool

@@ -37,6 +37,19 @@ project uses [Semantic Versioning](https://semver.org/).
   never silently dropped, so a legitimate first-contact message before the peer's
   key is known still appears — just without a trust mark).
 
+- **The "PGP signed" indicator now reflects real signature verification, not
+  just message structure (audit M17).** A message was marked and shown as "PGP
+  signed by sender" (green shield) whenever it merely carried a
+  `multipart/signed` MIME structure — the detached signature was **never
+  verified** (`VerifyDetached` existed but was called nowhere), so any relay
+  could wrap arbitrary content in a signed-looking envelope and have it display
+  as authenticated. The authenticity claim is now made only from a signature the
+  keyring **actually verified against a known key**: for encrypted mail the
+  keyring's decrypt-time verdict drives a "encrypted and signed by sender" badge,
+  while a bare unverified `multipart/signed` message is shown neutrally as "PGP
+  signature present — not verified on this device" (and a muted, not success,
+  shield in the list) instead of falsely asserting the sender.
+
 ### Added
 
 - **Tapping a new-mail notification opens that mailbox (Android).** New package

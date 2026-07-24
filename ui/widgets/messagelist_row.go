@@ -68,7 +68,14 @@ func rowLine2(gtx layout.Context, th *theme.Theme, msg store.Message, line strin
 	}
 	trailing := []layout.FlexChild{}
 	if msg.PGPStatus != "" {
-		trailing = append(trailing, rowIndicator(th, IconShield, p.Success))
+		// A bare "signed" status is an unverified MIME structure (audit M17):
+		// show it in a neutral tone, reserving the success-green shield for
+		// encryption or a signature that actually verified on-device.
+		shield := p.Success
+		if msg.PGPStatus == "signed" && !msg.PGPSigVerified {
+			shield = p.Subtle
+		}
+		trailing = append(trailing, rowIndicator(th, IconShield, shield))
 	}
 	if msg.HasAttachments {
 		trailing = append(trailing, rowIndicator(th, IconAttach, p.Subtle))

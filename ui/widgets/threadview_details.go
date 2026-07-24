@@ -45,12 +45,19 @@ func (tv *ThreadView) detailsPanel(gtx layout.Context, th *theme.Theme, msg stor
 	// distinguishes end-to-end PGP from transport-only.
 	secColor, secText := p.OnSurface, "Transport TLS only — content not end-to-end encrypted"
 	switch msg.PGPStatus {
-	case "encrypted":
-		secColor, secText = p.Success, "PGP end-to-end encrypted (+ transport TLS)"
+	case "encrypted", "signed+encrypted":
+		// Encrypted on-device. The "signed" claim is made only when the
+		// signature actually verified against a known key (audit M17).
+		if msg.PGPSigVerified {
+			secColor, secText = p.Success, "PGP end-to-end encrypted and signed by sender (+ transport TLS)"
+		} else {
+			secColor, secText = p.Success, "PGP end-to-end encrypted (+ transport TLS)"
+		}
 	case "signed":
-		secColor, secText = p.Success, "PGP signed by sender (+ transport TLS)"
-	case "signed+encrypted":
-		secColor, secText = p.Success, "PGP end-to-end encrypted and signed (+ transport TLS)"
+		// A bare multipart/signed structure. The detached signature is not
+		// verified on this device, so we must NOT assert the sender is
+		// authenticated — say only that a signature is present (audit M17).
+		secColor, secText = p.Warning, "PGP signature present — not verified on this device"
 	}
 	trackColor, trackText := p.OnSurface, "No tracking detected"
 	if msg.HasTrackers {
