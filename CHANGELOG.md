@@ -6,6 +6,8 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.13] — 2026-07-24
+
 ### Security
 
 - **PGP private keys are sealed in the platform keystore, never in SQLite
