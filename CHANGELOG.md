@@ -50,6 +50,18 @@ project uses [Semantic Versioning](https://semver.org/).
   signature present — not verified on this device" (and a muted, not success,
   shield in the list) instead of falsely asserting the sender.
 
+- **Honest at-rest posture for the software keystore + a fail-closed option
+  (audit M16, partial).** On a device with no hardware keystore bridge, secrets
+  are sealed with AES-256-GCM but the sealing key sits in a sibling file, so the
+  ciphertext is only as confidential as the OS app sandbox. The boot comment
+  overclaimed this ("raw secrets never touch disk"); it now states the real
+  posture. New env `VAYUMAIL_REQUIRE_SECURE_KEYSTORE=1` makes the fallback **fail
+  closed** — dropping to an in-memory store (secrets last one session, no sealing
+  key ever written to disk) rather than persisting secrets under an on-disk key.
+  The full fix — hardware-backed sealing via the Android Keystore / iOS Keychain
+  bridge — remains platform (JNI) work tracked in `internal/crypto`; it is not
+  buildable or testable in the pure-Go environment and is not part of this change.
+
 ### Added
 
 - **Tapping a new-mail notification opens that mailbox (Android).** New package

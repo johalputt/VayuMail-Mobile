@@ -128,15 +128,36 @@ func probeDarkMode() bool {
 	}
 }
 
-// keystore selects the platform keystore when a gomobile bridge is
-// registered, else the sealed AES-GCM store in the app-private data
-// directory: credentials are encrypted at rest and survive restarts, and
-// raw secrets never touch disk (Rule 6, ADR-0004). The in-memory store is
-// the last-resort fallback if the data directory is unavailable.
+// keystore selects secret storage, strongest first:
+//
+//  1. The hardware-backed platform keystore (Android Keystore / iOS
+//     Keychain) when a gomobile bridge is registered — the secrets and the
+//     key protecting them stay in hardware.
+//  2. Otherwise a sealed AES-256-GCM store in the app-private data
+//     directory. Here credentials are encrypted at rest, but the 32-byte
+//     sealing key lives in a sibling 0600 file: the ciphertext is only as
+//     confidential as the OS app sandbox (an attacker with a one-time read
+//     of the app-private dir gets both halves — audit M16). This is the
+//     accepted posture on desktop/dev; on mobile it is a stopgap until the
+//     hardware bridge is wired (RegisterPlatform, tracked in
+//     internal/crypto/README).
+//  3. An in-memory store (credentials last one session) when the data
+//     directory is unavailable.
+//
+// Setting VAYUMAIL_REQUIRE_SECURE_KEYSTORE=1 makes step 2 FAIL CLOSED:
+// rather than silently sealing secrets under an on-disk key, it drops to
+// the in-memory store so no cleartext key file is ever written. Use it for
+// high-assurance builds that must never persist secrets without hardware.
 func keystore() appcrypto.Keystore {
 	p := appcrypto.NewPlatformKeystore()
 	if _, err := p.Fetch("vayumail-probe"); err != appcrypto.ErrNoPlatformKeystore {
 		return p
+	}
+	if requireSecureKeystore() {
+		slog.Warn("no hardware keystore and VAYUMAIL_REQUIRE_SECURE_KEYSTORE set; " +
+			"failing closed to in-memory store — credentials last one session, " +
+			"no sealing key is written to disk")
+		return appcrypto.NewMemoryKeystore()
 	}
 	dir, err := app.DataDir()
 	if err == nil {
@@ -148,6 +169,17 @@ func keystore() appcrypto.Keystore {
 	}
 	slog.Warn("sealed keystore unavailable; credentials last one session", "err", err)
 	return appcrypto.NewMemoryKeystore()
+}
+
+// requireSecureKeystore reports whether the operator demands hardware-backed
+// (or no-persistence) secret storage — set VAYUMAIL_REQUIRE_SECURE_KEYSTORE
+// to 1/true/yes to refuse the on-disk-sealing-key fallback (audit M16).
+func requireSecureKeystore() bool {
+	switch os.Getenv("VAYUMAIL_REQUIRE_SECURE_KEYSTORE") {
+	case "1", "true", "TRUE", "yes", "YES":
+		return true
+	}
+	return false
 }
 
 // databasePath places vayumail.db inside the platform data directory.
