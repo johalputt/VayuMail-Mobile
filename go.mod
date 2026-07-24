@@ -7,6 +7,7 @@ toolchain go1.25.12
 require (
 	gioui.org v0.10.1
 	gioui.org/x v0.10.1
+	git.wow.st/gmp/jni v0.0.0-20210610011705-34026c7e22d0
 	github.com/ProtonMail/go-crypto v1.4.1
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
@@ -15,7 +16,7 @@ require (
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef
 	go.uber.org/goleak v1.3.0
-	golang.org/x/image v0.43.0
+	golang.org/x/image v0.44.0
 	golang.org/x/net v0.57.0
 	modernc.org/sqlite v1.54.0
 )
@@ -23,7 +24,6 @@ require (
 require (
 	gioui.org/shader v1.0.8 // indirect
 	git.sr.ht/~jackmordaunt/go-toast v1.0.0 // indirect
-	git.wow.st/gmp/jni v0.0.0-20210610011705-34026c7e22d0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/esiqveland/notify v0.11.0 // indirect
