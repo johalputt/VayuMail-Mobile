@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -138,7 +140,66 @@ func ParseAndVerify(raw []byte, now time.Time) (*ProvisionPayload, error) {
 		return nil, fmt.Errorf("%w: smtp_port=%d", ErrInvalidPort, p.SMTPPort)
 	}
 
+	// The Ed25519 signature is self-certifying — the verifying key travels
+	// inside the signed payload — so it proves integrity, NOT authenticity: an
+	// attacker mints a valid signature with their own keypair. The only real
+	// anchor is the mailbox address the user is setting up. Bind every host the
+	// payload can steer the device to (the IMAP/SMTP server and the token
+	// endpoint) to that address's domain, and require each to be a public host,
+	// so a self-signed code cannot point the app at attacker infrastructure or
+	// an internal/LAN address (audit M14, M15; SSRF / account-hijack).
+	usernameDomain := domainOf(p.Username)
+	if usernameDomain == "" || !publicMailDomain(usernameDomain) {
+		return nil, fmt.Errorf("%w: username domain", ErrMalformedPayload)
+	}
+	if !publicMailDomain(p.Server) || !hostInDomain(p.Server, usernameDomain) {
+		return nil, fmt.Errorf("%w: server host not in mailbox domain", ErrMalformedPayload)
+	}
+	if err := validateTokenEndpoint(p.TokenEndpoint, usernameDomain); err != nil {
+		return nil, err
+	}
+
 	return &p, nil
+}
+
+// hostInDomain reports whether host equals base or is a subdomain of it
+// (case-insensitive). A provisioning payload may only point at infrastructure
+// within the mailbox's own domain.
+func hostInDomain(host, base string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	base = strings.ToLower(strings.TrimSpace(base))
+	if host == "" || base == "" {
+		return false
+	}
+	return host == base || strings.HasSuffix(host, "."+base)
+}
+
+// validateTokenEndpoint vets the token-exchange URL before the device ever
+// dials it (audit M14): https only, no userinfo, default/443 port, a public
+// host that is the mailbox domain or a subdomain of it. Returning nil means the
+// URL is safe to POST to; every failure maps to a typed payload error.
+func validateTokenEndpoint(rawURL, usernameDomain string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("%w: token_endpoint: %v", ErrMalformedPayload, err)
+	}
+	if u.Scheme != "https" {
+		return fmt.Errorf("%w: token_endpoint not https", ErrInsecureTransport)
+	}
+	if u.User != nil {
+		return fmt.Errorf("%w: token_endpoint carries userinfo", ErrMalformedPayload)
+	}
+	if port := u.Port(); port != "" && port != "443" {
+		return fmt.Errorf("%w: token_endpoint port %q", ErrMalformedPayload, port)
+	}
+	host := u.Hostname()
+	if !publicMailDomain(host) {
+		return fmt.Errorf("%w: token_endpoint host", ErrMalformedPayload)
+	}
+	if !hostInDomain(host, usernameDomain) {
+		return fmt.Errorf("%w: token_endpoint host not in mailbox domain", ErrMalformedPayload)
+	}
+	return nil
 }
 
 // Config converts a verified payload into an account Config. keystoreAlias
@@ -177,6 +238,12 @@ func ExchangeToken(ctx context.Context, client *http.Client, p *ProvisionPayload
 	if client == nil {
 		client = &http.Client{Timeout: 30 * time.Second}
 	}
+	// Re-vet the endpoint at the point of use (defense in depth): callers must
+	// pass a ParseAndVerify'd payload, but ExchangeToken must never dial an
+	// unvetted URL even if called directly (audit M14).
+	if err := validateTokenEndpoint(p.TokenEndpoint, domainOf(p.Username)); err != nil {
+		return nil, err
+	}
 	reqBody, err := json.Marshal(map[string]string{
 		"token":    p.Token,
 		"username": p.Username,
@@ -191,7 +258,14 @@ func ExchangeToken(ctx context.Context, client *http.Client, p *ProvisionPayload
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := client.Do(req)
+	// Refuse redirects: a 30x could bounce the one-time token (and the POST
+	// body) to an off-domain or downgraded host that the vetting above never
+	// saw (audit M14). Mirrors every other network path in this package.
+	c := *client
+	c.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	resp, err := c.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrNetwork, err)
 	}

@@ -62,6 +62,20 @@ project uses [Semantic Versioning](https://semver.org/).
   bridge — remains platform (JNI) work tracked in `internal/crypto`; it is not
   buildable or testable in the pure-Go environment and is not part of this change.
 
+- **Setup codes can no longer point the app off your mailbox domain (audit
+  M14, M15).** A provisioning setup code is signed, but the signing key travels
+  inside the payload — so the signature proves integrity, not authenticity, and
+  anyone can mint a "valid" code with their own key. Nothing bound the code's
+  IMAP/SMTP `server` or `token_endpoint` to the address being set up, so a
+  self-signed code could provision an account against attacker infrastructure
+  (over valid TLS) or fire the device's token POST at an internal/LAN address
+  (`http://169.254.169.254/…`) — a client-side SSRF primitive that also followed
+  redirects. `ParseAndVerify` now requires the server host and the token endpoint
+  to be public hosts that equal — or are a subdomain of — the mailbox address's
+  domain; the token exchange additionally enforces https, rejects userinfo and
+  non-443 ports, re-vets at the point of use, and refuses redirects. Off-domain
+  or private-host codes are rejected before any connection is opened.
+
 ### Added
 
 - **Tapping a new-mail notification opens that mailbox (Android).** New package
