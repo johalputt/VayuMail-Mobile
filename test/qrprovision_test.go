@@ -93,8 +93,13 @@ func TestExchangeToken(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// The token endpoint must be an https host within the mailbox domain now
+	// (audit M14/M15). Present a real in-domain URL and route it to the local
+	// test server via the client's transport (the mailbox is user@example.com).
+	const endpoint = "https://mail.example.com/exchange"
+
 	t.Run("success returns credentials", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				t.Errorf("method = %s", r.Method)
 			}
@@ -102,8 +107,8 @@ func TestExchangeToken(t *testing.T) {
 		}))
 		defer srv.Close()
 		p := *payload
-		p.TokenEndpoint = srv.URL
-		creds, err := account.ExchangeToken(t.Context(), srv.Client(), &p)
+		p.TokenEndpoint = endpoint
+		creds, err := account.ExchangeToken(t.Context(), hostRewriteClient(srv), &p)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -113,26 +118,46 @@ func TestExchangeToken(t *testing.T) {
 	})
 
 	t.Run("gone token maps to ErrTokenExpired", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusGone)
 		}))
 		defer srv.Close()
 		p := *payload
-		p.TokenEndpoint = srv.URL
-		if _, err := account.ExchangeToken(t.Context(), srv.Client(), &p); !errors.Is(err, account.ErrTokenExpired) {
+		p.TokenEndpoint = endpoint
+		if _, err := account.ExchangeToken(t.Context(), hostRewriteClient(srv), &p); !errors.Is(err, account.ErrTokenExpired) {
 			t.Fatalf("want ErrTokenExpired, got %v", err)
 		}
 	})
 
 	t.Run("empty credential body rejected", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(`{}`))
 		}))
 		defer srv.Close()
 		p := *payload
-		p.TokenEndpoint = srv.URL
-		if _, err := account.ExchangeToken(t.Context(), srv.Client(), &p); !errors.Is(err, account.ErrTokenInvalid) {
+		p.TokenEndpoint = endpoint
+		if _, err := account.ExchangeToken(t.Context(), hostRewriteClient(srv), &p); !errors.Is(err, account.ErrTokenInvalid) {
 			t.Fatalf("want ErrTokenInvalid, got %v", err)
 		}
 	})
+}
+
+// rtFunc adapts a function to http.RoundTripper.
+type rtFunc func(*http.Request) (*http.Response, error)
+
+func (f rtFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// hostRewriteClient returns srv's TLS client with a transport that rewrites
+// every request's host to the local server, so a test can present a real
+// in-domain https URL (which ExchangeToken now requires) yet reach the loopback
+// httptest server.
+func hostRewriteClient(srv *httptest.Server) *http.Client {
+	c := srv.Client()
+	addr := srv.Listener.Addr().String()
+	base := c.Transport
+	c.Transport = rtFunc(func(r *http.Request) (*http.Response, error) {
+		r.URL.Host = addr
+		return base.RoundTrip(r)
+	})
+	return c
 }

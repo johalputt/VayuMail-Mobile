@@ -35,10 +35,14 @@ func TestProvisionRoundTrip(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /provision", svc.handleExchange)
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewTLSServer(mux)
 	defer srv.Close()
+	client := hostRewriteClient(srv)
 
-	payload, err := svc.buildPayload("user@example.com", srv.URL+"/provision")
+	// The token endpoint must be an https host within the mailbox domain now
+	// (audit M14/M15); the client's transport routes that in-domain URL to the
+	// local test server so the round-trip still runs against real validation.
+	payload, err := svc.buildPayload("user@example.com", "https://mail.example.com/provision")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +55,7 @@ func TestProvisionRoundTrip(t *testing.T) {
 		t.Fatalf("payload fields: %+v", verified)
 	}
 
-	creds, err := account.ExchangeToken(context.Background(), srv.Client(), verified)
+	creds, err := account.ExchangeToken(context.Background(), client, verified)
 	if err != nil {
 		t.Fatalf("exchange: %v", err)
 	}
@@ -60,9 +64,30 @@ func TestProvisionRoundTrip(t *testing.T) {
 	}
 
 	// The token is single use: a second exchange must be rejected.
-	if _, err := account.ExchangeToken(context.Background(), srv.Client(), verified); err == nil {
+	if _, err := account.ExchangeToken(context.Background(), client, verified); err == nil {
 		t.Error("token reuse must fail")
 	}
+}
+
+// rtFunc adapts a function to http.RoundTripper.
+type rtFunc func(*http.Request) (*http.Response, error)
+
+func (f rtFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// hostRewriteClient returns srv's TLS client with a transport that rewrites
+// every request's host to the local server. It lets a test present a real
+// in-domain https URL — which ParseAndVerify/ExchangeToken require — while the
+// request actually reaches the loopback httptest server (cert is trusted by
+// srv.Client()).
+func hostRewriteClient(srv *httptest.Server) *http.Client {
+	c := srv.Client()
+	addr := srv.Listener.Addr().String()
+	base := c.Transport
+	c.Transport = rtFunc(func(r *http.Request) (*http.Response, error) {
+		r.URL.Host = addr
+		return base.RoundTrip(r)
+	})
+	return c
 }
 
 func TestProvisionTamperRejected(t *testing.T) {
