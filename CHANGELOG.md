@@ -76,6 +76,24 @@ project uses [Semantic Versioning](https://semver.org/).
   non-443 ports, re-vets at the point of use, and refuses redirects. Off-domain
   or private-host codes are rejected before any connection is opened.
 
+- **Notification-tap deep links now require a one-time nonce (audit L13).** The
+  launcher activity is exported, so a co-installed app could `startActivity` with
+  fabricated `vayu_account`/`vayu_folder` extras to force the client to jump to a
+  chosen mailbox. Each posted notification now mints an in-process nonce (keyed by
+  notification id) that only the real immutable `PendingIntent` carries; a tap is
+  routed only when the nonce matches, and a relaunch from the recents/history list
+  is ignored. (Android bridge — `VayuNotify.java` — unverified: not built in CI.)
+
+- **Android backup of the app-private data is disabled (audit L12).** The default
+  gogio manifest left `allowBackup="true"`, making `vayumail.db` and the sealed
+  keystore eligible for `adb`/cloud backup — the no-root path that turns at-rest
+  weaknesses into off-device compromise. `platform/android/` now carries the
+  required `allowBackup="false"` + `dataExtractionRules`/`fullBackupContent`
+  manifest attributes and restrictive rule files (`data_extraction_rules.xml`,
+  `backup_rules.xml`). gogio has no manifest-merge, so injection rides the same
+  pending release-pipeline manifest-patch as the other manifest entries — tracked,
+  documented in `platform/android/README.md`.
+
 ### Added
 
 - **Tapping a new-mail notification opens that mailbox (Android).** New package

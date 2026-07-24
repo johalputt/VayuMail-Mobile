@@ -11,6 +11,9 @@ import android.content.Intent;
 import android.os.Build;
 import android.view.View;
 
+import java.security.SecureRandom;
+import java.util.HashMap;
+
 // VayuNotify posts a new-mail notification that opens a specific mailbox when
 // tapped. The mailbox (account + folder ids) rides as intent extras on the
 // content PendingIntent; on tap the app's launcher activity is re-delivered the
@@ -24,6 +27,18 @@ public final class VayuNotify {
     private static final String CHANNEL_ID = "vayumail_new_mail";
     private static final String EX_ACCOUNT = "vayu_account";
     private static final String EX_FOLDER = "vayu_folder";
+    private static final String EX_ID = "vayu_id";
+    private static final String EX_NONCE = "vayu_nonce";
+
+    // The launcher activity is EXPORTED, so any co-installed app can
+    // startActivity() with fabricated vayu_account/vayu_folder extras to force
+    // our own client to jump to a chosen mailbox (audit L13). We defend by
+    // minting a per-notification nonce here (in-process, never leaves the app)
+    // and requiring consumeTap to match it: the real PendingIntent — immutable
+    // and built by us — carries the right nonce, a forged intent cannot. Keyed
+    // by notification id so several outstanding notifications each validate.
+    private static final SecureRandom RNG = new SecureRandom();
+    private static final HashMap<Integer, Long> NONCES = new HashMap<>();
 
     private VayuNotify() {
     }
@@ -61,8 +76,14 @@ public final class VayuNotify {
             launch.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP
                     | Intent.FLAG_ACTIVITY_CLEAR_TOP
                     | Intent.FLAG_ACTIVITY_NEW_TASK);
+            long nonce = RNG.nextLong();
+            synchronized (NONCES) {
+                NONCES.put(id, nonce);
+            }
             launch.putExtra(EX_ACCOUNT, account);
             launch.putExtra(EX_FOLDER, folder);
+            launch.putExtra(EX_ID, id);
+            launch.putExtra(EX_NONCE, nonce);
 
             int piFlags = PendingIntent.FLAG_UPDATE_CURRENT;
             if (Build.VERSION.SDK_INT >= 23) {
@@ -93,7 +114,11 @@ public final class VayuNotify {
 
     // consumeTap returns "account,folder" from the current activity's intent
     // extras (set by a tapped notification), clearing them so the target is used
-    // once. Returns "" when there is nothing to open.
+    // once. It returns "" — refusing to route — unless the intent carries the
+    // one-time nonce that a real post() minted for this notification id (audit
+    // L13), so a fabricated intent from a co-installed app cannot steer the
+    // client. It also ignores an activity relaunched from the recents/history
+    // list, where stale extras could otherwise re-fire.
     public static String consumeTap(View view) {
         try {
             Context c = view.getContext();
@@ -108,11 +133,32 @@ public final class VayuNotify {
             if (it == null || !it.hasExtra(EX_ACCOUNT)) {
                 return "";
             }
+            // A relaunch from the history/recents list carries whatever extras
+            // the last launch had — not a fresh tap. Never act on it.
+            boolean fromHistory =
+                    (it.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0;
+
             long account = it.getLongExtra(EX_ACCOUNT, 0);
             long folder = it.getLongExtra(EX_FOLDER, 0);
+            int id = it.getIntExtra(EX_ID, -1);
+            long nonce = it.getLongExtra(EX_NONCE, 0);
+
+            // Always clear the extras so a target — genuine or forged — is
+            // considered at most once and never replays.
             it.removeExtra(EX_ACCOUNT);
             it.removeExtra(EX_FOLDER);
+            it.removeExtra(EX_ID);
+            it.removeExtra(EX_NONCE);
             a.setIntent(it);
+
+            boolean authentic;
+            synchronized (NONCES) {
+                Long expected = NONCES.remove(id);
+                authentic = expected != null && expected.longValue() == nonce;
+            }
+            if (fromHistory || !authentic) {
+                return "";
+            }
             return account + "," + folder;
         } catch (Throwable t) {
             return "";

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Legacy (API 30 and below) full-backup rules, referenced from the manifest as
+  android:fullBackupContent="@xml/backup_rules" (audit L12).
+
+  The app sets android:allowBackup="false", so backup is disabled outright.
+  These exclusions are defence in depth for older devices if backup is ever
+  re-enabled: the SQLite database and the sealed keystore + its key must never
+  be included in an adb/cloud backup.
+-->
+<full-backup-content>
+    <exclude domain="database" path="." />
+    <exclude domain="file" path="vayumail" />
+    <exclude domain="sharedpref" path="." />
+</full-backup-content>
