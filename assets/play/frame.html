@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>VayuMail — Play screenshot framer</title>
+<!--
+  Drops a REAL device capture into a 1080x1920 Play-ready image with a caption.
+  The app content stays the genuine screenshot: Play requires screenshots to
+  represent the app accurately, so this frames a capture — it never fakes one.
+
+  Use: open in a browser, pick a capture, type a caption, then screenshot the
+  1080x1920 stage (or run it through Playwright at that viewport).
+-->
+<style>
+  body{margin:0;background:#1b1f2a;font-family:system-ui,sans-serif;color:#dfe4f0}
+  .controls{padding:14px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .controls input[type=text]{flex:1 1 22rem;padding:8px 12px;border-radius:8px;
+    border:1px solid #39405480;background:#11141d;color:#dfe4f0;font-size:15px}
+  #stage{width:1080px;height:1920px;background:linear-gradient(165deg,#0B0E1A 0%,#141A2E 100%);
+    display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+    padding:96px 72px;box-sizing:border-box;transform-origin:top left}
+  #cap{font-size:56px;font-weight:700;color:#fff;text-align:center;line-height:1.2;
+    letter-spacing:-1px;max-width:900px}
+  #sub{margin-top:18px;font-size:30px;color:#9AA5C0;text-align:center;max-width:860px}
+  .phone{margin-top:64px;width:840px;border-radius:44px;overflow:hidden;
+    border:10px solid #262D42;box-shadow:0 30px 80px rgba(0,0,0,.55);background:#000}
+  .phone img{display:block;width:100%}
+</style>
+<div class="controls">
+  <input type="file" id="file" accept="image/png,image/jpeg">
+  <input type="text" id="capIn" placeholder="Caption, e.g. Tracking pixels never load" size="40">
+  <input type="text" id="subIn" placeholder="Sub-caption (optional)" size="34">
+  <label>scale <input type="range" id="zoom" min="10" max="100" value="40"></label>
+</div>
+<div id="stage">
+  <div id="cap">Your caption here</div>
+  <div id="sub"></div>
+  <div class="phone"><img id="shot" alt=""></div>
+</div>
+<script>
+  const $ = id => document.getElementById(id);
+  $('file').addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (f) $('shot').src = URL.createObjectURL(f);
+  });
+  $('capIn').addEventListener('input', e => { $('cap').textContent = e.target.value || 'Your caption here'; });
+  $('subIn').addEventListener('input', e => { $('sub').textContent = e.target.value; });
+  $('zoom').addEventListener('input', e => {
+    $('stage').style.transform = 'scale(' + (e.target.value / 100) + ')';
+  });
+  $('stage').style.transform = 'scale(0.4)';
+</script>
