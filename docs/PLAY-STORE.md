@@ -36,8 +36,8 @@ reason a first submission fails.
 | App icon | 512×512, **32-bit PNG with alpha** | `assets/play/icon-512.png` ✔ |
 | Feature graphic | 1024×500 PNG, no alpha | `assets/play/feature-graphic-1024x500.png` |
 | Phone screenshots | 2–8, 16:9 or 9:16, 320–3840 px/side | capture — §3 |
-| 7-inch tablet | optional, up to 8 | optional |
-| 10-inch tablet | optional, up to 8 | optional |
+| 7-inch tablet | **required**, 2–8, 16:9 or 9:16, 320–3840 px/side | capture — §3 |
+| 10-inch tablet | **required**, 2–8, 16:9 or 9:16, **1080**–7680 px/side | capture — §3 |
 | Promo video | optional, YouTube URL | skip for v1 |
 
 `cmd/vayumail/appicon.png` is 512×512 but **RGB without alpha**, which Play
@@ -150,27 +150,46 @@ under Xvfb.
 bash scripts/screenshots.sh
 ```
 
-Six captured and committed — two per form factor, which is Play's minimum for
-the phone slot and enough to fill both tablet slots:
+Nine captured and committed — three per form factor:
 
 | File | Size | Screen |
 | --- | --- | --- |
-| `phone-1-signin.png` | 412×915 | sign-in |
-| `phone-2-setupcode.png` | 412×915 | setup code |
-| `tablet7-1-signin.png` | 800×1280 | sign-in |
-| `tablet7-2-setupcode.png` | 800×1280 | setup code |
-| `tablet10-1-signin.png` | 1280×800 | sign-in |
-| `tablet10-2-setupcode.png` | 1280×800 | setup code |
+| `phone-1-signin.png` | 1080×1920 | sign-in |
+| `phone-2-setupcode.png` | 1080×1920 | setup code |
+| `phone-3-manual.png` | 1080×1920 | manual setup |
+| `tablet7-1-signin.png` | 1080×1920 | sign-in |
+| `tablet7-2-setupcode.png` | 1080×1920 | setup code |
+| `tablet7-3-manual.png` | 1080×1920 | manual setup |
+| `tablet10-1-signin.png` | 1920×1080 | sign-in |
+| `tablet10-2-setupcode.png` | 1920×1080 | setup code |
+| `tablet10-3-manual.png` | 1920×1080 | manual setup |
 
-All under `assets/play/screenshots/`. Upload the phone pair to **Phone**, the
-800×1280 pair to **7-inch tablet**, and the 1280×800 pair to **10-inch tablet**.
+All under `assets/play/screenshots/`. Upload each trio to its matching slot.
 
-Play accepts these directly — the minimum is 320 px on the short side, and
-capturing at the phone's *logical* size keeps the image crisp. Rendering at a
-literal 1080×1920 does not help: Gio ignores the X server DPI, so the layout
-floats in whitespace instead of scaling up.
+### Why these exact sizes
 
-Both screens are pre-login, so no account was needed and no real address
+Play enforces the ratio to the pixel and applies a per-slot floor:
+
+| Slot | Ratio | Each side |
+| --- | --- | --- |
+| Phone | 16:9 or 9:16 | 320–3840 px |
+| 7-inch | 16:9 or 9:16 | 320–3840 px |
+| 10-inch | 16:9 or 9:16 | **1080**–7680 px |
+
+Real device dimensions do not satisfy this — a Pixel is 412×915, which is
+neither 16:9 nor 9:16 — so the capture sizes are exact 9:16 / 16:9 pairs
+instead. Everything ships at ≥1080 px per side, which the 10-inch slot demands
+outright and which is also Play's bar for a listing to be **eligible for
+promotion**.
+
+Scaling has to happen after capture. Gio takes its UI scale solely from the
+`Xft.dpi` X resource (`app/os_x11.go`: `scale = Xft.dpi/96`), and setting
+`RESOURCE_MANAGER` on this Xvfb leaves the render unchanged — so 1 dp is 1 px
+and the window size *is* the logical size. Asking for a 1080-wide window does
+not enlarge the UI, it strands a phone-width form in a field of whitespace. The
+script therefore captures small and upsamples with Lanczos.
+
+All three screens are pre-login, so no account was needed and no real address
 appears in any of them. That is also their limit — they show onboarding, not
 mail. Add inbox and message shots when you have a demo mailbox; the store
 listing is stronger for showing what the app does with mail in it.
@@ -385,7 +404,8 @@ variable to `production` when you want that.
 
 - [ ] Reviewer mailbox created, seeded, and its credentials in **App access**
 - [ ] Privacy policy live at a URL that loads without a login
-- [ ] 6 screenshots captured from the real app, no real addresses visible
+- [ ] 9 screenshots captured from the real app, no real addresses visible
+- [ ] every screenshot exactly 16:9 or 9:16 and ≥1080 px on each side
 - [ ] Icon uploaded from `assets/play/icon-512.png` (the RGBA one)
 - [ ] Data safety completed and matching what the build actually does
 - [ ] Content rating questionnaire submitted
