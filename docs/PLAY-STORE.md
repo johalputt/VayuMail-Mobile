@@ -150,17 +150,30 @@ under Xvfb.
 bash scripts/screenshots.sh
 ```
 
-Two already captured and committed:
+Six captured and committed — two per form factor, which is Play's minimum for
+the phone slot and enough to fill both tablet slots:
 
 | File | Size | Screen |
 | --- | --- | --- |
-| `assets/play/screenshots/phone-1-signin.png` | 412×915 | sign-in |
-| `assets/play/screenshots/tablet-1-signin.png` | 800×1280 | sign-in |
+| `phone-1-signin.png` | 412×915 | sign-in |
+| `phone-2-setupcode.png` | 412×915 | setup code |
+| `tablet7-1-signin.png` | 800×1280 | sign-in |
+| `tablet7-2-setupcode.png` | 800×1280 | setup code |
+| `tablet10-1-signin.png` | 1280×800 | sign-in |
+| `tablet10-2-setupcode.png` | 1280×800 | setup code |
+
+All under `assets/play/screenshots/`. Upload the phone pair to **Phone**, the
+800×1280 pair to **7-inch tablet**, and the 1280×800 pair to **10-inch tablet**.
 
 Play accepts these directly — the minimum is 320 px on the short side, and
 capturing at the phone's *logical* size keeps the image crisp. Rendering at a
 literal 1080×1920 does not help: Gio ignores the X server DPI, so the layout
 floats in whitespace instead of scaling up.
+
+Both screens are pre-login, so no account was needed and no real address
+appears in any of them. That is also their limit — they show onboarding, not
+mail. Add inbox and message shots when you have a demo mailbox; the store
+listing is stronger for showing what the app does with mail in it.
 
 **Everything past sign-in needs an account.** The app shows a login and nothing
 else until one is connected, so:

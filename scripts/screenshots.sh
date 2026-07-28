@@ -28,7 +28,13 @@ OUT="${OUT:-assets/play/screenshots}"
 DISPLAY_NUM="${DISPLAY_NUM:-:99}"
 BIN="${BIN:-/tmp/vayumail-shots}"
 PHONE_W=412 PHONE_H=915
-TABLET_W=800 TABLET_H=1280
+TABLET7_W=800 TABLET7_H=1280
+TABLET10_W=1280 TABLET10_H=800
+
+# Where "Use a setup code" lands, as a permille of window height. It moves with
+# the aspect ratio because the form is vertically centred, so each size carries
+# its own measured value rather than one shared guess.
+PHONE_CLICK=727 TABLET7_CLICK=690 TABLET10_CLICK=760
 
 mkdir -p "$OUT"
 echo "==> building the real app"
@@ -54,7 +60,12 @@ start_app() {  # $1=width $2=height
   [ -n "$WID" ] || { echo "the app never opened a window; see /tmp/vayumail-shots.log" >&2; exit 1; }
   xdotool windowsize "$WID" "$1" "$2"
   xdotool windowmove "$WID" 0 0
-  sleep 5   # let the resize settle and repaint
+  # Software GL reallocates the surface slowly, and Gio only repaints on an
+  # event: capturing too early yields a half-black frame that looks like a
+  # rendering bug rather than a timing one. Wait, then nudge the pointer to
+  # force one full redraw.
+  sleep 14
+  xdotool mousemove $(( $1 / 2 )) $(( $2 / 2 )); sleep 3
 }
 
 shot() { import -window "$WID" "$OUT/$1"; echo "    $OUT/$1"; }
