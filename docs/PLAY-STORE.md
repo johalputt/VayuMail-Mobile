@@ -137,7 +137,46 @@ Open source under Apache-2.0: github.com/johalputt/VayuMail-Mobile
 
 ---
 
-## 3. Capturing the screenshots
+## 3. Screenshots
+
+`scripts/screenshots.sh` captures **real** ones by running the actual binary
+under a virtual display — no mockups, so nothing here risks the Metadata policy.
+It is also why the note in `CLAUDE.md` about Gio being unbuildable in a sandbox
+is out of date: with `libxkbcommon`, `libx11-xcb`, `libvulkan` and the Mesa dev
+packages installed, `go build ./cmd/vayumail` succeeds and the app runs headless
+under Xvfb.
+
+```bash
+bash scripts/screenshots.sh
+```
+
+Two already captured and committed:
+
+| File | Size | Screen |
+| --- | --- | --- |
+| `assets/play/screenshots/phone-1-signin.png` | 412×915 | sign-in |
+| `assets/play/screenshots/tablet-1-signin.png` | 800×1280 | sign-in |
+
+Play accepts these directly — the minimum is 320 px on the short side, and
+capturing at the phone's *logical* size keeps the image crisp. Rendering at a
+literal 1080×1920 does not help: Gio ignores the X server DPI, so the layout
+floats in whitespace instead of scaling up.
+
+**Everything past sign-in needs an account.** The app shows a login and nothing
+else until one is connected, so:
+
+```bash
+VAYUMAIL_DEMO_EMAIL=playreview@johal.in \
+VAYUMAIL_DEMO_PASSWORD=… \
+  bash scripts/screenshots.sh
+```
+
+Use the same throwaway mailbox you give Play under **App access** (§4.1) — one
+account then covers both the reviewer and the store images. Check every capture
+before uploading: a screenshot showing a real address is both a privacy problem
+and a rejection risk.
+
+### Capturing on a real device instead
 
 Play wants 2–8 phone screenshots; supply **6**, in this order. The first two are
 what most people see, so lead with the thing that distinguishes the app.
@@ -149,16 +188,13 @@ what most people see, so lead with the thing that distinguishes the app.
 5. Search with an operator typed (`from:` or `has:attachment`)
 6. Settings showing **app lock** and account security
 
-### Capture on a device or emulator
-
 ```bash
 # Sideload the APK from the latest GitHub Release, then:
 adb shell screencap -p /sdcard/s1.png && adb pull /sdcard/s1.png
 ```
 
-An emulator at **1080×1920** produces images Play accepts directly. Use a
-throwaway mailbox so no real addresses or subjects appear — a screenshot showing
-someone's email address is both a privacy problem and a rejection risk.
+This is the better route for the screens that show real mail, because the
+Android build is what users actually run.
 
 ### Then frame them
 

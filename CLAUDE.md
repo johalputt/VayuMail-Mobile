@@ -50,10 +50,13 @@ Follow it without being asked.
 
 ```
 gofmt -l <changed .go files>     # must be empty
-go build ./...                   # Gio native deps (xkbcommon/wayland) fail to
-                                 # build in this sandbox — that is expected;
-                                 # build the cgo-free packages you touched
-                                 # (internal/…, ui/state) to verify your code.
+go build ./...                   # Gio needs native deps. They ARE installable:
+                                 # apt-get install -y libxkbcommon-dev
+                                 # libxkbcommon-x11-dev libwayland-dev libx11-dev
+                                 # libx11-xcb-dev libxcursor-dev libxfixes-dev
+                                 # libgles2-mesa-dev libegl1-mesa-dev libvulkan-dev
+                                 # After that the full app builds and runs headless
+                                 # under Xvfb — see scripts/screenshots.sh.
 go vet ./ui/state/ ./internal/…
 go test ./…                      # at least the packages you touched
 markdownlint-cli2 <changed .md>  # MD004: a wrapped line starting with */+ reads
