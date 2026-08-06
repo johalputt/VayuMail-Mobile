@@ -33,13 +33,18 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", ":8448", "listen address")
+	// Loopback by default. The exchange endpoint dispenses mail passwords, so
+	// the out-of-the-box posture should be "reachable by this machine", with
+	// exposure an explicit decision the operator makes by passing -addr.
+	addr := flag.String("addr", "127.0.0.1:8448", "listen address")
 	server := flag.String("server", "", "mail server host (IMAP+SMTP)")
 	imapPort := flag.Int("imap-port", 993, "IMAP port (implicit TLS)")
 	smtpPort := flag.Int("smtp-port", 587, "SMTP port (STARTTLS)")
 	usersFile := flag.String("users", "", "file of email:password lines")
 	keyFile := flag.String("key", "", "Ed25519 seed file (32 bytes; generated when absent)")
 	ttl := flag.Int("ttl", 900, "payload validity in seconds")
+	adminToken := flag.String("admin-token", "",
+		"bearer token required by GET /code (generated and logged when empty)")
 	flag.Parse()
 
 	if *server == "" || *usersFile == "" {
@@ -58,13 +63,27 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Generated rather than defaulted to empty-means-open: a reference
+	// implementation that starts unauthenticated is the one operators copy.
+	token := *adminToken
+	if token == "" {
+		token, err = randomToken()
+		if err != nil {
+			slog.Error("generate admin token", "err", err)
+			os.Exit(1)
+		}
+		slog.Warn("no -admin-token given; generated one for this run",
+			"admin_token", token)
+	}
+
 	svc := newService(serviceConfig{
-		Server:   *server,
-		IMAPPort: *imapPort,
-		SMTPPort: *smtpPort,
-		TTL:      *ttl,
-		Users:    users,
-		Key:      priv,
+		Server:     *server,
+		IMAPPort:   *imapPort,
+		SMTPPort:   *smtpPort,
+		TTL:        *ttl,
+		Users:      users,
+		Key:        priv,
+		AdminToken: token,
 	})
 
 	mux := http.NewServeMux()
@@ -74,7 +93,13 @@ func main() {
 
 	slog.Info("vayumail-provision listening",
 		"addr", *addr, "server", *server, "users", len(users))
-	slog.Warn("serve this behind TLS in production — the exchange endpoint hands out credentials")
+	// The old line here said only "serve this behind TLS", which named the
+	// wrong control. TLS stops somebody reading the exchange off the wire; it
+	// does nothing about anybody being able to ask for a setup code and redeem
+	// it for a mail password. Authentication is what stops that, and TLS is
+	// what keeps the redeemed credential private in transit. Both, in order.
+	slog.Warn("GET /code requires the admin token; POST /provision hands out mail " +
+		"credentials to whoever holds a valid one-time token — serve both behind TLS")
 	if err := http.ListenAndServe(*addr, mux); err != nil {
 		slog.Error("listen", "err", err)
 		os.Exit(1)

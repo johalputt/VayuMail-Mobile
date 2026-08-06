@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -20,6 +21,12 @@ type serviceConfig struct {
 	TTL      int
 	Users    map[string]string
 	Key      ed25519.PrivateKey
+	// AdminToken guards the setup-code endpoint. Minting a code produces a
+	// redeemable token, and redeeming it returns the account's mail password,
+	// so /code is an administrative operation and not a public one. An empty
+	// value denies every request rather than allowing them: an unset
+	// credential must never read as "no check required".
+	AdminToken string
 }
 
 // pendingToken is one issued, not-yet-redeemed provisioning token.
@@ -108,7 +115,41 @@ func (s *service) handleSetupCode(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintln(w, payload)
 }
 
+// authorized reports whether a request carries the admin credential, accepted
+// either as `Authorization: Bearer <token>` or an `admin=<token>` query
+// parameter for tooling that cannot set headers.
+//
+// Compared in constant time. The token is a bearer secret, and an equality
+// check that returns early leaks its prefix to anyone who can time the
+// endpoint.
+func (s *service) authorized(r *http.Request) bool {
+	want := s.cfg.AdminToken
+	if want == "" {
+		return false
+	}
+	got := r.URL.Query().Get("admin")
+	if h := r.Header.Get("Authorization"); h != "" {
+		if after, ok := strings.CutPrefix(h, "Bearer "); ok {
+			got = after
+		} else {
+			got = "" // a credential in the wrong scheme is not a credential
+		}
+	}
+	if got == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+}
+
 func (s *service) payloadFor(w http.ResponseWriter, r *http.Request) (string, bool) {
+	// Checked FIRST, before the user lookup and before any token is minted.
+	// Answering "unknown user" to an unauthenticated caller turns the endpoint
+	// into an address-enumeration oracle, and minting before checking means the
+	// token — the thing actually worth stealing — already exists.
+	if !s.authorized(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return "", false
+	}
 	email := strings.ToLower(r.URL.Query().Get("user"))
 	if _, ok := s.cfg.Users[email]; !ok {
 		http.Error(w, "unknown user", http.StatusNotFound)
