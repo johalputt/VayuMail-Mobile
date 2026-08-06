@@ -31,7 +31,12 @@ func armoredPrivate(t *testing.T, ent *openpgp.Entity) string {
 
 // A validly-signed encrypted message must decrypt AND come back marked
 // PGPSigVerified — the badge's authenticity claim rests on the real signature
-// verdict, not the MIME structure (audit M17).
+// verdict, not the MIME structure (audit M17), and on that signature belonging
+// to the address the mail claims to come from.
+//
+// This test previously left FromAddr empty, because the code it covered never
+// consulted it: any valid signature from any key on the keyring earned the
+// badge. It now carries the From header a real message would.
 func TestDecryptMarksVerifiedSignature(t *testing.T) {
 	const email = "me@test.example"
 	ent, err := openpgp.NewEntity("Me", "", email, nil)
@@ -50,6 +55,7 @@ func TestDecryptMarksVerifiedSignature(t *testing.T) {
 	s := &AppState{keyring: kr}
 	out := s.decryptThread([]store.Message{{
 		PGPStatus: "encrypted",
+		FromAddr:  email,
 		BodyText:  string(ciphertext),
 	}})
 	if len(out) != 1 {
@@ -60,6 +66,44 @@ func TestDecryptMarksVerifiedSignature(t *testing.T) {
 	}
 	if !out[0].PGPSigVerified {
 		t.Fatal("validly-signed message should be marked PGPSigVerified")
+	}
+}
+
+// The same message, with the From header changed to somebody else. The
+// signature is still cryptographically valid and its key is still on the
+// keyring — only the claimed sender is a lie, and that is exactly the case the
+// badge exists to catch.
+func TestDecryptDoesNotVerifyAMismatchedSender(t *testing.T) {
+	const email = "me@test.example"
+	ent, err := openpgp.NewEntity("Me", "", email, nil)
+	if err != nil {
+		t.Fatalf("new entity: %v", err)
+	}
+	kr := pgp.NewKeyring()
+	if _, err := kr.ImportArmored([]byte(armoredPrivate(t, ent))); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	ciphertext, err := kr.Encrypt([]byte("hello"), []string{email}, email)
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+
+	s := &AppState{keyring: kr}
+	out := s.decryptThread([]store.Message{{
+		PGPStatus: "encrypted",
+		FromAddr:  "security@yourbank.example",
+		BodyText:  string(ciphertext),
+	}})
+	if len(out) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(out))
+	}
+	if out[0].BodyText != "hello" {
+		t.Fatalf("plaintext mismatch: %q", out[0].BodyText)
+	}
+	if out[0].PGPSigVerified {
+		t.Fatal("a message signed by me@test.example was marked verified while claiming to " +
+			"come from security@yourbank.example. The From header is attacker-controlled; " +
+			"the badge must not survive a mismatch with the signing key.")
 	}
 }
 

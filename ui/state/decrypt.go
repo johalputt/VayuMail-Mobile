@@ -9,7 +9,6 @@ package state
 import (
 	"strings"
 
-	"github.com/johalputt/VayuMail-Mobile/internal/mail/pgp"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
 )
@@ -43,7 +42,7 @@ func (s *AppState) decryptThread(msgs []store.Message) []store.Message {
 		}
 		body := strings.TrimSpace(m.BodyText)
 		if strings.Contains(body, "BEGIN PGP MESSAGE") {
-			res, err := s.keyring.Decrypt([]byte(body))
+			res, err := s.keyring.DecryptFrom([]byte(body), m.FromAddr)
 			if err != nil || res == nil || len(res.Plaintext) == 0 {
 				m.BodyText = noPrivateKeyNotice
 				m.BodyHTML = ""
@@ -53,11 +52,15 @@ func (s *AppState) decryptThread(msgs []store.Message) []store.Message {
 			// runs it through mime.DisplayText, so plain text is enough.
 			m.BodyText = string(res.Plaintext)
 			m.BodyHTML = ""
-			// Real signature verdict (audit M17): the keyring verified the
-			// embedded signature against a known key while decrypting. This —
-			// not the MIME structure — is what lets the UI claim the sender is
-			// authenticated.
-			m.PGPSigVerified = res.Signature == pgp.SigValid
+			// Real signature verdict (audit M17), bound to the claimed sender.
+			//
+			// This used to read `res.Signature == pgp.SigValid`, which asks only
+			// whether SOME key on the keyring signed the message. A keyring holds
+			// every correspondent's public key, so anyone on it could sign a mail
+			// carrying any From header and collect the verified badge. The badge
+			// now requires the signing key to belong to m.FromAddr — the same
+			// binding internal/chat performs against the verified peer (audit H7).
+			m.PGPSigVerified = res.SenderVerified
 			continue
 		}
 		if isJunkEncryptedBody(body) {
