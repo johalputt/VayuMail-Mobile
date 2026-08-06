@@ -22,16 +22,58 @@ if grep -qiE "AGPL|LGPL|(^|[^A-Za-z-])GPL-[23]" go.mod 2>/dev/null; then
   violation "Rule 2" "copyleft marker found in go.mod"
 fi
 
+# ── Import listing, shared by Rules 3 and 4 ─────────────────────────────
+# Emits "file<TAB>importpath" for every import DECLARATION in the given dirs.
+#
+# Grepping the raw source for a quoted path is what this replaces, and both
+# callers below had the same bug: a grep cannot tell an import from a string
+# literal that happens to look like one. Rule 3 fired on a test holding
+# "../internal/mail/imapsync/client.go" in a slice of files to read, and Rule 4
+# would fire on a comment that names gioui.org while explaining why a package
+# may import it. A gate that cries wolf is a gate people switch off.
+list_imports() {
+  find "$@" -name "*.go" -not -path "*/.git/*" 2>/dev/null | while IFS= read -r f; do
+    awk -v F="$f" '
+      /^import[ \t]*\(/ { inblk = 1; next }
+      inblk && /^\)/    { inblk = 0; next }
+      {
+        if (inblk) {
+          if (match($0, /"[^"]+"/)) print F "\t" substr($0, RSTART + 1, RLENGTH - 2)
+        } else if ($0 ~ /^import[ \t]/) {
+          if (match($0, /"[^"]+"/)) print F "\t" substr($0, RSTART + 1, RLENGTH - 2)
+        }
+      }
+    ' "$f"
+  done
+}
+
 # ── Rule 3 — module path and no relative imports ────────────────────────
 head -1 go.mod | grep -q "^module github.com/johalputt/VayuMail-Mobile$" || \
   violation "Rule 3" "module path changed"
-if grep -rn --include="*.go" -E '^\s*"\.\.?/' . >/dev/null 2>&1; then
-  violation "Rule 3" "relative import found"
-fi
+rel=$(list_imports . | awk -F'\t' '$2 ~ /^\.\.?\//' || true)
+[ -z "$rel" ] || violation "Rule 3" "relative import found: $rel"
 
 # ── Rule 4 — engine packages never import Gio ───────────────────────────
-result=$(grep -rl "gioui.org" internal/mail internal/store internal/syncmanager 2>/dev/null || true)
-[ -z "$result" ] || violation "Rule 4" "gio import in engine: $result"
+# Packages permitted to import Gio despite living outside ui/ and platform/.
+# Both are JNI bridges that need gioui.org/app's JVM handle; neither can be
+# written without naming those types. Kept in step with gioAllowedOutsideUI in
+# test/constitution_test.go by TestTheShellAndGoConstitutionAgreeOnRule4 —
+# change one and you must change the other.
+GIO_ALLOWED="internal/biometric internal/pushnotify"
+#
+# The scope is every package under internal/ and ui/state/, not the three
+# hand-listed directories this used to check. Eleven of the fourteen internal
+# packages, and the whole of ui/state, were outside the old grep — so the rule
+# CLAUDE.md calls "do not violate" was unenforced almost everywhere it applies.
+gio=$(list_imports internal ui/state | awk -F'\t' '$2 ~ /^gioui\.org/ { print $1 }' | sort -u || true)
+for f in $gio; do
+  pkg=$(dirname "$f" | sed 's|^\./||')
+  allowed=0
+  for a in $GIO_ALLOWED; do
+    [ "$pkg" = "$a" ] && allowed=1
+  done
+  [ "$allowed" -eq 1 ] || violation "Rule 4" "gio import in engine: $f"
+done
 
 # ── Rule 5 — async discipline ───────────────────────────────────────────
 # No time.Sleep in the UI layer (would block the frame goroutine).
