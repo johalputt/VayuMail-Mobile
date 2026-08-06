@@ -48,7 +48,7 @@ Follow it without being asked.
 
 ## 4. Gates before every push (mirror CI in `ci.yml`)
 
-```
+```text
 gofmt -l <changed .go files>     # must be empty
 go build ./...                   # Gio needs native deps. They ARE installable:
                                  # apt-get install -y libxkbcommon-dev
@@ -57,19 +57,77 @@ go build ./...                   # Gio needs native deps. They ARE installable:
                                  # libgles2-mesa-dev libegl1-mesa-dev libvulkan-dev
                                  # After that the full app builds and runs headless
                                  # under Xvfb — see scripts/screenshots.sh.
-go vet ./ui/state/ ./internal/…
-go test ./…                      # at least the packages you touched
-markdownlint-cli2 <changed .md>  # MD004: a wrapped line starting with */+ reads
-                                 # as a bullet — reword. MD024: no dup headings
-                                 # within one section.
+go vet ./...
+golangci-lint run ./...          # v2, must be 0 issues
+staticcheck ./...
+gosec -severity high -confidence high ./...
+go test ./...                    # at least the packages you touched
+go mod tidy                      # must leave go.mod/go.sum unchanged
+sh scripts/constitution.sh       # Rules 1–10
+markdownlint-cli2                # config is committed: .markdownlint-cli2.jsonc
+                                 # MD004: a wrapped line starting with */+ reads
+                                 # as a bullet — reword. MD024 is scoped to
+                                 # siblings, so a changelog may repeat "Fixed".
 ```
 
-## 5. Security-audit remediation track (in progress)
+Cross-compilation is worth running by hand when touching `internal/`, because
+the ship target is a phone and every other gate runs on host linux/amd64:
 
-Findings are being fixed one per commit, all landing on `main`, **held under
+```text
+PKGS=$(go list ./internal/... | grep -vE 'internal/(biometric|pushnotify)$')
+CGO_ENABLED=0 GOOS=android GOARCH=arm go build $PKGS   # 32-bit is the strict one
+```
+
+`internal/biometric` and `internal/pushnotify` are excluded because they are the
+JNI seams and select their cgo files on `GOOS=android` by design.
+
+Notes that have cost time here:
+
+- **golangci-lint stops analysing a package the moment it fails to typecheck.**
+  A short report is not necessarily a clean one — if `typecheck` appears among
+  the issues, every other finding in that package is still hidden. Fixing one
+  compile error surfaced 37 further issues in three rounds.
+- **`gosec` at high/high is quiet but not empty.** It is what found that the
+  certificate pin was not enforced on resumed TLS sessions (G123).
+
+## 5. Security-audit remediation track
+
+Findings are fixed one per commit, all landing on `main`, **held under
 `[Unreleased]`** until the whole track is done (then one release per §1).
-Shipped: **H7** (VayuTalk sender authentication), **H6** (PGP private keys sealed
-in the platform keystore, not SQLite). Remaining: M14/M15 (setup-code
-SSRF/https/domain-binding), M16 (sealed-keystore master key), M17 (PGP "signed"
-indicator without `VerifyDetached`), L12 (`allowBackup=false`), L13
-(notification-tap intent hardening).
+
+**Shipped in 2.2.13 and earlier:** H7 (VayuTalk sender authentication), H6 (PGP
+private keys sealed in the platform keystore, not SQLite), M14/M15 (setup-code
+SSRF / https / domain binding), M16 (sealed-keystore master key), M17 (PGP
+"signed" indicator without `VerifyDetached`), L13 (notification-tap intent
+hardening).
+
+**Currently under `[Unreleased]`:** L12 (Android `allowBackup=false`) — see
+below; the resumed-session TLS pin bypass; the master-key creation race.
+
+### L12 is the worked example: a claim is not a control
+
+This section listed L12 as "remaining" long after `CHANGELOG.md` announced it
+under **Security** as *"Android backup of the app-private data is disabled"*, and
+both files in `platform/android/` stated in the present tense that the app set
+`allowBackup="false"`. None of it existed. gogio compiles the manifest into
+itself, its `<application>` tag had no `allowBackup` at all, and the two rule
+files were referenced by nothing in the build — so every shipped APK had
+Android's default `allowBackup="true"`, putting `vayumail.db` and the sealed
+keystore inside `adb backup` and cloud Auto Backup.
+
+What made it survive: **adding the artifacts felt like doing the work.** The rule
+files were real, the documentation was real, and the only missing piece was the
+one nothing could test. Three separate places asserted the control and no gate
+could tell any of them apart from the truth.
+
+So the standing rule, beyond this one finding:
+
+- **A security note in `CHANGELOG.md` names the mechanism that enforces it** —
+  the file, the flag, the pipeline step. "`platform/android/` now carries the
+  required attributes" describes a directory, not a control.
+- **If it cannot be tested, it is not done.** The fix here shipped with
+  `test/android_manifest_audit_test.go`, which fails if any file in the tree
+  claims backup is disabled while the pipeline does not disable it.
+- **Mutation-test the claim, not just the code.** The first version of that test
+  passed with the hardening removed, because it matched the YAML *comment*
+  explaining the step rather than the step.

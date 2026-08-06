@@ -6,6 +6,88 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- **Android backup is now actually disabled (audit L12, for real this time).**
+  gogio compiles the `AndroidManifest.xml` into itself and offers no flag to
+  change it; its `<application>` tag carried no `android:allowBackup`, so
+  Android's default of `true` applied to every APK and AAB shipped so far. That
+  put `vayumail.db` — every message body — and the sealed keystore inside
+  `adb backup` and cloud Auto Backup, which needs no root and no passphrase.
+  `scripts/gogio-hardened.sh` now builds gogio from a pinned module version with
+  its manifest template patched to emit `android:allowBackup="false"`, and
+  `release.yml` uses that instead of resolving the build tool at `@latest`. The
+  patch asserts it matched exactly one `<application>` line, so a gogio that
+  rewords the template fails the release rather than quietly producing a
+  backup-enabled build.
+
+- **The TLS certificate pin is enforced on resumed sessions, not just the first
+  handshake.** Go invokes `VerifyPeerCertificate` during certificate
+  verification, and a resumed TLS session skips certificate verification
+  entirely — the peer's chain is restored from the session ticket. The pinned
+  config used only that callback, so the pin was consulted once per session and
+  never again: rotating a pin, revoking trust in a key, or re-pinning an account
+  after a suspected interception had no effect until the cached session expired.
+  The check now also runs in `VerifyConnection`, which Go calls on every
+  handshake. Demonstrated against a live listener — before the fix a connection
+  presenting a certificate that does not match the pin was accepted on
+  resumption.
+
+- **Master-key creation is atomic under concurrent first use.** The sealed
+  keystore's file-backed key provider could generate two different keys when two
+  callers raced on first use, leaving whichever seal lost the race permanently
+  unreadable. Creation now holds a mutex, writes to a temporary file and links it
+  into place, so a loser adopts the winner's key instead of overwriting it, and
+  every write is `fsync`ed with its directory entry.
+
+- **The pinned TLS config states a minimum version** (TLS 1.2) rather than
+  inheriting whatever floor the compiling toolchain happens to default to.
+
+### Added
+
+- **The architecture constitution is enforced instead of asserted.**
+  `test/constitution_test.go` pins Rules 4, 5 and 6 by parsing imports rather
+  than grepping source, and requires every exception to be listed with the
+  reason it is not a violation. Two Gio imports outside `ui/`/`platform/` and one
+  layout package that reaches the network turned out to be defensible — but
+  nothing had ever asked, which is the point.
+
+- **Rule 4 in `scripts/constitution.sh` now covers what it claims to.** It
+  checked three hand-listed directories; eleven of the fourteen `internal/`
+  packages and the whole of `ui/state/` were outside it, so a Gio import in
+  `ui/state` — the package the rule names — passed silently. It now covers all of
+  `internal/**` and `ui/state/**`, with a test that fails if its allowlist and
+  the Go one drift apart.
+
+- **Rule 3 stopped crying wolf.** It matched any line beginning with a quoted
+  relative path, so a test holding `"../internal/…"` in a list of files to read
+  was reported as a relative import. Both rules now read actual import
+  declarations.
+
+- **`test/transport_security_test.go`** pins the transport invariants: nothing
+  disables certificate verification, every `tls.Config` states a minimum
+  version, a custom certificate check is also wired to `VerifyConnection`, the
+  dial paths refuse any mode that is not TLS, secrets are never logged, and
+  production code never uses `math/rand`.
+
+- **`test/android_manifest_audit_test.go`** ties the backup claim to the build:
+  no file may state that backup is disabled unless the pipeline is what disables
+  it.
+
+- **CI gained the checks the standing instructions already assumed.**
+  `golangci-lint` and `gosec` now run and must be clean, `go.mod` must be tidy,
+  markdownlint runs against a committed ruleset, the engine is cross-compiled for
+  `android/arm64`, `android/arm` and `android/amd64`, and the coverage job has a
+  floor instead of printing a number it could never fail on.
+
+### Fixed
+
+- Every unchecked error return the linter found (37 sites) — most were
+  deferred `Close` calls where discarding is correct and is now written down as a
+  decision, but three were real: a truncated icon could be written with a
+  successful exit status, and a failed write of the decrypted settings blob or of
+  a provisioning payload exited 0 as though it had succeeded.
+
 ## [2.2.13] — 2026-07-24
 
 ### Security
@@ -86,15 +168,15 @@ project uses [Semantic Versioning](https://semver.org/).
   routed only when the nonce matches, and a relaunch from the recents/history list
   is ignored. (Android bridge — `VayuNotify.java` — unverified: not built in CI.)
 
-- **Android backup of the app-private data is disabled (audit L12).** The default
-  gogio manifest left `allowBackup="true"`, making `vayumail.db` and the sealed
-  keystore eligible for `adb`/cloud backup — the no-root path that turns at-rest
-  weaknesses into off-device compromise. `platform/android/` now carries the
-  required `allowBackup="false"` + `dataExtractionRules`/`fullBackupContent`
-  manifest attributes and restrictive rule files (`data_extraction_rules.xml`,
-  `backup_rules.xml`). gogio has no manifest-merge, so injection rides the same
-  pending release-pipeline manifest-patch as the other manifest entries — tracked,
-  documented in `platform/android/README.md`.
+- **Backup-exclusion rule files added for audit L12 — the control itself did NOT
+  ship in this release.** This entry originally read "Android backup of the
+  app-private data is disabled", which was wrong, and the heading is corrected
+  here rather than left to mislead. What landed was documentation and two rule
+  files (`data_extraction_rules.xml`, `backup_rules.xml`); nothing in the build
+  read them, and the gogio manifest still left Android's default
+  `allowBackup="true"`, so `vayumail.db` and the sealed keystore remained
+  eligible for `adb` and cloud backup. The control is implemented in the next
+  release — see `[Unreleased]`.
 
 ### Added
 
@@ -201,6 +283,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.2.12] — 2026-07-17
 
 ### Added
+
 - **VayuTalk self-destruct timers + Live mode.** Messages now burn on a timer
   that starts **when they're read**, not when they're sent — so a message you
   send waits (no countdown) until the other person opens it, then both copies
@@ -218,6 +301,7 @@ project uses [Semantic Versioning](https://semver.org/).
     sender's chosen `burn_seconds`. Plaintext still lives in memory only.
 
 ### Note
+
 - Requires a VayuPress relay running **v3.13.56+** for the read-time burn and
   Live semantics. Against an older relay the app still works (the timer behaves
   as a send-time lifetime).
@@ -225,6 +309,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.2.11] — 2026-07-12
 
 ### Fixed
+
 - **Real text renders correctly again — reverted the colour-emoji font.** The
   bundled Noto Color Emoji font (2.2.10) broke text: this build of Gio does not
   rasterise its colour glyphs, and the font also claimed the ASCII **digits**
@@ -236,6 +321,7 @@ project uses [Semantic Versioning](https://semver.org/).
   (outline) font this build of Gio can actually draw — tracked as a follow-up.
 
 ### Changed
+
 - **Verify screen: safety numbers now render as a clean, aligned grid.** Each
   four-character group sits in its own equal-width, centered cell (five per row),
   so the columns line up neatly instead of flowing as a ragged proportional
@@ -244,6 +330,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.2.10] — 2026-07-12
 
 ### Added
+
 - **Emoji now render.** The app bundles the Noto Color Emoji font (via Gio's
   official emoji font module) and adds it as a fallback in the text shaper, so
   emoji show as glyphs instead of empty □ boxes — in chat and everywhere else.
@@ -255,6 +342,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.2.9] — 2026-07-12
 
 ### Fixed
+
 - **Chat is now two-sided: your messages sit on the right, theirs on the left.**
   Sent and received bubbles were both hugging the left edge. The cause was a
   layout bug — the flexible spacer that pushes a sent bubble to the right returned
@@ -265,6 +353,7 @@ project uses [Semantic Versioning](https://semver.org/).
   bubble.)
 
 ### Known limitation
+
 - Emoji still render as empty boxes on the phone. This is a limitation of the
   pure-Go UI toolkit (Gio), which does not use Android's colour-emoji font; the
   message text itself transmits and decrypts correctly (the web shows the emoji).
@@ -274,6 +363,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.2.8] — 2026-07-12
 
 ### Fixed
+
 - **Talk-subdomain discovery no longer depends on a CDN-fronted fetch.** The app
   learned its proxy-off `talk.<domain>` relay from the main domain's autoconfig —
   but that fetch can itself be bot-challenged by the very CDN the subdomain exists
@@ -287,6 +377,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.2.7] — 2026-07-12
 
 ### Added
+
 - **Chat automatically uses your server's proxy-off `talk.<domain>` relay when it
   exists.** If a CDN (e.g. Cloudflare) sits in front of your server, its bot
   challenge blocks the app's long-lived chat stream — so the app could send but
@@ -298,6 +389,7 @@ project uses [Semantic Versioning](https://semver.org/).
   as before, so nothing changes for servers without a talk subdomain.
 
 ### Notes
+
 - Pairs with VayuPress 3.11.48, which provisions the `talk.<domain>` vhost + TLS
   cert and advertises the host on its own. See that release's notes: your only
   step is one DNS record.
@@ -305,6 +397,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.2.6] — 2026-07-12
 
 ### Added
+
 - **Verify screen now shows BOTH safety numbers — yours and your contact's.**
   Previously it showed only the contact's number, so there was nothing to read
   back to them. It now displays "You" (your own key) above the contact's, exactly
@@ -313,6 +406,7 @@ project uses [Semantic Versioning](https://semver.org/).
   your key has synced.
 
 ### Notes
+
 - Pairs with VayuPress 3.11.47, which stops the web console from consuming
   messages out of a shared mailbox's queue before this app can receive them (the
   cause of "an app-to-app message only shows up in the web"). Update the server
@@ -322,6 +416,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.2.5] — 2026-07-12
 
 ### Fixed
+
 - **Faster recovery when a key re-sync briefly fails.** The self-heal that
   re-fetches your key on a decrypt failure now waits only a few seconds before
   retrying after a *failed* fetch (instead of the full 30-second cooldown used
@@ -331,6 +426,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.2.4] — 2026-07-12
 
 ### Fixed
+
 - **Messages sent from the web now reliably decrypt on the phone.** If an
   incoming message can't be opened — because this device's key had drifted from
   the one the server encrypted to — the app now automatically re-fetches its
@@ -340,6 +436,7 @@ project uses [Semantic Versioning](https://semver.org/).
   server. (`TestHandleEnvelopeResyncsOnDecryptFailure`.)
 
 ### Added
+
 - **Automated Google Play publishing.** The release workflow now uploads the
   signed AAB to Google Play on every release (gated on a service-account secret;
   a no-op until configured). Once set up, a GitHub release becomes a Play release
@@ -349,11 +446,13 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.2.3] — 2026-07-12
 
 ### Added
+
 - **Message clock time.** Each chat bubble now shows the wall-clock time it was
   sent (the server's send time, in your local zone), matching what the web
   shows for the same message — alongside the existing disappear-countdown.
 
 ### Fixed
+
 - **Incoming messages show when they were sent, not when the phone received
   them.** A message that waited in the queue while you were offline now displays
   its real send time (from the server), instead of the moment it arrived.
@@ -361,6 +460,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.2.2] — 2026-07-12
 
 ### Fixed
+
 - **Messages sent from the VayuPress web now arrive on the phone.** The app
   automatically syncs this mailbox's authoritative private key from your
   VayuPress server whenever VayuTalk starts, so the device can always decrypt a
@@ -370,6 +470,7 @@ project uses [Semantic Versioning](https://semver.org/).
   decryption.
 
 ### Changed
+
 - **One delivery mode, always reliable.** The Live/Store toggle is removed —
   every message is store-and-forward: delivered live when the other side is
   connected, otherwise queued and delivered on their next connect. This matches
@@ -379,6 +480,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.2.1] — 2026-07-12
 
 ### Fixed
+
 - **VayuTalk now delivers in real time and never drops a message.** Two
   changes make chat feel seamless with the web and other devices:
   - **Store-and-forward is the default.** A message is delivered live if
@@ -396,6 +498,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.2.0] — 2026-07-11
 
 ### Added
+
 - **VayuTalk — ephemeral, end-to-end-encrypted messaging.** A new
   private chat built on your own VayuPress server. Messages are PGP
   encrypted to the recipient before they leave the device; the server is
@@ -410,6 +513,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.1.9] — 2026-07-11
 
 ### Changed
+
 - **Target SDK is now Android 15 (API level 35).** Google Play requires
   new apps and updates to target API 35; the release build now sets
   `-targetsdk 35` (min SDK unchanged at 24) and installs the android-35
@@ -418,6 +522,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.1.8] — 2026-07-11
 
 ### Changed
+
 - **Release bundles are now signed with the project's own upload key**
   (via the `ANDROID_KEYSTORE_B64` / `ANDROID_KEYSTORE_PASS` repository
   secrets) instead of the shared debug key. The `.aab` is Play
@@ -427,6 +532,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.1.7] — 2026-07-11
 
 ### Changed
+
 - **Android application ID is now `com.vayu.mail`** (was
   `org.vayumail.mobile`). This is the app's permanent identity on Google
   Play. Because the package name is a new identity, this build installs
@@ -437,6 +543,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.1.6] — 2026-07-11
 
 ### Fixed
+
 - **Encrypted mail no longer sticks on "fetching the locked copy…".** The
   repair loop had no terminal state: a broken cached row whose re-download
   produced the same bytes re-fetched forever. The repair now runs exactly
@@ -450,6 +557,7 @@ project uses [Semantic Versioning](https://semver.org/).
   fields visible above the keyboard.
 
 ### Added
+
 - **Device-approval onboarding (ADR-0011).** Connecting an account now
   registers this install as a named device with the account's VayuPress
   server (pairs with VayuPress ADR-0129). Approved devices sync
@@ -462,6 +570,7 @@ project uses [Semantic Versioning](https://semver.org/).
   future display.
 
 ### Security
+
 - Each install now authenticates to IMAP/SMTP with its own approved
   device password instead of the shared mailbox password (on servers
   that enforce device approval), so a lost phone is revoked from the
@@ -475,6 +584,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.1.5] — 2026-07-11
 
 ### Fixed
+
 - **PGP/MIME encrypted mail no longer shows "Version: 1".** Mail sent by
   the app's own composer (RFC 3156 multipart/encrypted) was displayed as
   the structure's control part instead of being decrypted: the capture
@@ -498,6 +608,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.1.4] — 2026-07-11
 
 ### Fixed
+
 - **Encrypted mail is now readable.** Received PGP mail (VayuPress sends
   it inline as an armored `-----BEGIN PGP MESSAGE-----` body) previously
   showed a blank message with no detail. The parser now lifts the armored
@@ -514,6 +625,7 @@ project uses [Semantic Versioning](https://semver.org/).
   scrolling, row taps, and swipe actions are untouched.
 
 ### Added
+
 - **Your private key syncs from VayuPress.** A new
   "Sync my key from VayuPress" action (Settings → Encryption) fetches
   this mailbox's own PGP private key from your VayuPress server over TLS,
@@ -524,6 +636,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.1.3] — 2026-07-11
 
 ### Changed
+
 - **Security is now the first section in Settings**, and **Two-factor
   unlock is always listed** — previously it appeared only after App lock
   was turned on, so it read as missing. When App lock is off, the
@@ -535,6 +648,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.1.2] — 2026-07-11
 
 ### Added
+
 - **The version is now shown on the login screen.** Every feature past
   onboarding (2FA, message details, pull-to-refresh, in-app password
   change, the encryption flow) only appears after you connect an
@@ -545,6 +659,7 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [2.1.1] — 2026-07-11
 
 ### Fixed
+
 - **Sideload updates now install over the previous build.** Each test
   build was signed with a freshly generated key, and Android refuses to
   update an app when the signature changes — so downloading a newer APK
@@ -554,6 +669,7 @@ project uses [Semantic Versioning](https://semver.org/).
   uninstall of any earlier build; after that, updates are seamless.)
 
 ### Changed
+
 - **Every release now ships a Play Store bundle too.** The release
   workflow builds both `vayumail-<version>.apk` (sideload) and
   `vayumail-<version>.aab` (Google Play Console) from the same signed
@@ -566,6 +682,7 @@ Encryption that just works, a second unlock factor, and the polish
 round from the first on-device testing.
 
 ### Added
+
 - **Two-factor unlock (TOTP).** The app lock gains an optional RFC 6238
   second factor: enroll the same base32 authenticator secret your
   VayuPress 2FA uses (Settings → Security → Two-factor unlock), and
@@ -596,6 +713,7 @@ round from the first on-device testing.
   brand artwork (tools/appicon).
 
 ### Changed
+
 - **Encryption no longer says no — it goes and gets the key.** Turning
   the shield on immediately fetches missing recipient keys from each
   recipient's own server (WKD), with a live "N recipient(s) missing a
@@ -614,6 +732,7 @@ round from the first on-device testing.
   instantly everywhere.
 
 ### Security
+
 - The TOTP secret is keystore-resident (Rule 6), verification is
   constant-time across all accepted time windows, and both unlock
   factors share one persistent brute-force throttle (ADR-0010,
@@ -628,6 +747,7 @@ sign-out, one-tap onboarding against any VayuPress server — and the
 camera gone for good.
 
 ### Added
+
 - **Direct connect onboarding.** Type your email and an app password;
   the app discovers your server's settings from its signed-over-HTTPS
   autoconfig document (`/.well-known/vayumail/autoconfig.json`, served
@@ -666,6 +786,7 @@ camera gone for good.
   motion system costs no battery at rest.
 
 ### Changed
+
 - **New design language.** "Wind at night": deep blue-black surfaces
   with one electric indigo→cyan accent sweep, raised-surface elevation
   with soft shadows, gradient duotone avatars, pill buttons, a refined
@@ -688,6 +809,7 @@ camera gone for good.
   `/qr` path kept, PNG endpoint removed).
 
 ### Removed
+
 - **QR scanning, the camera, and the CAMERA permission** (ADR-0009,
   Constitution v1.2). VayuPress removed QR generation in v3.9.16; the
   scanner was the app's only camera use and its heaviest platform
@@ -697,6 +819,7 @@ camera gone for good.
   fixtures. Dependencies dropped: `gozxing`, `golang.org/x/xerrors`.
 
 ### Security
+
 - The app-lock verifier design (PBKDF2 600k iterations, per-verifier
   random salt, keystore residency, lockout ladder) is documented in
   ADR-0010; a test scans the data directory to prove the literal PIN
@@ -713,6 +836,7 @@ camera gone for good.
 ## [1.5.0] — 2026-07-06
 
 ### Added
+
 - **Attachments in the composer — real file picking.** The compose attach button
   was a stub that showed "arrive in a later release"; it now opens the platform
   file picker (Android Storage Access Framework, native dialogs elsewhere) via
@@ -729,6 +853,7 @@ camera gone for good.
 ## [1.4.3] — 2026-07-06
 
 ### Fixed
+
 - **QR scanner now shows the live camera preview.** The camera was opening and
   streaming (permission granted), but the scanner only fed frames to the decoder
   and never drew them — so the screen stayed black and looked broken. The most
@@ -740,6 +865,7 @@ camera gone for good.
   or freeze on a stale texture from the shared decode buffer.
 
 ### Changed
+
 - **QR decoding is throttled to ~8×/second instead of every rendered frame.**
   Decoding a full frame at 60fps needlessly pegged the CPU (lag + heat); the
   scanner still catches a code the instant it is framed but the UI stays smooth.
@@ -747,6 +873,7 @@ camera gone for good.
 ## [1.4.2] — 2026-07-06
 
 ### Fixed
+
 - **CAMERA permission is now actually in the APK — the scanner can finally get
   the camera.** The manifest never declared `android.permission.CAMERA`, so
   Android showed **no camera permission to grant and no request dialog could ever
@@ -764,6 +891,7 @@ camera gone for good.
 ## [1.4.1] — 2026-07-06
 
 ### Changed
+
 - **Camera bridge now logs why it fails to start.** The NDK Camera2 bridge emits
   diagnostic lines under the `vayumail-camera` logcat tag: the CAMERA permission
   decision (granted / not granted / whether a request dialog can even be shown),
@@ -780,6 +908,7 @@ Live camera QR scanning on Android — the onboarding scanner now sees through t
 phone's camera instead of only accepting a pasted setup code.
 
 ### Added
+
 - **Android camera QR scanning — NDK Camera2 bridge.** The QR scanner's
   `widgets.FrameSource` is now backed by a real camera feed on Android via a new
   `internal/camera` package. The Android implementation
@@ -796,6 +925,7 @@ phone's camera instead of only accepting a pasted setup code.
   "Paste setup code", so the app is never left in a broken state.
 
 ### Notes
+
 - The camera bridge is compiled only by the Android toolchain and can only be
   exercised on a physical device; the desktop/CI build uses the no-op source
   (`camera_other.go`) via build tags, so the scanner UI, decode pipeline, and
@@ -809,6 +939,7 @@ Email-only onboarding via autoconfig discovery, plus PGP/WKD interop hardening
 contract with the VayuPress server.
 
 ### Added
+
 - **Onboard by email — VayuMail autoconfig discovery.** The manual account
   screen gains an **"Auto-detect from email"** button: enter your address, tap
   it, and the server/IMAP-port/SMTP-port fields fill themselves from the
@@ -831,6 +962,7 @@ contract with the VayuPress server.
   silently mis-configuring the account.
 
 ### Security
+
 - **WKD key discovery verifies the address matches.** `DiscoverWKD` now imports
   a fetched key only if it carries a User ID for the exact address that was
   requested. A misconfigured or hostile WKD endpoint could otherwise return a
@@ -856,6 +988,7 @@ contract with the VayuPress server.
 ## [1.2.7] — 2026-07-03
 
 ### Added
+
 - **Auto-fetch keys on new mail (opt-in).** Settings → PGP → "Auto-fetch
   keys on new mail (WKD)". When on, new mail triggers a throttled WKD
   sweep (at most once per 10 minutes) that imports keys for any
@@ -866,6 +999,7 @@ contract with the VayuPress server.
 ## [1.2.6] — 2026-07-03
 
 ### Added
+
 - **One-tap contact key discovery via WKD.** Settings → PGP →
   "Fetch contacts’ keys (WKD)" looks up a public key for every address you
   correspond with through Web Key Directory and imports the ones it finds.
@@ -879,6 +1013,7 @@ contract with the VayuPress server.
 ## [1.2.5] — 2026-07-03
 
 ### Added
+
 - **Token-based authentication (modern auth / 2FA).** Accounts can now log
   in with a bearer token instead of a mail password, via SASL
   **OAUTHBEARER** (RFC 7628) or **XOAUTH2** (Google/Microsoft style), for
@@ -893,6 +1028,7 @@ contract with the VayuPress server.
 ## [1.2.4] — 2026-07-03
 
 ### Added
+
 - **Paste setup code onboarding.** When the camera is unavailable, you can
   now add an account by pasting the QR's setup code (its base64url
   payload, served by the provisioning tool's text endpoint). It runs the
@@ -903,6 +1039,7 @@ contract with the VayuPress server.
 ## [1.2.3] — 2026-07-03
 
 ### Added
+
 - **PGP key sync from VayuPress.** A new Settings section, "PGP key
   directory (VayuPress)", lets you point VayuMail at a key-directory URL
   on your own site and pull every contact's public key in one tap ("Sync
@@ -916,6 +1053,7 @@ contract with the VayuPress server.
 ## [1.2.2] — 2026-07-03
 
 ### Fixed
+
 - **Tapping a message did nothing.** The row's swipe gesture sat above its
   Clickable and swallowed taps, so messages never opened. The swipeable
   now recognises a press-and-release-in-place as a tap and opens the
@@ -926,12 +1064,14 @@ contract with the VayuPress server.
   (Sent, Archive, …) also triggers a one-shot sync of just that folder.
 
 ### Added
+
 - **Refresh button** in the inbox toolbar — fetches new mail across all
   folders on demand (`SyncFolderCmd` / `SyncNow`).
 
 ## [1.2.1] — 2026-07-03
 
 ### Fixed
+
 - **First-launch "disk I/O error" crash.** On Android the app failed at
   startup with `store: migrate: apply migration v2: disk I/O error
   (6410)`. Extended code 6410 is `SQLITE_IOERR_GETTEMPPATH`: the
@@ -947,6 +1087,7 @@ contract with the VayuPress server.
   miscalculation).
 
 ### Changed
+
 - **Logo — original artwork.** The app now uses the supplied master logo
   PNGs verbatim (`assets/logo/vayumail.png` / `vayumail-dark.png`) instead
   of a redrawn vector. The launcher icon is the mark cropped from that
@@ -959,6 +1100,7 @@ contract with the VayuPress server.
 ## [1.2.0] — 2026-07-03
 
 ### Fixed
+
 - **Android startup freeze.** The app opened to a frozen brand mark and
   never progressed. Root cause: `app.DataDir()` and the SQLite open ran
   before the window pumped its first frame, and on Android `app.DataDir()`
@@ -978,12 +1120,14 @@ contract with the VayuPress server.
   pruned on expiry instead of accumulating forever.
 
 ### Changed
+
 - **New logo.** Redrawn as a single confident rounded "V" (a wind-drawn
   mark). New `vayumail-icon/​wordmark/​dark` SVGs, an **animated** wordmark
   that draws itself on, a regenerated launcher icon, and an **animated
   in-app splash** that renders the mark live on every launch.
 
 ### Added
+
 - End-to-end provisioning tests proving the reference server's signed
   payload verifies with the client's own verifier (canonical JSON parity),
   plus single-use and expiry coverage.
@@ -997,6 +1141,7 @@ contract with the VayuPress server.
 ## [1.1.0] — 2026-07-02
 
 ### Added
+
 - **Intelligence (on-device):** unified "All inboxes" view, tracking-pixel
   detection with a "sender tracks you" indicator, newsletter detection and
   RFC 2369/8058 one-tap unsubscribe, snooze, 10-second undo-send, search
@@ -1013,6 +1158,7 @@ contract with the VayuPress server.
 ## [1.0.0] — 2026-07-02
 
 ### Added
+
 - New-mail system notifications (Android tray / desktop DBus).
 - Sealed AES-256-GCM credential store surviving restarts (ADR-0004
   amendment).
@@ -1022,6 +1168,7 @@ contract with the VayuPress server.
 ## [0.1.0] — 2026-07-02
 
 ### Added
+
 - Initial pure-Go mobile email client: IMAP IDLE sync, SMTP outbox, MIME
   parse/render, OpenPGP, SQLite + FTS5, Ed25519 QR provisioning, hand-
   rolled Gio UI, the ten-rule constitution, ADR-0001…0006, and an offline
