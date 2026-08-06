@@ -22,27 +22,38 @@ Declared permissions, constitutionally bounded by
 | `RECEIVE_BOOT_COMPLETED` | Pending — added with the boot receiver. |
 | `USE_BIOMETRIC` | Not yet in the manifest. gogio only emits permissions backed by a `gioui.org/app/permission/*` import, and there is no biometric package, so it cannot be added the normal way. The fingerprint-unlock helper (`internal/biometric`) uses the framework `BiometricPrompt`, which is a *normal*-protection permission: it works without the manifest entry on most devices, and the helper catches any `SecurityException` and falls back to the PIN. A manifest-inject step in `release.yml` (or a gogio patch) can add it explicitly. |
 
-## Backup hardening (audit L12)
+## Backup hardening (audit L12) — now enforced in the release pipeline
 
-The gogio-generated manifest leaves Android's default `allowBackup="true"`, which
-makes the app-private directory — `vayumail.db` and the sealed keystore
+A stock gogio manifest leaves Android's default `allowBackup="true"`, which makes
+the app-private directory — `vayumail.db` and the sealed keystore
 (`credentials.sealed` + `master.key`) — eligible for `adb backup` and cloud Auto
-Backup. The release manifest MUST set, on `<application>`:
+Backup. That is the no-root path from an at-rest weakness to an off-device one.
+
+This was previously described here as pending, while `CHANGELOG.md` and both rule
+files stated it as done. It is now actually done, and the difference is worth
+being precise about.
+
+`scripts/gogio-hardened.sh` builds gogio from a **pinned** module version and
+patches its compiled-in manifest template so `<application>` carries:
 
 ```xml
 android:allowBackup="false"
-android:dataExtractionRules="@xml/data_extraction_rules"
-android:fullBackupContent="@xml/backup_rules"
 ```
 
-The two rule files live here (`data_extraction_rules.xml`, `backup_rules.xml`)
-and are defence in depth: `allowBackup="false"` disables backup outright, and if
-it is ever re-enabled the rules still exclude the database and keystore. gogio
-has **no manifest-merge step**, so this is injected the same way as the pending
-`USE_BIOMETRIC`/`FOREGROUND_SERVICE` entries — a manifest-patch step in
-`release.yml` (or a gogio patch) — and is tracked with them as pending platform
-work. Until then it is not present in a stock gogio build; independently, secrets
-should stop being persisted in cleartext (audit M16).
+`release.yml` runs that script instead of `go install gioui.org/cmd/gogio@latest`.
+The patch asserts it matched exactly one `<application>` line, so a future gogio
+that rewords the template fails the release rather than silently shipping an APK
+with backup enabled. Three tests in `test/android_manifest_audit_test.go` pin the
+wiring, the assertion and the pinning; a fourth fails the build if any file in the
+tree claims backup is disabled while the pipeline does not disable it.
+
+`android:dataExtractionRules` / `android:fullBackupContent` are deliberately **not**
+set. They are `@xml/` resource references, and gogio builds its `res/` directory
+internally, so wiring them means a second, riskier patch for no additional
+protection — `allowBackup="false"` already disables cloud backup, device-to-device
+transfer and `adb backup` outright. The two rule files stay here as the exclusion
+list to apply if backup is ever deliberately re-enabled, and both now say so
+rather than claiming to be active.
 
 `CAMERA` was withdrawn at v2.0.0 together with QR scanning
 ([ADR-0009](../../docs/ADR-0009-retire-qr-scanning-direct-connect.md));

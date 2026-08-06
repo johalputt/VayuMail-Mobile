@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Legacy (API 30 and below) full-backup rules, referenced from the manifest as
-  android:fullBackupContent="@xml/backup_rules" (audit L12).
+  Legacy (API 30 and below) full-backup rules for audit L12.
 
-  The app sets android:allowBackup="false", so backup is disabled outright.
-  These exclusions are defence in depth for older devices if backup is ever
-  re-enabled: the SQLite database and the sealed keystore + its key must never
-  be included in an adb/cloud backup.
+  NOT CURRENTLY REFERENCED FROM THE MANIFEST — see the note in
+  data_extraction_rules.xml. The release pipeline disables backup outright by
+  patching gogio to emit android:allowBackup="false", which is the control that
+  actually ships. These exclusions are the list to apply for older devices IF
+  backup is ever deliberately re-enabled: the SQLite database and the sealed
+  keystore + its key must never be included in an adb or cloud backup.
 -->
 <full-backup-content>
     <exclude domain="database" path="." />

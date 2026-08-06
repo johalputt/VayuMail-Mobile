@@ -1,12 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Android 12+ (API 31+) backup/transfer rules, referenced from the manifest as
-  android:dataExtractionRules="@xml/data_extraction_rules" (audit L12).
+  Android 12+ (API 31+) backup/transfer rules for audit L12.
 
-  The app sets android:allowBackup="false", so cloud backup and device-to-device
-  transfer are already disabled outright. These rules are defence in depth: if
-  backup is ever re-enabled, the sensitive at-rest files — the SQLite database
-  and the sealed keystore + its key — must never leave the device.
+  NOT CURRENTLY REFERENCED FROM THE MANIFEST. This file previously said the app
+  set android:allowBackup="false" and that the manifest pointed at these rules.
+  Neither was true: gogio compiles the manifest into itself, and nothing in the
+  build ever read this file. The release pipeline now patches gogio to emit
+  android:allowBackup="false" (scripts/gogio-hardened.sh), which disables cloud
+  backup and device-to-device transfer outright and needs no resource.
+
+  Wiring android:dataExtractionRules="@xml/data_extraction_rules" would require
+  compiling this file into the resource table, which gogio builds internally.
+  So it is kept as the exclusion list to apply IF backup is ever deliberately
+  re-enabled — the SQLite database and the sealed keystore + its key must never
+  leave the device — and not as a control that is running today.
 -->
 <data-extraction-rules>
     <cloud-backup>

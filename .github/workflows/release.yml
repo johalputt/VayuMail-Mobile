@@ -45,8 +45,18 @@ jobs:
         with:
           packages: 'platforms;android-34 platforms;android-35 build-tools;34.0.0 build-tools;35.0.0 ndk;26.3.11579264 platform-tools'
 
-      - name: Install gogio
-        run: go install gioui.org/cmd/gogio@latest
+      # gogio compiles the AndroidManifest into itself and exposes no flag for
+      # it, so the <application> tag it emits carries no android:allowBackup and
+      # Android's default of "true" applies. That put vayumail.db and the sealed
+      # keystore inside `adb backup` and cloud Auto Backup on every build shipped
+      # so far. scripts/gogio-hardened.sh patches the template and asserts the
+      # patch applied — if a future gogio changes that line the release fails
+      # here instead of quietly producing a backup-enabled APK.
+      #
+      # It also pins the version: a release that resolves its build tool at
+      # @latest is not reproducible and cannot be reasoned about after the fact.
+      - name: Install gogio (manifest hardened, audit L12)
+        run: sh scripts/gogio-hardened.sh
 
       - name: Install bundletool (gogio needs it to build the AAB)
         run: |
