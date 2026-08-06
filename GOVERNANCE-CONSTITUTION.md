@@ -1,6 +1,6 @@
 # VayuMail-Mobile Governance Constitution
 
-**Version: v1.2**
+Version: **v1.2**
 
 These rules govern all code in this repository without exception. Any
 contribution that violates a rule must resolve the violation before merge.

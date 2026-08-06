@@ -28,7 +28,7 @@ frame (draining `eventCh` first) into the boot loop's context.
 
 ## Goroutine topology
 
-```
+```text
 UI goroutine (Boot.Run)          background init (initEngine)
 │                                 │
 ├─ pumps window events           ├─ 1. store.Open(...)   SQLite, WAL, migrations
@@ -87,7 +87,7 @@ case app.FrameEvent:
 
 ## Package dependency graph
 
-```
+```text
 cmd/vayumail ────────► ui ────────► ui/{screens,widgets,state,theme}
 cmd/vayumail-cli ─┐        │
                   │        ▼

@@ -64,10 +64,39 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # Runs before the slower checks: a lint failure should not cost a full
+      # race build to discover. Note that golangci-lint stops analysing a
+      # package the moment it fails to typecheck, so a single compile error
+      # can hide every other finding in that package — do not read a short
+      # report as a clean one while `typecheck` is among the issues.
+      - name: golangci-lint
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.5.0
+          golangci-lint run ./...
+
       - name: Staticcheck
         run: |
           go install honnef.co/go/tools/cmd/staticcheck@latest
           staticcheck ./...
+
+      - name: gosec (high severity, high confidence)
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          gosec -severity high -confidence high -quiet ./...
+
+      # A go.mod that does not match its imports means the dependency set a
+      # reviewer reads is not the one that gets built.
+      - name: go.mod is tidy
+        run: |
+          cp go.mod go.mod.bak && cp go.sum go.sum.bak
+          go mod tidy
+          if ! diff -q go.mod go.mod.bak >/dev/null || ! diff -q go.sum go.sum.bak >/dev/null; then
+            echo "go.mod/go.sum are not tidy — run 'go mod tidy' and commit the result:"
+            diff go.mod.bak go.mod || true
+            diff go.sum.bak go.sum || true
+            exit 1
+          fi
+          rm go.mod.bak go.sum.bak
 
       - name: Test (race, deterministic)
         run: go test -race -count=1 -timeout=180s ./...
@@ -89,6 +118,65 @@ jobs:
           # Lightness pillar: the headless engine stays under 40 MiB.
           [ "$size" -lt 41943040 ] || (echo "SIZE BUDGET EXCEEDED" && exit 1)
 
+  crosscompile:
+    name: Android cross-compile (engine)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.12'
+      # The engine is pure Go (constitution Rule 1) and the ship target is
+      # Android, but nothing until now compiled it FOR Android — every gate ran
+      # against host linux/amd64. This is the cheapest way to catch the class of
+      # bug that only appears on a phone: a 32-bit `int`, an unaligned 64-bit
+      # atomic on armv7, a host-only syscall or /proc path.
+      #
+      # internal/biometric and internal/pushnotify are excluded because they are
+      # the JNI seams — on GOOS=android they select their cgo files by design.
+      # ui/state is excluded for the same reason: it depends on them.
+      - name: Build the engine for every Android ABI
+        run: |
+          PKGS=$(go list ./internal/... | grep -vE 'internal/(biometric|pushnotify)$')
+          echo "$PKGS" | sed 's/^/  /'
+          for arch in arm64 arm amd64; do
+            echo "== android/$arch =="
+            CGO_ENABLED=0 GOOS=android GOARCH=$arch go build $PKGS
+          done
+      - name: Build the operator binaries for arm64
+        run: |
+          CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build \
+            ./cmd/vayumail-cli ./cmd/vayumail-provision
+
+      # The manifest hardening lives in a patch against gogio's compiled-in
+      # template (audit L12). Running it here means a gogio release that rewords
+      # that template breaks CI on the next push, rather than breaking the next
+      # attempt to cut a version — or, worse, applying to nothing and shipping an
+      # APK with Android backup enabled.
+      - name: The gogio manifest patch still applies
+        run: |
+          sh scripts/gogio-hardened.sh ./gogio-hardened
+          # Prove the attribute reached the built tool, not just that the
+          # script exited 0.
+          strings ./gogio-hardened | grep -q 'android:allowBackup="false"' \
+            || (echo "patched gogio does not carry allowBackup=false" && exit 1)
+          echo "manifest patch verified in the built tool"
+
+  docs:
+    name: Markdown lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      # CLAUDE.md has named markdownlint a pre-push gate for a long time while
+      # CI never ran it, so "passing" was undefined and drifted. The ruleset
+      # lives in .markdownlint-cli2.jsonc with the reasoning for each rule that
+      # is off.
+      - name: markdownlint
+        run: npx --yes markdownlint-cli2
+
   coverage:
     name: Engine coverage
     runs-on: ubuntu-latest
@@ -101,6 +189,21 @@ jobs:
         run: |
           go test -count=1 -coverpkg=./internal/... -coverprofile=coverage.out ./test/
           go tool cover -func=coverage.out | tail -1
+      # This job printed a number and uploaded a file for its whole life, which
+      # means it could not fail and therefore measured nothing. The floor is set
+      # just under the figure at the time it was introduced: it exists to stop
+      # coverage sliding backwards unnoticed, not to be a target. Raise it when
+      # the real number moves up — never lower it to make a build green.
+      - name: Coverage floor
+        run: |
+          FLOOR=58.0
+          pct=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')
+          echo "engine coverage: ${pct}% (floor ${FLOOR}%)"
+          awk -v p="$pct" -v f="$FLOOR" 'BEGIN { exit !(p+0 >= f+0) }' || {
+            echo "COVERAGE BELOW FLOOR: ${pct}% < ${FLOOR}%"
+            go tool cover -func=coverage.out | sort -k3 -n | head -20
+            exit 1
+          }
       - uses: actions/upload-artifact@v7
         with:
           name: coverage

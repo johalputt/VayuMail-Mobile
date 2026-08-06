@@ -1,3 +1,4 @@
+<!-- markdownlint-disable-next-line MD041 -->
 <div align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/logo/vayumail-dark.png">
@@ -72,7 +73,7 @@ credential from the keystore and its mail from the device.
 
 ## Architecture
 
-```
+```text
 cmd/vayumail ──► ui (Gio, single-threaded event loop — never blocks)
                   │  eventCh (Event, buffered 256)  ▲
                   ▼  cmdCh   (Cmd,   buffered 64)   │

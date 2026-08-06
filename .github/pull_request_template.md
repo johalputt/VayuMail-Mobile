@@ -4,6 +4,7 @@ CONTRIBUTING.md first. The `constitution` CI job and the checks below are
 required — a red pipeline blocks merge.
 -->
 
+<!-- markdownlint-disable-next-line MD041 -->
 ## What and why
 
 <!-- What does this change do, and what problem does it solve? -->

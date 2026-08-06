@@ -15,6 +15,7 @@ a no-op, so nothing breaks.
 You do these once in your own Google accounts — they can't be automated for you.
 
 ### 1. Create the app in Play Console and upload the first build MANUALLY
+
 Google requires the **very first** AAB for a new app to be uploaded by hand
 through the Play Console UI (Play API uploads are rejected until an app exists
 with at least one release and a completed listing).
@@ -29,6 +30,7 @@ with at least one release and a completed listing).
   already signs the AAB with your upload keystore.
 
 ### 2. Create a service account with Play API access
+
 - Google Cloud Console → **IAM & Admin → Service Accounts → Create** (any
   project). Name it e.g. `play-publisher`.
 - Create a **JSON key** for it and download the file (this is the secret).
@@ -40,6 +42,7 @@ with at least one release and a completed listing).
   (Cloud Console → APIs & Services → Enable APIs → search for it).
 
 ### 3. Add the secret (and, optionally, the track) to GitHub
+
 In the `VayuMail-Mobile` repo → **Settings → Secrets and variables → Actions**:
 
 - **Secret** `PLAY_SERVICE_ACCOUNT_JSON` = the *entire contents* of the JSON key
