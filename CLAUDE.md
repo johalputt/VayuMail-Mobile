@@ -29,9 +29,10 @@ Follow it without being asked.
   accumulating under the `## [Unreleased]` heading in `CHANGELOG.md`, and leave
   `version.go` at the last released version. Only when the entire plan is done do
   you: rename `[Unreleased]` → `[X.Y.Z] — <date>`, bump `version.go`
-  (`Semantic` + `Code`), commit, and push the `vX.Y.Z` tag.
+  (`Semantic` + `Code`), commit, push to `main`, and then run `release.yml`.
 - A release commit keeps `version.go` and the `CHANGELOG.md` top section
-  consistent. The tag name is `v` + `Semantic`.
+  consistent. The workflow reads `version.go`, so those two files ARE the
+  release; nothing downstream re-derives the version from anywhere else.
 
 ## 2. Branch, push & attribution — hard rule
 
@@ -104,14 +105,22 @@ Notes that have cost time here:
 Findings are fixed one per commit, all landing on `main`, **held under
 `[Unreleased]`** until the whole track is done (then one release per §1).
 
+**Shipped in 2.2.14:** L12 (Android `allowBackup=false` — actually enforced in
+the build, see below), the resumed-session TLS pin bypass, the master-key
+creation race, the PGP verified badge bound to its claimed sender, and an admin
+credential on the provisioning setup-code endpoint.
+
 **Shipped in 2.2.13 and earlier:** H7 (VayuTalk sender authentication), H6 (PGP
 private keys sealed in the platform keystore, not SQLite), M14/M15 (setup-code
 SSRF / https / domain binding), M16 (sealed-keystore master key), M17 (PGP
 "signed" indicator without `VerifyDetached`), L13 (notification-tap intent
 hardening).
 
-**Currently under `[Unreleased]`:** L12 (Android `allowBackup=false`) — see
-below; the resumed-session TLS pin bypass; the master-key creation race.
+**Currently under `[Unreleased]`:** nothing — the track is closed.
+
+Note that 2.2.13's entries above were committed but never published: the release
+was version-bumped and no build was ever run for it (see §1). They reached users
+in 2.2.14.
 
 ### L12 is the worked example: a claim is not a control
 
