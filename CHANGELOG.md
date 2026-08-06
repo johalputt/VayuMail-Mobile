@@ -4,9 +4,34 @@ All notable changes to VayuMail-Mobile are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.2.14] — 2026-08-06
 
 ### Security
+
+- **The PGP "verified" badge now requires the signature to come from the
+  claimed sender.** It was set from "did some key on this keyring sign this?",
+  which a keyring full of correspondents' public keys answers yes to for
+  anybody on it. Whoever's key you hold — from one past exchange, a key
+  imported out of a mail, a WKD lookup — could sign a message carrying any
+  `From` header at all and collect the client's strongest trust signal. The
+  `From` header is attacker-controlled SMTP text; the signing key is the only
+  identity in the message that is not, and the fingerprint identifying it was
+  already being computed and thrown away. The comparison now happens inside the
+  `pgp` package (`DecryptFrom` → `Result.SenderVerified`) so the UI reads a
+  verdict it cannot compute wrongly. VayuTalk already bound sender identity
+  this way (audit H7); mail did not.
+
+- **Minting a provisioning setup code requires an admin credential.** Two
+  unauthenticated requests took anyone who could reach the service from nothing
+  to a user's mail password: `GET /code?user=…` returned a signed payload
+  carrying a redeemable token, and `POST /provision` exchanged that token for
+  the account's IMAP/SMTP password. No password guessing, no interception and
+  no attack on the signature — the signature was valid because the server
+  issued it to whoever asked. `GET /code` now needs a bearer token, checked in
+  constant time before the user lookup (so the endpoint is not an
+  address-enumeration oracle) and before any token is minted. An unset token
+  denies rather than allows. The listener defaults to loopback, and the startup
+  warning no longer implies TLS was the missing control.
 
 - **Android backup is now actually disabled (audit L12, for real this time).**
   gogio compiles the `AndroidManifest.xml` into itself and offers no flag to
@@ -74,6 +99,11 @@ project uses [Semantic Versioning](https://semver.org/).
   no file may state that backup is disabled unless the pipeline is what disables
   it.
 
+- **`test/pgp_sender_binding_audit_test.go`** and
+  **`cmd/vayumail-provision/admin_auth_audit_test.go`** carry the impersonation
+  and unauthenticated-credential-disclosure cases, each written from the
+  attacker's side.
+
 - **CI gained the checks the standing instructions already assumed.**
   `golangci-lint` and `gosec` now run and must be clean, `go.mod` must be tidy,
   markdownlint runs against a committed ruleset, the engine is cross-compiled for
@@ -87,6 +117,33 @@ project uses [Semantic Versioning](https://semver.org/).
   decision, but three were real: a truncated icon could be written with a
   successful exit status, and a failed write of the decrypted settings blob or of
   a provisioning payload exited 0 as though it had succeeded.
+
+### Audit note
+
+The adversarial pass that gates this release attacked the TLS transport and
+pinning, the sealed keystore, the Android build pipeline, the PGP keyring and
+its trust model, the VayuTalk envelope path, the app lock, the provisioning
+service and the SQLite schema. Findings are listed above.
+
+Two surfaces were attacked and came back clean, which is worth recording
+because "nothing found" and "not looked at" are different results:
+
+- **The app lock.** Lockout schedule, PIN never persisted, and biometric unlock
+  explicitly refused while a lockout window is open, so the fingerprint path
+  cannot be used to skip the wait.
+- **VayuTalk sender authentication.** The trusted identity is the signing key's
+  fingerprint rather than the relay-supplied `From`, and a verified peer's
+  messages are refused when the fingerprint does not match — the binding mail
+  was missing.
+
+One known gap is unchanged and stated rather than quietly carried: the Android
+notification bridge (`VayuNotify.java`) is not built in CI, so the L13
+intent-hardening work is reviewed but not mechanically verified.
+
+Two things resisted mechanical proof and rest on review: the constant-time
+credential comparison (a timing assertion would be flaky), and whether `aapt2`
+accepts the patched manifest, which needs an Android SDK the CI job does not
+install — CI verifies the attribute reached the built tool.
 
 ## [2.2.13] — 2026-07-24
 
@@ -1174,7 +1231,7 @@ contract with the VayuPress server.
   rolled Gio UI, the ten-rule constitution, ADR-0001…0006, and an offline
   test suite.
 
-[Unreleased]: https://github.com/johalputt/VayuMail-Mobile/compare/v1.2.0...HEAD
+[2.2.14]: https://github.com/johalputt/VayuMail-Mobile/compare/v2.2.13...v2.2.14
 [1.2.0]: https://github.com/johalputt/VayuMail-Mobile/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/johalputt/VayuMail-Mobile/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/johalputt/VayuMail-Mobile/compare/v0.1.0...v1.0.0
