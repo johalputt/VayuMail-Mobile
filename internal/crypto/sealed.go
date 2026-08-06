@@ -30,20 +30,58 @@ type KeyProvider interface {
 // without a format change.
 type FileKeyProvider struct {
 	Path string
+
+	// mu guards the read-then-create sequence in MasterKey, and key caches
+	// the result. See MasterKey for why both are load-bearing.
+	mu  sync.Mutex
+	key []byte
 }
 
 // MasterKey loads or creates the key file.
+//
+// # The corruption this ordering prevents
+//
+// The first version read the file and, on ENOENT, generated a key and wrote it
+// — with no lock across the two steps, and called from OUTSIDE SealedKeystore's
+// own mutex (Store takes the lock after cipher(); Fetch releases it before).
+//
+// So on a device that had never sealed anything, two concurrent callers each
+// saw "no key file", each generated a DIFFERENT key, and each wrote it. One
+// won. Every secret sealed with a losing key was then unopenable forever: the
+// next read returns the winner's bytes and GCM refuses the ciphertext.
+//
+// On a phone that is not a crash. It is an account whose password cannot be
+// unsealed — signed out of your own mail, no way back but wiping app data, and
+// nothing anywhere saying why.
+//
+// Three things close it, and each covers a case the others do not:
+//
+//   - the mutex serialises callers inside this process;
+//   - the cached key means the file is read once rather than on every seal;
+//   - O_CREATE|O_EXCL makes the creation atomic against another PROCESS, which
+//     a mutex cannot reach. Losing that race is not an error — it means somebody
+//     else created the key first, so we adopt theirs rather than overwrite it.
+//
+// The key is never written through a shared temp path. See writeFileAtomic.
 func (p *FileKeyProvider) MasterKey() ([]byte, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.key) == 32 {
+		return p.key, nil
+	}
+
 	key, err := os.ReadFile(p.Path)
 	if err == nil {
 		if len(key) != 32 {
 			return nil, fmt.Errorf("keystore: master key file corrupt")
 		}
+		p.key = key
 		return key, nil
 	}
 	if !os.IsNotExist(err) {
 		return nil, fmt.Errorf("keystore: read master key: %w", err)
 	}
+
 	key = make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
 		return nil, fmt.Errorf("keystore: generate master key: %w", err)
@@ -51,9 +89,59 @@ func (p *FileKeyProvider) MasterKey() ([]byte, error) {
 	if err := os.MkdirAll(filepath.Dir(p.Path), 0o700); err != nil {
 		return nil, fmt.Errorf("keystore: create key dir: %w", err)
 	}
-	if err := writeFileAtomic(p.Path, key, 0o600); err != nil {
+
+	// Write the key COMPLETE, then publish it atomically.
+	//
+	// The obvious version — O_CREATE|O_EXCL then write — is wrong, and the
+	// audit's own test caught it: O_EXCL creates the file EMPTY, so a
+	// concurrent reader that arrives between the create and the write reads
+	// zero bytes and declares the key corrupt. The file must never exist in a
+	// half-written state.
+	//
+	// os.Link is the primitive that gives both properties at once: the target
+	// appears complete or not at all, and linking onto an existing name fails
+	// rather than overwriting — so a caller that loses the race adopts the
+	// winner's key instead of replacing it. os.Rename cannot be used here,
+	// because rename overwrites, which is exactly the lost-key bug.
+	tmp, err := os.CreateTemp(filepath.Dir(p.Path), filepath.Base(p.Path)+".new-")
+	if err != nil {
 		return nil, fmt.Errorf("keystore: write master key: %w", err)
 	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return nil, fmt.Errorf("keystore: write master key: %w", err)
+	}
+	if _, err := tmp.Write(key); err != nil {
+		_ = tmp.Close()
+		return nil, fmt.Errorf("keystore: write master key: %w", err)
+	}
+	// Durability matters more here than anywhere else in the app: a master key
+	// lost to a crash locks the user out of every credential permanently.
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return nil, fmt.Errorf("keystore: sync master key: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return nil, fmt.Errorf("keystore: close master key: %w", err)
+	}
+
+	if err := os.Link(tmpName, p.Path); err != nil {
+		// Somebody else published first. Adopt theirs — overwriting it would
+		// orphan every secret already sealed under it.
+		existing, rerr := os.ReadFile(p.Path)
+		if rerr != nil {
+			return nil, fmt.Errorf("keystore: write master key: %w", err)
+		}
+		if len(existing) != 32 {
+			return nil, fmt.Errorf("keystore: master key file corrupt")
+		}
+		p.key = existing
+		return existing, nil
+	}
+	syncDir(filepath.Dir(p.Path))
+	p.key = key
 	return key, nil
 }
 
@@ -185,10 +273,65 @@ func (ks *SealedKeystore) persistLocked() error {
 
 // writeFileAtomic writes via a temp file + rename so a crash never
 // leaves a truncated store.
+//
+// # Why the temp name is unique
+//
+// It used to be a FIXED path — `path + ".tmp"`. Two writers therefore shared
+// one temp file: both wrote it, the first renamed it into place, and the
+// second's rename found nothing left to rename and failed with
+//
+//	rename …/credentials.sealed.tmp …/credentials.sealed: no such file or directory
+//
+// which surfaced as a credential that reported it could not be saved. Worse on
+// the master key, where the same collision made key creation fail outright.
+//
+// A unique temp file per write cannot collide. The fsync before the rename is
+// what makes "atomic" true rather than merely likely: rename is atomic in the
+// directory, but without the sync the bytes may not have reached the disk when
+// the power goes, leaving a correctly-named file full of nothing.
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, perm); err != nil {
+	dir := filepath.Dir(path)
+	f, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	tmp := f.Name()
+	// Any failure past this point leaves a temp file behind; remove it rather
+	// than leaving 0600 secrets scattered through the data directory.
+	defer func() { _ = os.Remove(tmp) }()
+
+	if err := f.Chmod(perm); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	syncDir(dir)
+	return nil
+}
+
+// syncDir flushes a directory entry so a rename survives a power loss.
+//
+// Best-effort: some platforms refuse to open a directory for sync, and failing
+// the whole write because the durability step is unavailable would be worse
+// than the durability gap it is guarding against.
+func syncDir(dir string) {
+	d, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	_ = d.Sync()
+	_ = d.Close()
 }
