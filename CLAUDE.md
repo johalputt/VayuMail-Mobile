@@ -11,9 +11,18 @@ Follow it without being asked.
   micro (`2.2.12 → 2.2.13`); at micro **99** bump minor and reset micro to 0
   (`2.2.99 → 2.3.0`); at minor **99** + micro rollover bump major
   (`2.99.99 → 3.0.0`). Never bump minor/major early — only the 99 rollover does.
-- **A release is cut by pushing a `v*` git tag** (e.g. `v2.2.13`), which triggers
-  `.github/workflows/release.yml` (builds the signed APK + AAB and the GitHub
-  Release). CI (`ci.yml`) must be green on `main` first.
+- **A release is cut by running `release.yml` on `main`** — the "Run workflow"
+  button on the Actions tab, or a `workflow_dispatch` API call. That builds the
+  signed APK + AAB, and `action-gh-release` **creates the tag itself** from
+  `internal/version/version.go`, so the tag is an OUTPUT of the release rather
+  than its trigger. CI (`ci.yml`) must be green on `main` first.
+- **This section used to say a release was cut by pushing a `v*` tag.** It was
+  wrong, and the cost was real: 2.2.13 was version-bumped, committed and never
+  released, so every user stayed on 2.2.12 while the repo believed six security
+  fixes had shipped. `release.yml` does accept a tag push, but no release here
+  has ever been cut that way — v2.2.11, v2.2.12 and v2.2.14 were all
+  `workflow_dispatch`. Check the run history before trusting a process
+  description, this one included.
 - **Release only after the WHOLE plan is complete — never per step.** When you
   are working through a multi-step plan (e.g. a security-audit remediation
   track), do NOT cut a release after each individual fix. Keep every change
