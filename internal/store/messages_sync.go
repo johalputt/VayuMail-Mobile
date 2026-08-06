@@ -30,7 +30,7 @@ func (db *DB) FolderFlags(ctx context.Context, folderID int64) (map[uint32]FlagS
 	if err != nil {
 		return nil, fmt.Errorf("store: folder flags: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make(map[uint32]FlagState)
 	for rows.Next() {
 		var uid uint32
@@ -82,7 +82,7 @@ func (db *DB) DeleteMessagesNotIn(ctx context.Context, folderID int64, live map[
 		var id int64
 		var uid uint32
 		if err := rows.Scan(&id, &uid); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return fmt.Errorf("store: scan uid: %w", err)
 		}
 		if !live[uid] {
@@ -90,10 +90,10 @@ func (db *DB) DeleteMessagesNotIn(ctx context.Context, folderID int64, live map[
 		}
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
+		_ = rows.Close()
 		return fmt.Errorf("store: list uids: %w", err)
 	}
-	rows.Close()
+	_ = rows.Close()
 	if len(stale) == 0 {
 		return nil
 	}

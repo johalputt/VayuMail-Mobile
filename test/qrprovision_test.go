@@ -103,7 +103,7 @@ func TestExchangeToken(t *testing.T) {
 			if r.Method != http.MethodPost {
 				t.Errorf("method = %s", r.Method)
 			}
-			w.Write([]byte(`{"imap_password":"pw-imap","smtp_password":"pw-smtp"}`))
+			_, _ = w.Write([]byte(`{"imap_password":"pw-imap","smtp_password":"pw-smtp"}`))
 		}))
 		defer srv.Close()
 		p := *payload
@@ -131,7 +131,7 @@ func TestExchangeToken(t *testing.T) {
 
 	t.Run("empty credential body rejected", func(t *testing.T) {
 		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte(`{}`))
+			_, _ = w.Write([]byte(`{}`))
 		}))
 		defer srv.Close()
 		p := *payload

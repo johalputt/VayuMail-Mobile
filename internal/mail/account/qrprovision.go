@@ -269,7 +269,7 @@ func ExchangeToken(ctx context.Context, client *http.Client, p *ProvisionPayload
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrNetwork, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	switch {
 	case resp.StatusCode == http.StatusOK:

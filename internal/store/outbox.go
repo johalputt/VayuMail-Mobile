@@ -67,7 +67,7 @@ func (db *DB) DueOutbox(ctx context.Context, now time.Time) ([]OutboxEntry, erro
 	if err != nil {
 		return nil, fmt.Errorf("store: due outbox: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []OutboxEntry
 	for rows.Next() {
@@ -132,7 +132,7 @@ func (db *DB) DeadLetters(ctx context.Context, accountID int64) ([]OutboxEntry, 
 	if err != nil {
 		return nil, fmt.Errorf("store: dead letters: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []OutboxEntry
 	for rows.Next() {

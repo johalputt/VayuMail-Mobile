@@ -70,7 +70,7 @@ func (db *DB) Search(ctx context.Context, accountID int64, query string, limit i
 	if err != nil {
 		return nil, fmt.Errorf("store: search %q: %w", query, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []SearchResult
 	for rows.Next() {

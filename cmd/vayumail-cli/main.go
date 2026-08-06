@@ -55,7 +55,7 @@ func run(args []string) int {
 		fmt.Fprintf(os.Stderr, "open database: %v\n", err)
 		return 1
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	switch rest[0] {
 	case "accounts":

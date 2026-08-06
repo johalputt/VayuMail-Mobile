@@ -41,7 +41,7 @@ func cmdPin(ctx context.Context, db *store.DB, args []string) int {
 		fmt.Fprintf(os.Stderr, "dial: %v\n", err)
 		return 1
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
 		fmt.Fprintln(os.Stderr, "server presented no certificate")
@@ -145,6 +145,13 @@ func cmdSettingsPull(ctx context.Context, db *store.DB, args []string) int {
 		fmt.Fprintf(os.Stderr, "open blob (wrong key?): %v\n", err)
 		return 1
 	}
-	os.Stdout.Write(plaintext)
+	// Checked, not discarded. This is the decrypted settings blob; a short or
+	// failed write (closed pipe, full disk) that still exits 0 tells the
+	// operator their settings look like whatever happened to reach the
+	// terminal.
+	if _, err := os.Stdout.Write(plaintext); err != nil {
+		fmt.Fprintf(os.Stderr, "write settings: %v\n", err)
+		return 1
+	}
 	return 0
 }

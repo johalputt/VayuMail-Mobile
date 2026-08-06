@@ -105,7 +105,7 @@ func (s *service) handleSetupCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	fmt.Fprintln(w, payload)
+	_, _ = fmt.Fprintln(w, payload)
 }
 
 func (s *service) payloadFor(w http.ResponseWriter, r *http.Request) (string, bool) {

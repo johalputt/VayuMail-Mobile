@@ -18,7 +18,7 @@ func ExtractAttachment(raw []byte, index int) (AttachmentRef, []byte, error) {
 	if err != nil && mr == nil {
 		return AttachmentRef{}, nil, fmt.Errorf("mime: unreadable message: %w", err)
 	}
-	defer mr.Close()
+	defer func() { _ = mr.Close() }()
 
 	seen := 0
 	for {

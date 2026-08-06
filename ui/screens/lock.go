@@ -254,13 +254,13 @@ func (l *Lock) applyKey(gtx layout.Context, env *Env, action widgets.PinPadActio
 // submit advances the stage machine with the entered PIN.
 func (l *Lock) submit(gtx layout.Context, env *Env) {
 	pin := l.pin
-	switch {
-	case l.stage == stageNew:
+	switch l.stage {
+	case stageNew:
 		l.newPin = pin
 		l.pin = ""
 		l.stage = stageConfirm
 
-	case l.stage == stageConfirm:
+	case stageConfirm:
 		if pin != l.newPin {
 			l.pin = ""
 			l.stage = stageNew
@@ -274,7 +274,7 @@ func (l *Lock) submit(gtx layout.Context, env *Env) {
 			l.deliver(&lockOutcome{ok: err == nil, err: err != nil, errMsg: "Could not set PIN"}, env)
 		})
 
-	case l.stage == stageTOTP:
+	case stageTOTP:
 		l.busy = true
 		l.errText = ""
 		unlockOn := l.intent == LockIntentUnlock

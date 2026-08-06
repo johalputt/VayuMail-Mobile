@@ -66,7 +66,7 @@ func Parse(raw []byte) (*Parsed, error) {
 			return nil, fmt.Errorf("mime: unreadable message: %w", err)
 		}
 	}
-	defer mr.Close()
+	defer func() { _ = mr.Close() }()
 
 	ct, ctParams, ctErr := mr.Header.ContentType()
 	if ctErr == nil {

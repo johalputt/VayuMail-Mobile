@@ -101,7 +101,7 @@ func (db *DB) ListPGPKeys(ctx context.Context) ([]PGPKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: list pgp keys: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []PGPKey
 	for rows.Next() {
 		var k PGPKey
@@ -147,7 +147,7 @@ func collectPrefixedMessages(rows interface {
 	Close() error
 	Err() error
 }) ([]Message, error) {
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Message
 	for rows.Next() {
 		m, err := scanPrefixedMessage(rows)

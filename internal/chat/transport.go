@@ -120,7 +120,7 @@ func (t *Transport) Connect(ctx context.Context, domain, email, password string)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if err := statusErr(resp.StatusCode); err != nil {
 		return "", err
 	}
@@ -155,7 +155,7 @@ func (t *Transport) Send(ctx context.Context, domain, token, to, ciphertextB64 s
 	if err != nil {
 		return "", false, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if err := statusErr(resp.StatusCode); err != nil {
 		return "", false, err
 	}
@@ -178,7 +178,7 @@ func (t *Transport) Ack(ctx context.Context, domain, token, id string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return statusErr(resp.StatusCode)
 }
 
@@ -203,7 +203,7 @@ func (t *Transport) FetchPubKey(ctx context.Context, domain, token, email string
 	if err != nil {
 		return "", "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
 		return "", "", fmt.Errorf("%w: no public key for %s", ErrTalk, email)
 	}

@@ -147,7 +147,7 @@ func postDeviceJSON(ctx context.Context, client *http.Client, domain, endpoint s
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrDevice, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	switch {
 	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed:
 		// Older VayuPress without the endpoint.

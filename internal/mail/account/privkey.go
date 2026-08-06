@@ -59,7 +59,7 @@ func FetchPrivateKey(ctx context.Context, client *http.Client, email, password s
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrNoPrivateKey, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("%w: server returned %d", ErrNoPrivateKey, resp.StatusCode)
 	}

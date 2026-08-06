@@ -56,9 +56,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("create %s: %v", dstPath, err)
 	}
-	defer dst.Close()
 	if err := png.Encode(dst, out); err != nil {
+		_ = dst.Close()
 		log.Fatalf("encode: %v", err)
+	}
+	// Closed explicitly rather than deferred: this handle is being written to,
+	// and a buffered write that fails at close produces a truncated icon with a
+	// successful exit status. The failure has to be the program's, not the
+	// build's three steps later.
+	if err := dst.Close(); err != nil {
+		log.Fatalf("close %s: %v", dstPath, err)
 	}
 	log.Printf("wrote %s (%dx%d, mark %v)", dstPath, canvas, canvas, mark.Bounds())
 }
@@ -68,7 +75,7 @@ func main() {
 // is the designed artwork verbatim — the crop is a reconstruction.
 func loadMark() (image.Image, error) {
 	if f, err := os.Open(markPath); err == nil {
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		img, derr := png.Decode(f)
 		if derr != nil {
 			return nil, fmt.Errorf("decode %s: %w", markPath, derr)
@@ -80,7 +87,7 @@ func loadMark() (image.Image, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", srcPath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	src, err := png.Decode(f)
 	if err != nil {
 		return nil, fmt.Errorf("decode %s: %w", srcPath, err)

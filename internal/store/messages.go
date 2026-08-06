@@ -223,7 +223,7 @@ func (db *DB) CorrespondentEmails(ctx context.Context, limit int) ([]string, err
 	if err != nil {
 		return nil, fmt.Errorf("store: correspondent emails: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []string
 	for rows.Next() {
 		var addr string
@@ -236,7 +236,7 @@ func (db *DB) CorrespondentEmails(ctx context.Context, limit int) ([]string, err
 }
 
 func collectMessages(rows *sql.Rows) ([]Message, error) {
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Message
 	for rows.Next() {
 		m, err := scanMessage(rows)

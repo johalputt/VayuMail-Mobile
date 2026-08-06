@@ -79,13 +79,13 @@ func (t *Transport) OpenStream(ctx context.Context, token, domain string) (<-cha
 		return nil, ErrTalk
 	}
 	if err := statusErr(resp.StatusCode); err != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, err
 	}
 	ch := make(chan StreamEvent, 16)
 	go func() {
 		defer close(ch)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		parseSSE(ctx, resp.Body, ch)
 	}()
 	return ch, nil

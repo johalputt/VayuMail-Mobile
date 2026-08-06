@@ -150,7 +150,7 @@ func (s *Compose) pickAttachment(env *Env) {
 		if err != nil || rc == nil {
 			return
 		}
-		defer rc.Close()
+		defer func() { _ = rc.Close() }()
 		data, err := io.ReadAll(io.LimitReader(rc, maxAttachBytes+1))
 		if err != nil || len(data) == 0 {
 			return

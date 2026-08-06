@@ -113,7 +113,7 @@ func fetchAutoconfig(ctx context.Context, client *http.Client, url string) (*aut
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
@@ -314,7 +314,7 @@ func probeTalkRelay(ctx context.Context, client *http.Client, host string) bool 
 	if err != nil {
 		return false
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	return resp.StatusCode == http.StatusUnauthorized
 }
 

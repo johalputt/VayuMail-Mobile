@@ -35,7 +35,7 @@ func TestBuildMIMERoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("re-parse built message: %v", err)
 	}
-	defer mr.Close()
+	defer func() { _ = mr.Close() }()
 
 	subject, err := mr.Header.Subject()
 	if err != nil || subject != "Hello wind" {
