@@ -79,6 +79,10 @@ type Snapshot struct {
 
 // AppState mediates between the sync layer and the screens.
 type AppState struct {
+	// addWaiters are one-shot channels held by AddAccountAwait, resolved when
+	// an AccountAddedEvent arrives. Guarded by mu.
+	addWaiters []chan error
+
 	db   *store.DB
 	mgr  *syncmanager.Manager
 	lock *applock.Manager
@@ -185,6 +189,66 @@ func (s *AppState) Send(cmd syncmanager.Cmd) {
 	}
 }
 
+// AddAccountAwait queues an account and waits for the sync layer to say whether
+// it actually landed, returning that outcome.
+//
+// The fire-and-forget Send above is right for a command whose failure the user
+// can shrug at and retry — marking a message read, say. It is wrong for the one
+// command the user is sitting and watching. Queueing an add and immediately
+// telling them "Connected — syncing" meant that a failed keystore write or a
+// rejected config produced a cheerful message and a login screen that never
+// moved, with the real reason on the phone's log where nobody would see it.
+//
+// Callers must not run this on the UI thread: it blocks until the outcome
+// arrives or ctx expires.
+func (s *AppState) AddAccountAwait(ctx context.Context, cmd syncmanager.AddAccountCmd) error {
+	done := make(chan error, 1)
+	s.mu.Lock()
+	s.addWaiters = append(s.addWaiters, done)
+	s.mu.Unlock()
+
+	release := func() {
+		s.mu.Lock()
+		for i, ch := range s.addWaiters {
+			if ch == done {
+				s.addWaiters = append(s.addWaiters[:i], s.addWaiters[i+1:]...)
+				break
+			}
+		}
+		s.mu.Unlock()
+	}
+
+	if err := s.mgr.Send(cmd); err != nil {
+		release()
+		return err
+	}
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		release()
+		return ctx.Err()
+	}
+}
+
+// resolveAddWaiters hands one outcome to everyone waiting on an add.
+//
+// Waiters are not matched to a particular account: a single setup screen can
+// only have one add in flight, and matching on an id would fail exactly when
+// the add failed BEFORE an id existed — which is the case that mattered.
+func (s *AppState) resolveAddWaiters(err error) {
+	s.mu.Lock()
+	waiters := s.addWaiters
+	s.addWaiters = nil
+	s.mu.Unlock()
+	for _, ch := range waiters {
+		select {
+		case ch <- err:
+		default:
+		}
+	}
+}
+
 // Apply folds one sync event into the state. Called from the event pump
 // goroutine (any goroutine is safe — everything is mutex-guarded); it must
 // stay non-blocking (map updates and refresh scheduling only).
@@ -261,6 +325,16 @@ func (s *AppState) Apply(ev syncmanager.Event) {
 			s.notify("Could not update password — try again")
 		} else {
 			s.notify("Password updated — reconnecting")
+		}
+		s.Refresh()
+		return
+	case syncmanager.AccountAddedEvent:
+		s.mu.Unlock()
+		// Whoever is waiting on the setup screen gets the real answer; the
+		// snackbar covers the case where nobody is (a retry from elsewhere).
+		s.resolveAddWaiters(e.Err)
+		if e.Err != nil {
+			s.notify("Could not finish setting up " + e.Email)
 		}
 		s.Refresh()
 		return

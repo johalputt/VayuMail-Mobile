@@ -86,11 +86,16 @@ func (s *AccountSetup) provision(env *Env, raw []byte) {
 				cfg.AuthMech = account.AuthXOAuth2
 			}
 		}
-		env.State.Send(syncmanager.AddAccountCmd{
+		addCtx, addCancel := context.WithTimeout(context.Background(), addAccountTimeout)
+		defer addCancel()
+		if err := env.State.AddAccountAwait(addCtx, syncmanager.AddAccountCmd{
 			Config:     cfg,
 			Credential: []byte(secret),
-		})
-		env.Snack.ShowInfo("Account added")
+		}); err != nil {
+			env.Snack.ShowInfo(addAccountFailure(err))
+		} else {
+			env.Snack.ShowInfo("Account added")
+		}
 		env.State.Refresh()
 	}()
 }

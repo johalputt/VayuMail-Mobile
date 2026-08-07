@@ -124,10 +124,28 @@ func (s *AccountSetup) awaitApproval(env *Env, cfg *account.Config, email string
 // servers or the approved device password (ADR-0011); either way it goes
 // only to the keystore via the sync layer (Rule 6).
 func (s *AccountSetup) addAccount(env *Env, cfg *account.Config, email, secret string) {
-	env.State.Send(syncmanager.AddAccountCmd{
+	s.mu.Lock()
+	s.status = "Finishing setup…"
+	s.mu.Unlock()
+	env.State.Refresh()
+
+	// Wait for the sync layer to say whether the account actually landed.
+	// This used to queue the command and immediately announce success, which
+	// is why a failed keystore write or a rejected config looked identical to
+	// a working sign-in: a "Connected — syncing" snackbar and a login screen
+	// that stayed put, with the only explanation on the phone's log.
+	ctx, cancel := context.WithTimeout(context.Background(), addAccountTimeout)
+	defer cancel()
+	err := env.State.AddAccountAwait(ctx, syncmanager.AddAccountCmd{
 		Config:     *cfg,
 		Credential: []byte(secret),
 	})
+	if err != nil {
+		s.setError(addAccountFailure(err))
+		env.State.Refresh()
+		return
+	}
+
 	s.mu.Lock()
 	s.busy = false
 	s.status = ""
@@ -135,6 +153,28 @@ func (s *AccountSetup) addAccount(env *Env, cfg *account.Config, email, secret s
 	s.password.SetText("")
 	env.Snack.ShowInfo("Connected — syncing " + email)
 	env.State.Refresh()
+}
+
+// addAccountTimeout bounds the wait for the add outcome. It is generous
+// because the keystore can prompt on some devices, and short enough that a
+// wedged sync layer still ends in a message rather than a spinner.
+const addAccountTimeout = 45 * time.Second
+
+// addAccountFailure turns an add error into something an operator can act on.
+// The underlying text is wrapped Go error prose that means nothing on a phone,
+// so the cases worth distinguishing are named and everything else keeps a
+// generic sentence plus the detail.
+func addAccountFailure(err error) string {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "Setting up this account did not finish. Check your connection and tap Connect again."
+	case strings.Contains(err.Error(), "store credential"):
+		return "This device would not store the mail password securely, so the account was not added. " +
+			"Make sure a screen lock is set, then tap Connect again."
+	case strings.Contains(err.Error(), "queue full"):
+		return "The app is busy finishing another job — tap Connect again in a moment."
+	}
+	return "Could not finish setting up this account: " + err.Error()
 }
 
 // cancelWait aborts a pending approval wait, if any. Called from the UI

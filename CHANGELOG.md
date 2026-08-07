@@ -4,6 +4,47 @@ All notable changes to VayuMail-Mobile are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Adding an account announced success before anything had happened, and its
+  failures were invisible.** Reported from the field as "it just shows syncing
+  and never leaves the login screen".
+
+  Adding was the only account lifecycle operation with no outcome event.
+  Removal reports one. Credential update reports one. `execAddAccount` returned
+  its error to the command loop, which logs with `slog` and drops it — and on a
+  phone that log is somewhere neither a user nor an operator will ever read.
+  Meanwhile the setup screen queued the command, cleared its busy flag and
+  showed **"Connected — syncing …"** immediately, before the credential was
+  sealed or the account row written.
+
+  So a keystore that declined to store the password, a config that failed
+  validation, or a full command queue all produced exactly one thing on screen:
+  a message saying the account was connected, and a login screen that stayed
+  put. Three distinct faults, one symptom, and no way to tell them apart from
+  the device.
+
+  The mechanism, named rather than described: `AccountAddedEvent` carries
+  `{AccountID, Email, Err}` and is emitted from a **deferred call** in
+  `execAddAccount`, so every early return reports too — the validation path
+  returns before the keystore is touched and would otherwise have been the one
+  left silent. `AppState.AddAccountAwait` sends the command and blocks on that
+  event, and all three setup paths — direct connect, manual, setup code — now
+  wait for it and show the real reason on failure. The known cases are named in
+  plain language (the device would not store the password securely; the app is
+  busy; setup did not finish) rather than surfacing wrapped Go prose.
+
+  Tests in `internal/syncmanager/add_account_outcome_test.go`. Three mutations
+  killed: no event at all (the original defect), an event whose `Err` is always
+  nil, and an event emitted only on the success path.
+
+  **This makes the failure legible; it does not by itself identify which
+  failure any given install hit.** That is the honest scope: the reason a
+  specific sign-in stalls is now reported on the device instead of being
+  swallowed, and the underlying cause is whatever the message names.
+
 ## [2.2.14] — 2026-08-06
 
 ### Security

@@ -4,6 +4,7 @@ package screens
 // split from accountsetup.go (Rule 10).
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -150,11 +151,22 @@ func (s *AccountSetup) addManual(env *Env) {
 		env.Snack.ShowInfo("Please fill in every field")
 		return
 	}
-	env.State.Send(syncmanager.AddAccountCmd{
-		Config:     cfg,
-		Credential: []byte(s.manualPassword.Text()),
-	})
+	// Off the UI thread, and reporting the real outcome rather than announcing
+	// one. Queueing the add and immediately saying "Account added" meant a
+	// failed keystore write looked exactly like success.
+	secret := []byte(s.manualPassword.Text())
 	s.manualPassword.SetText("")
-	env.Snack.ShowInfo("Account added")
-	env.State.Refresh()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), addAccountTimeout)
+		defer cancel()
+		if err := env.State.AddAccountAwait(ctx, syncmanager.AddAccountCmd{
+			Config:     cfg,
+			Credential: secret,
+		}); err != nil {
+			env.Snack.ShowInfo(addAccountFailure(err))
+		} else {
+			env.Snack.ShowInfo("Account added")
+		}
+		env.State.Refresh()
+	}()
 }

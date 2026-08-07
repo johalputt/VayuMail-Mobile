@@ -17,11 +17,18 @@ const stopAccountWait = 5 * time.Second
 
 // execAddAccount stores the credential in the platform keystore, wipes
 // the in-memory copy, persists the account row, and starts sync.
-func (m *Manager) execAddAccount(ctx context.Context, c AddAccountCmd) error {
-	if err := c.Config.Validate(); err != nil {
+// Every exit path emits an AccountAddedEvent. Returning an error alone was not
+// enough: the command loop logs a failure and drops it, so the only report the
+// user ever got was the setup screen's own optimistic snackbar.
+func (m *Manager) execAddAccount(ctx context.Context, c AddAccountCmd) (err error) {
+	email := c.Config.EmailAddress
+	var id int64
+	defer func() { m.emit(AccountAddedEvent{AccountID: id, Email: email, Err: err}) }()
+
+	if err = c.Config.Validate(); err != nil {
 		return err
 	}
-	if err := m.ks.Store(c.Config.KeystoreAlias, c.Credential); err != nil {
+	if err = m.ks.Store(c.Config.KeystoreAlias, c.Credential); err != nil {
 		return fmt.Errorf("syncmanager: store credential: %w", err)
 	}
 	for i := range c.Credential {
@@ -41,7 +48,7 @@ func (m *Manager) execAddAccount(ctx context.Context, c AddAccountCmd) error {
 		PinnedSPKI:    c.Config.PinnedSPKI,
 		AuthMech:      c.Config.AuthMech,
 	}
-	id, err := m.db.InsertAccount(ctx, &row)
+	id, err = m.db.InsertAccount(ctx, &row)
 	if err != nil {
 		return err
 	}

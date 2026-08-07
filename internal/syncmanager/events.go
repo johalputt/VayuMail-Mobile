@@ -105,6 +105,24 @@ type CredentialUpdatedEvent struct {
 	Err       error
 }
 
+// AccountAddedEvent reports the outcome of an AddAccountCmd.
+//
+// It exists because its absence was a bug with a very specific shape. Removal
+// and credential-update both reported; adding did not, and adding is the one
+// the user is watching. execAddAccount's errors were returned to a command loop
+// that logs them to slog and drops them, so a failed keystore write, an invalid
+// config or a failed insert all produced the same thing on screen: a snackbar
+// saying the account was connected and syncing, and a login screen that never
+// went anywhere. The failure was on the phone's log, which nobody has.
+//
+// Err is nil only when the account row exists and its sync goroutines have
+// started. AccountID is 0 when the add failed before an id was assigned.
+type AccountAddedEvent struct {
+	AccountID int64
+	Email     string
+	Err       error
+}
+
 // AccountRemovedEvent reports the outcome of a RemoveAccountCmd. On
 // success the account and all its local data are gone.
 type AccountRemovedEvent struct {
@@ -122,6 +140,7 @@ type AttachmentSavedEvent struct {
 	Err       error
 }
 
+func (AccountAddedEvent) isEvent()      {}
 func (NewMessageEvent) isEvent()        {}
 func (FlagChangeEvent) isEvent()        {}
 func (SyncProgressEvent) isEvent()      {}
