@@ -4,6 +4,28 @@ All notable changes to VayuMail-Mobile are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project uses [Semantic Versioning](https://semver.org/).
 
+## [2.2.16] — 2026-08-06
+
+### Fixed
+
+- **The account-setup error told the user to check their screen lock, which has
+  nothing to do with it.** 2.2.15 made a failed sign-in report a reason instead
+  of hanging, and the reason it reported was wrong: the branch matched a failed
+  credential write and replaced it with advice about the platform's hardware
+  keystore. This app does not use one. `internal/crypto/sealed.go` is a
+  file-based sealed store — a master key file plus an encrypted blob in app
+  storage — and its errors already name the step that failed: master key
+  corrupt, read, write, sync, key dir, nonce.
+
+  Matching that error and printing a hypothesis threw away the only line that
+  says which. It is the same defect the 2.2.15 work existed to remove: a
+  swallowed reason made the original failure look like a hang, and swallowing it
+  again made it look like a screen-lock problem — no better, and it sends an
+  operator to look somewhere there is nothing to find.
+
+  The keystore's own sentence now reaches the screen. Two mutations killed:
+  restoring the screen-lock advice, and dropping the reason without it.
+
 ## [2.2.15] — 2026-08-06
 
 ### Fixed

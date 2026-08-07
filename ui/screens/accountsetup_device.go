@@ -175,9 +175,24 @@ func addAccountFailure(err error) string {
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		return "Setting up this account did not finish. Check your connection and tap Connect again."
-	case strings.Contains(err.Error(), "store credential"):
-		return "This device would not store the mail password securely, so the account was not added. " +
-			"Make sure a screen lock is set, then tap Connect again."
+	case strings.Contains(err.Error(), "keystore:"):
+		// Show the keystore's own sentence rather than a guess about it.
+		//
+		// The first version of this branch said "make sure a screen lock is
+		// set", on the assumption that this was the platform's hardware
+		// keystore. It is not: internal/crypto/sealed.go is a file-based sealed
+		// store — a master key file plus an encrypted blob in app storage — and
+		// a screen lock has no bearing on it. So the advice was wrong, and worse
+		// than wrong: it replaced the one line that says WHICH step failed
+		// (master key corrupt, read, write, sync, key dir, nonce) with a
+		// hypothesis, one layer before it reached the screen.
+		//
+		// That is the same defect this whole path was fixed for. Swallowing a
+		// reason and printing a guess is what made the original failure look
+		// like a hang; doing it again here would make it look like a screen-lock
+		// problem, which is no better.
+		return "The mail password could not be stored on this device, so the account was not added.\n\n" +
+			err.Error()
 	case strings.Contains(err.Error(), "queue full"):
 		return "The app is busy finishing another job — tap Connect again in a moment."
 	}
