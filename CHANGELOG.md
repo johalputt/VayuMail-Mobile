@@ -4,6 +4,33 @@ All notable changes to VayuMail-Mobile are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project uses [Semantic Versioning](https://semver.org/).
 
+## [2.2.17] — 2026-08-06
+
+### Fixed
+
+- **The app could never create a master key on Android, so no account could
+  ever be added.** The reported failure, verbatim from the device once 2.2.16
+  made it visible: `keystore: write master key: link …/master.key.new-2096712107
+  …/master.key: permission denied`.
+
+  Master-key creation used `os.Link` deliberately — it is the one primitive that
+  is both atomic and create-if-not-exists, so a caller that loses the race
+  adopts the winner's key instead of overwriting it. Android refuses it:
+  SELinux forbids hardlinks under `/data/user/0/<pkg>/files`. The primitive
+  chosen for correctness is the one the ship target denies, on every device,
+  every time. Installs only worked while a key already existed from before this
+  code landed, which is why it presented as an update breaking sign-in.
+
+  `link` is still preferred. On `EPERM`/`EACCES`/`ENOSYS`/`EXDEV`/`EOPNOTSUPP`
+  it falls back to `O_CREATE|O_EXCL` plus write-and-fsync, which keeps
+  create-if-not-exists so a loser still adopts rather than replaces. Two
+  mutations killed: a loser keeping its own key (which orphans every secret
+  sealed under the old one), and dropping `O_EXCL` so a later caller overwrites.
+
+  The process-local mutex that closes O_EXCL's empty-file window is **not**
+  independently proven — removing it fails nothing, and the comment says so
+  rather than leaving it looking tested.
+
 ## [2.2.16] — 2026-08-06
 
 ### Fixed

@@ -128,6 +128,25 @@ func (p *FileKeyProvider) MasterKey() ([]byte, error) {
 	}
 
 	if err := os.Link(tmpName, p.Path); err != nil {
+		if linkUnsupported(err) {
+			// Android refuses link(2) in app-private storage: SELinux policy
+			// forbids hardlinks under /data/user/0/<pkg>/files, so the primitive
+			// chosen above for correctness is the one the ship target denies —
+			// on every device, every time. The app could never create a master
+			// key there; installs only worked while one already existed.
+			//
+			// The fallback keeps both properties the link gave us. O_EXCL keeps
+			// create-if-not-exists, so a loser still adopts the winner's key
+			// rather than overwriting it. The empty-file window O_EXCL opens —
+			// a reader arriving between create and write sees zero bytes and
+			// calls the key corrupt — is closed by publishMu, which is sound
+			// here precisely because this is a single-process app: the race the
+			// link protected against is between goroutines, not processes.
+			if perr := p.publishExcl(key); perr != nil {
+				return nil, perr
+			}
+			return key, nil
+		}
 		// Somebody else published first. Adopt theirs — overwriting it would
 		// orphan every secret already sealed under it.
 		existing, rerr := os.ReadFile(p.Path)
