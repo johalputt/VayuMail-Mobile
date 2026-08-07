@@ -45,6 +45,27 @@ project uses [Semantic Versioning](https://semver.org/).
   specific sign-in stalls is now reported on the device instead of being
   swallowed, and the underlying cause is whatever the message names.
 
+- **A mailbox at its device ceiling told the user to check their connection.**
+  Every status other than 401 and 404/405 collapsed into one generic error that
+  the setup screen renders as *"Couldn't register this device — check your
+  connection and try again."* The server's own 409 says something quite
+  different and quite specific: the mailbox already holds the maximum number of
+  device credentials, and only an operator can clear it by removing one in the
+  web console.
+
+  Retrying is the single thing that cannot work, and it is exactly what the
+  message asked for — so a full device list read as a broken app or a bad
+  network, indefinitely. Every fresh sign-in registers another device row and
+  nothing dedupes them, so the ceiling is reachable by ordinary use over the
+  life of a phone.
+
+  `ErrDeviceLimit` is now a distinct sentinel, the server's own explanation is
+  carried through instead of being reduced to a status code, and the screen
+  names the remedy and where to perform it. The status mapping moved into
+  `classifyDeviceStatus` so it can be tested without a reachable public mail
+  domain. Three mutations killed, including reporting every non-200 as a limit —
+  which the existing 404 and 401 tests catch, exactly as they should.
+
 ## [2.2.14] — 2026-08-06
 
 ### Security

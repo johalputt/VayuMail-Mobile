@@ -52,6 +52,13 @@ func (s *AccountSetup) registerAndAdd(ctx context.Context, env *Env, cfg *accoun
 	case errors.Is(err, account.ErrDeviceCredentials):
 		s.setError("The server rejected this email or password — check them and try again.")
 		return
+	case errors.Is(err, account.ErrDeviceLimit):
+		// Never "check your connection": retrying cannot clear a full list, and
+		// telling someone to re-test their network over this is the reason a
+		// blocked sign-in reads as a broken app.
+		s.setError("This mailbox has reached its device limit. Open VayuPress webmail → " +
+			"Mail accounts → Devices, remove a device you no longer use, then tap Connect again.")
+		return
 	case err != nil:
 		s.setError("Couldn't register this device — check your connection and try again.")
 		return

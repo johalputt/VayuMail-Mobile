@@ -118,6 +118,54 @@ func DeviceStatus(ctx context.Context, client *http.Client, email, deviceID, dev
 	return "", fmt.Errorf("%w: unknown status %q", ErrDevice, out.Status)
 }
 
+// ErrDeviceLimit reports that the mailbox already holds as many device
+// credentials as the server allows. It is separate from ErrDevice because the
+// remedy is different in kind: nothing the phone does will clear it.
+var ErrDeviceLimit = errors.New("account: device limit reached")
+
+// serverReason reads the API's own explanation out of an error response so the
+// phone can show what the server said rather than a bare status code. Bounded,
+// and it falls back to the status when the body is not the expected shape.
+func serverReason(resp *http.Response) string {
+	var body struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	if json.NewDecoder(io.LimitReader(resp.Body, maxDeviceRespBytes)).Decode(&body) == nil {
+		if body.Message != "" {
+			return body.Message
+		}
+		if body.Error != "" {
+			return body.Error
+		}
+	}
+	return fmt.Sprintf("server returned %d", resp.StatusCode)
+}
+
+// classifyDeviceStatus maps a device-endpoint response status onto the error
+// the UI branches on. It is separate from the request so it can be tested
+// without a reachable https host — postDeviceJSON only ever talks to a
+// validated public mail domain, which is right for the product and awkward for
+// a test that needs a server to answer 409.
+func classifyDeviceStatus(resp *http.Response) error {
+	switch {
+	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed:
+		// Older VayuPress without the endpoint.
+		return fmt.Errorf("%w: server returned %d", ErrNoDeviceEndpoint, resp.StatusCode)
+	case resp.StatusCode == http.StatusUnauthorized:
+		return fmt.Errorf("%w: server returned 401", ErrDeviceCredentials)
+	case resp.StatusCode == http.StatusConflict:
+		// The mailbox is at its device ceiling. Retrying cannot fix this and an
+		// operator has to remove an old device, so it must not be folded into
+		// the generic error the caller renders as "check your connection" —
+		// that sent people to re-test their network over a full list.
+		return fmt.Errorf("%w: %s", ErrDeviceLimit, serverReason(resp))
+	case resp.StatusCode != http.StatusOK:
+		return fmt.Errorf("%w: server returned %d: %s", ErrDevice, resp.StatusCode, serverReason(resp))
+	}
+	return nil
+}
+
 // postDeviceJSON POSTs payload to the domain's members API over HTTPS
 // and decodes the JSON reply into out. Same discipline as
 // FetchPrivateKey: the SSRF guard vets the domain before any request,
@@ -148,14 +196,8 @@ func postDeviceJSON(ctx context.Context, client *http.Client, domain, endpoint s
 		return fmt.Errorf("%w: %v", ErrDevice, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	switch {
-	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed:
-		// Older VayuPress without the endpoint.
-		return fmt.Errorf("%w: server returned %d", ErrNoDeviceEndpoint, resp.StatusCode)
-	case resp.StatusCode == http.StatusUnauthorized:
-		return fmt.Errorf("%w: server returned 401", ErrDeviceCredentials)
-	case resp.StatusCode != http.StatusOK:
-		return fmt.Errorf("%w: server returned %d", ErrDevice, resp.StatusCode)
+	if err := classifyDeviceStatus(resp); err != nil {
+		return err
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, maxDeviceRespBytes)).Decode(out); err != nil {
 		// A 200 that is not JSON is a storefront or proxy page, not the
