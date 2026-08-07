@@ -149,3 +149,28 @@ So the standing rule, beyond this one finding:
 - **Mutation-test the claim, not just the code.** The first version of that test
   passed with the hardening removed, because it matched the YAML *comment*
   explaining the step rather than the step.
+
+## 6. Code quality — the standing bar
+
+Operator instruction, not a per-task negotiation: **write only the code that is
+needed, and make it enterprise-grade.** Less code, higher quality. No filler, no
+scaffolding "for later", no helper that exists because it felt tidy.
+
+It is a bar, not a leash — if the right answer is a substantial change, make it.
+What is ruled out is volume without purpose.
+
+- **Debugging must not break what already works.** Before a change lands, know
+  what legitimate use it could take away, and say so. The narrowest rule that
+  closes the hole wins.
+- **Delete a fix that costs someone their access**, even one already written and
+  working. In the sibling repo an Argon2id loop cap was removed before commit
+  because it would have refused a device enrolled later than the cap's window —
+  a lockout on the one path that exists to undo a lockout.
+- **Verify under the real conditions.** A harness stricter than the product hides
+  a missing control; an environment more permissive than CI hides a broken test.
+  Both have cost a red build.
+- **Reuse the mechanism that exists** rather than writing a second copy of a
+  rule; two copies are a future divergence.
+- **A comment earns its place by saying WHY**, especially why an obvious
+  alternative was rejected.
+- **No dead code, no speculative interfaces, no unused exports.**
