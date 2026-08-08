@@ -170,7 +170,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
-      # CLAUDE.md has named markdownlint a pre-push gate for a long time while
+      # The standing instructions have named markdownlint a pre-push gate for a long time while
       # CI never ran it, so "passing" was undefined and drifted. The ruleset
       # lives in .markdownlint-cli2.jsonc with the reasoning for each rule that
       # is off.

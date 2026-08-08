@@ -141,7 +141,7 @@ Open source under Apache-2.0: github.com/johalputt/VayuMail-Mobile
 
 `scripts/screenshots.sh` captures **real** ones by running the actual binary
 under a virtual display — no mockups, so nothing here risks the Metadata policy.
-It is also why the note in `CLAUDE.md` about Gio being unbuildable in a sandbox
+It is also why the standing note about Gio being unbuildable in a sandbox
 is out of date: with `libxkbcommon`, `libx11-xcb`, `libvulkan` and the Mesa dev
 packages installed, `go build ./cmd/vayumail` succeeds and the app runs headless
 under Xvfb.

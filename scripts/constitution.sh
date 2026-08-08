@@ -64,7 +64,7 @@ GIO_ALLOWED="internal/biometric internal/pushnotify"
 # The scope is every package under internal/ and ui/state/, not the three
 # hand-listed directories this used to check. Eleven of the fourteen internal
 # packages, and the whole of ui/state, were outside the old grep — so the rule
-# CLAUDE.md calls "do not violate" was unenforced almost everywhere it applies.
+# the standing instructions call "do not violate" was unenforced almost everywhere it applies.
 gio=$(list_imports internal ui/state | awk -F'\t' '$2 ~ /^gioui\.org/ { print $1 }' | sort -u || true)
 for f in $gio; do
   pkg=$(dirname "$f" | sed 's|^\./||')

@@ -1,6 +1,6 @@
 // markdownlint configuration.
 //
-// CLAUDE.md has listed `markdownlint-cli2 <changed .md>` as a pre-push gate for
+// The standing instructions have listed `markdownlint-cli2 <changed .md>` as a pre-push gate for
 // a long time without CI running it, so nothing ever established what "passing"
 // meant. This file decides that, and the CI job now enforces it.
 //
@@ -25,13 +25,13 @@
     // MD060 table pipe padding — invisible in every renderer.
     "MD060": false,
 
-    // On, but scoped the way CLAUDE.md describes it: duplicate headings are a
+    // On, but scoped the way the standing instructions describe it: duplicate headings are a
     // problem WITHIN one section, not across a changelog where every release
     // legitimately has its own "Fixed".
     "MD024": { "siblings_only": true },
 
     // MD004 stays at its default (consistent bullet style). It is the rule
-    // CLAUDE.md names by number, because a wrapped line beginning with `*` or
+    // the standing instructions name by number, because a wrapped line beginning with `*` or
     // `+` is read as a new bullet and quietly restructures the list.
   },
   "globs": ["**/*.md"],
