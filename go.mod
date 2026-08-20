@@ -5,8 +5,8 @@ go 1.25.0
 toolchain go1.25.12
 
 require (
-	gioui.org v0.10.1
-	gioui.org/x v0.10.1
+	gioui.org v0.10.2
+	gioui.org/x v0.10.2
 	git.wow.st/gmp/jni v0.0.0-20210610011705-34026c7e22d0
 	github.com/ProtonMail/go-crypto v1.4.1
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
@@ -22,7 +22,7 @@ require (
 )
 
 require (
-	gioui.org/shader v1.0.8 // indirect
+	gioui.org/shader v1.0.9 // indirect
 	git.sr.ht/~jackmordaunt/go-toast v1.0.0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
