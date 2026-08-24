@@ -146,6 +146,12 @@ func (p *FileKeyProvider) MasterKey() ([]byte, error) {
 			if perr := p.publishExcl(key); perr != nil {
 				return nil, perr
 			}
+			// publishExcl either created ours or adopted the winner's bytes
+			// into the same buffer; either way `key` is now the effective key.
+			// Cache it like every other success path — leaving it uncached sent
+			// every later cipher() call back to disk to re-read the secret
+			// (audit 2026-08, L2).
+			p.key = key
 			return key, nil
 		}
 		// Somebody else published first. Adopt theirs — overwriting it would
