@@ -9,6 +9,22 @@ project uses [Semantic Versioning](https://semver.org/).
 Remediations from the 2026-08 deep audit (`docs/SECURITY-AUDIT-2026-08.md`).
 Held under Unreleased until the whole track is done, per the release rules.
 
+### Security
+
+- **GO-2026-6222 — golang.org/x/image bumped to v0.45.0.** The VP8L decoder
+  could allocate excessive memory while parsing a hostile image, and the
+  avatar cache reaches it on every decode of server-supplied picture bytes
+  (`internal/avatarimg/cache.go` → `image.Decode`). The 1 MiB fetch cap and
+  128 px raster bounds limited the blast radius but did not close the
+  advisory; the fixed decoder does.
+
+- **GO-2026-6218 and the crypto/tls advisories — toolchain moved to
+  go1.25.13.** The net/url quadratic `resolvePath` and the TLS handshake /
+  record-layer findings are stdlib defects in go1.25.12, reachable from every
+  dial this app makes (IMAP/SMTP STARTTLS, provisioning exchange, VayuTalk,
+  the provisioner's admin listener). The module toolchain and both workflows
+  now pin the patched release.
+
 ### Fixed
 
 - **The sealed store's atomic write failed on Windows whenever the target was
