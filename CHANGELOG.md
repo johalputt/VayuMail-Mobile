@@ -4,6 +4,53 @@ All notable changes to VayuMail-Mobile are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+Remediations from the 2026-08 deep audit (`docs/SECURITY-AUDIT-2026-08.md`).
+Held under Unreleased until the whole track is done, per the release rules.
+
+### Fixed
+
+- **The sealed store's atomic write failed on Windows whenever the target was
+  held open.** `writeFileAtomic` assumed POSIX rename semantics: on Linux a
+  rename replaces an open target without complaint, but Windows' MoveFileEx
+  refuses with ACCESS_DENIED / sharing violation while any handle — a
+  competing publisher in the same window, an indexer or scanner that opened
+  the destination without FILE_SHARE_DELETE — holds it. The
+  concurrent-first-seal race test passed on Linux CI and failed on
+  windows/amd64 for exactly this reason: four stores publishing at once,
+  three refused, credentials reported unsavable. The rename now retries
+  briefly and only while the OS says the target is busy (bounded: six waits,
+  1 ms doubling to 32 ms), through a `renameBusy` predicate split by build
+  tag so POSIX platforms take the identical path as before. Anything still
+  busy after the ceiling propagates unchanged.
+
+- **The master key was re-read from disk on every seal and unseal after an
+  O_EXCL fallback creation or adoption.** When Android's SELinux link ban sent
+  master-key publication down the `publishExcl` fallback, success returned the
+  key without populating `FileKeyProvider.key` — the cache every other path
+  fills — so each later `cipher()` call paid a fresh read of the secret from
+  disk. The effective key (ours, or the winner's bytes that adoption copied
+  into the same buffer) is now cached like every other success path.
+
+- **Unpinned accounts inherited the toolchain's TLS floor instead of the
+  stated one.** `Config.TLSConfig()` returned nil without an SPKI pin, so the
+  written TLS 1.2 minimum governed only pinned accounts; everyone else rode
+  whatever default the compiled Go happened to carry. The unpinned path now
+  returns ordinary WebPKI verification with the same stated
+  `MinVersion: tls.VersionTLS12` — the floor is not a property of whether the
+  operator chose to pin. The two tests that asserted nil were updated to
+  assert the new invariant: non-nil, TLS 1.2 floor, no pin callbacks.
+
+- **A Windows checkout broke the formatting gate for every file in the
+  tree.** With the common `core.autocrlf=true`, cloning converted all Go
+  sources to CRLF and `gofmt -l .` flagged all 196 of them, making the
+  pre-push gate unusable off Linux. `.gitattributes` now pins text sources to
+  LF. It is an explicit allowlist rather than `* text=auto` because the MIME
+  fixtures in `test/fixtures/mime/` are RFC 5322 wire samples whose CRLF
+  bytes are the thing under test — those are marked `-text` and stay
+  byte-exact.
+
 ## [2.2.17] — 2026-08-06
 
 ### Fixed
