@@ -2,7 +2,7 @@ module github.com/johalputt/VayuMail-Mobile
 
 go 1.25.0
 
-toolchain go1.25.12
+toolchain go1.25.13
 
 require (
 	gioui.org v0.10.2
