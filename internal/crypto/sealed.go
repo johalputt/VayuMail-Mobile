@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 // KeyProvider supplies the 32-byte master key that seals credentials at
@@ -334,11 +335,43 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := renamePublish(tmp, path); err != nil {
 		return err
 	}
 	syncDir(dir)
 	return nil
+}
+
+// maxRenameRetries bounds the busy-target retry below. The waits form
+// 1+2+4+8+16+32 ms — 63 ms of ceiling for a handle that is open only
+// transiently (a competing publisher, a scanner sniffing the new file), which
+// the concurrent-first-seal test exercises. Anything still busy after that is
+// a real refusal and propagates.
+const maxRenameRetries = 6
+
+// renamePublish moves tmp onto path atomically, retrying while Windows
+// reports the target held open.
+//
+// # Why this seam exists (audit 2026-08, M2)
+//
+// POSIX rename(2) replaces an open target without complaint; MoveFileEx does
+// not — another writer renaming onto the same destination in the same window,
+// or any handle opened without FILE_SHARE_DELETE (an indexer, a scanner),
+// fails with ACCESS_DENIED / sharing violation. The concurrent-first-seal
+// race test passed on Linux CI and failed on windows/amd64 for exactly this
+// reason: four stores publishing at once, three refused. POSIX never takes
+// that branch, so the retry predicate is the package's one platform split.
+func renamePublish(tmp, path string) error {
+	for attempt := 0; ; attempt++ {
+		err := os.Rename(tmp, path)
+		if err == nil {
+			return nil
+		}
+		if !renameBusy(err) || attempt >= maxRenameRetries {
+			return err
+		}
+		time.Sleep(time.Duration(1<<uint(attempt)) * time.Millisecond)
+	}
 }
 
 // syncDir flushes a directory entry so a rename survives a power loss.
