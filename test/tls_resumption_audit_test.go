@@ -219,9 +219,10 @@ func TestAnUnpinnedAccountStillRefusesAnUntrustedServer(t *testing.T) {
 	addr, _, _ := tlsPinTestServer(t)
 
 	cfg := account.Config{IMAPHost: pinTestHost}
-	if cfg.TLSConfig() != nil {
-		t.Fatal("an account with no pin must produce a nil TLS config so the dialer " +
-			"uses ordinary verification")
+	if tc := cfg.TLSConfig(); tc == nil || tc.MinVersion < tls.VersionTLS12 ||
+		tc.VerifyConnection != nil {
+		t.Fatal("an account with no pin must get ordinary WebPKI verification " +
+			"with the stated TLS 1.2 floor and no pin callbacks")
 	}
 	conn, err := tls.Dial("tcp", addr, &tls.Config{ServerName: pinTestHost, MinVersion: tls.VersionTLS12})
 	if err == nil {

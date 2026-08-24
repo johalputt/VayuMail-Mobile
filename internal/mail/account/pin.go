@@ -17,13 +17,14 @@ func SPKIHash(cert *x509.Certificate) string {
 }
 
 // TLSConfig returns the TLS configuration for this account's
-// connections. Without a pin it is nil (standard WebPKI verification).
-// With a pin, WebPKI verification still runs and additionally some
-// certificate in the verified chain must match the pinned SPKI hash —
-// defense against a compromised or coerced CA.
+// connections. Without a pin it is ordinary WebPKI verification with the
+// stated TLS 1.2 floor — the floor must not be a property of whether the
+// operator chose to pin. With a pin, WebPKI verification still runs and
+// additionally some certificate in the verified chain must match the
+// pinned SPKI hash — defense against a compromised or coerced CA.
 func (c *Config) TLSConfig() *tls.Config {
 	if c.PinnedSPKI == "" {
-		return nil
+		return &tls.Config{MinVersion: tls.VersionTLS12}
 	}
 	pin, host := c.PinnedSPKI, c.IMAPHost
 	matchPin := func(chains [][]*x509.Certificate) error {

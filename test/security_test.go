@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"math/big"
@@ -68,10 +69,12 @@ func TestSPKIPinning(t *testing.T) {
 		t.Error("mismatched pin accepted — pinning is ineffective")
 	}
 
-	// Unpinned config keeps standard verification (nil TLS config).
+	// Unpinned config keeps standard verification, but the floor is stated,
+	// not inherited from the toolchain (audit 2026-08, L4).
 	unpinned := account.Config{IMAPHost: "mail.example.com"}
-	if unpinned.TLSConfig() != nil {
-		t.Error("unpinned account must use default verification")
+	uc := unpinned.TLSConfig()
+	if uc == nil || uc.MinVersion != tls.VersionTLS12 || uc.VerifyConnection != nil {
+		t.Error("unpinned account must use ordinary verification with the TLS 1.2 floor")
 	}
 }
 
