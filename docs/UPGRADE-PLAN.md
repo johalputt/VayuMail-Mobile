@@ -67,10 +67,17 @@ settings, cadence option, cold-boot re-verification) remain open.
 
 ## Phase 3 — Sync & radio efficiency (the "super fast" pillar)
 
+**Status (2026-08): PARTIAL.** Command-connection reuse shipped:
+`Manager.withCommandConn` keeps one authenticated IMAP socket per account
+for every commandLoop execution (move/mark/delete/append/sync-now), with a
+90-second idle bound, retry-once on a suspect socket, and eviction on
+account removal and shutdown. Dial-counting loopback tests prove three
+commands now cost one connection. CONDSTORE/QRESYNC deltas remain open.
+
 | Task | Closes | Notes |
 |---|---|---|
 | CONDSTORE/QRESYNC deltas for flags + expunges (server-advertised) | M3 | HIGHESTMODSEQ already tracked in `folders`; falls back to inventory scan when server lacks QRESYNC |
-| Per-account command connection reuse: serialize commands over one persistent control connection; IDLE socket stays dedicated | M4 | Replaces per-tap dial in `exec.go`; reconnect/backoff logic reused from `RunIDLE` |
+| ~~Per-account command connection reuse~~ **DONE 2026-08**: `withCommandConn` in `connpool.go`; one persistent control connection per account, IDLE socket stays dedicated | M4 | Retry-once replaces reconnect/backoff for the pooled socket; `RunIDLE` untouched |
 | `COMPRESS=DEFLATE` on IMAP where advertised | — | Big win on body fetches over mobile radio |
 | Batched UID-fetch window sizing by folder size/bandwidth | — | Already delta-synced; tune chunk sizes |
 | Outbox SMTP connection reuse for multi-send bursts | — | Rare path; only if profiling justifies |

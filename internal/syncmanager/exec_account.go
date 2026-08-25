@@ -135,6 +135,9 @@ func (m *Manager) execRemoveAccount(ctx context.Context, c RemoveAccountCmd) err
 		return err
 	}
 	m.stopAccount(c.AccountID, stopAccountWait)
+	// The pooled command connection must not outlive the credential it was
+	// authenticated with.
+	m.dropCommandConn(acct.KeystoreAlias)
 	// A keystore miss must not strand the removal: the goal state — no
 	// stored credential — already holds. Other failures are logged and
 	// removal continues, or the row naming the alias would linger forever.

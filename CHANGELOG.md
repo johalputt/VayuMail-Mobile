@@ -53,6 +53,17 @@ Held under Unreleased until the whole track is done, per the release rules.
 
 ### Changed
 
+- **Every user command now reuses one authenticated IMAP connection per
+  account** (audit M4). Archive, delete, flag, draft-append and sync-now
+  each paid a full TCP + TLS + LOGIN round-trip before — on mobile radio
+  that is seconds of latency and battery per tap, for a command that then
+  ran in milliseconds. `Manager.withCommandConn` parks the socket between
+  commands (90-second idle bound, well inside typical server timeouts),
+  replaces a dead cached socket with exactly one redial instead of failing
+  the tap, drops the connection when an account is removed, and closes
+  everything at shutdown. Dial-counting loopback tests prove three
+  back-to-back commands cost one connection. The dedicated IDLE socket is
+  untouched.
 - **Every GitHub Action is pinned by commit SHA and every lint tool by
   version** (audit M8). Tags are mutable; a compromised upstream action or a
   `@latest` tool release executes inside the trusted build — staticcheck

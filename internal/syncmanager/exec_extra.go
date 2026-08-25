@@ -39,7 +39,7 @@ func (m *Manager) execFetchAttachment(ctx context.Context, c FetchAttachmentCmd)
 	}
 
 	var path string
-	err = imapsync.WithConnection(ctx, ConfigFromStore(acct),
+	err = m.withCommandConn(ctx, ConfigFromStore(acct),
 		m.credFor(acct.KeystoreAlias), func(client *imapclient.Client) error {
 			if _, err := client.Select(folderName, nil).Wait(); err != nil {
 				return fmt.Errorf("syncmanager: select %q: %w", folderName, err)
@@ -85,7 +85,7 @@ func (m *Manager) execSaveDraft(ctx context.Context, c SaveDraftCmd) error {
 			drafts = f.FullName
 		}
 	}
-	return imapsync.WithConnection(ctx, ConfigFromStore(acct),
+	return m.withCommandConn(ctx, ConfigFromStore(acct),
 		m.credFor(acct.KeystoreAlias), func(client *imapclient.Client) error {
 			return imapsync.AppendMessage(client, drafts, c.Raw,
 				[]imap.Flag{imap.FlagDraft})
@@ -158,7 +158,7 @@ func (m *Manager) appendToSent(ctx context.Context, accountID int64, raw []byte)
 		slog.Info("sent-append: account has no Sent folder")
 		return
 	}
-	err = imapsync.WithConnection(ctx, ConfigFromStore(acct),
+	err = m.withCommandConn(ctx, ConfigFromStore(acct),
 		m.credFor(acct.KeystoreAlias), func(client *imapclient.Client) error {
 			return imapsync.AppendMessage(client, sent, raw,
 				[]imap.Flag{imap.FlagSeen})

@@ -97,7 +97,7 @@ func (m *Manager) execMove(ctx context.Context, c MoveCmd) error {
 	}
 	dest := *destFolder
 	cfg := ConfigFromStore(acct)
-	return imapsync.WithConnection(ctx, cfg, m.credFor(acct.KeystoreAlias),
+	return m.withCommandConn(ctx, cfg, m.credFor(acct.KeystoreAlias),
 		func(client *imapclient.Client) error {
 			// Server move first: if it fails, the local copy is untouched
 			// and the message correctly stays in its source folder.
@@ -163,7 +163,7 @@ func (m *Manager) execDelete(ctx context.Context, c DeleteCmd) error {
 			return err
 		}
 		cfg := ConfigFromStore(acct)
-		return imapsync.WithConnection(ctx, cfg, m.credFor(acct.KeystoreAlias),
+		return m.withCommandConn(ctx, cfg, m.credFor(acct.KeystoreAlias),
 			func(client *imapclient.Client) error {
 				if err := imapsync.DeleteUID(client, current.FullName, msg.UID); err != nil {
 					// Restore visibility: the message is still on the server.
@@ -209,7 +209,7 @@ func (m *Manager) execMark(ctx context.Context, c MarkCmd) error {
 		}
 	}
 	cfg := ConfigFromStore(acct)
-	return imapsync.WithConnection(ctx, cfg, m.credFor(acct.KeystoreAlias),
+	return m.withCommandConn(ctx, cfg, m.credFor(acct.KeystoreAlias),
 		func(client *imapclient.Client) error {
 			return imapsync.SetFlagUID(client, folderName, msg.UID, c.Flag, c.Set)
 		})
@@ -262,7 +262,7 @@ func (m *Manager) execSyncNow(ctx context.Context, c SyncNowCmd) error {
 	m.emit(SyncStartedEvent{AccountID: acct.ID})
 	defer func() { m.emit(SyncFinishedEvent{AccountID: acct.ID, Err: err}) }()
 	cfg := ConfigFromStore(acct)
-	err = imapsync.WithConnection(ctx, cfg, m.credFor(acct.KeystoreAlias),
+	err = m.withCommandConn(ctx, cfg, m.credFor(acct.KeystoreAlias),
 		func(client *imapclient.Client) error {
 			folders, err := imapsync.SyncFolders(ctx, client, m.db, acct.ID)
 			if err != nil {
@@ -311,7 +311,7 @@ func (m *Manager) execRefetchMessage(ctx context.Context, c RefetchMessageCmd) e
 		return report(err)
 	}
 	cfg := ConfigFromStore(acct)
-	return report(imapsync.WithConnection(ctx, cfg, m.credFor(acct.KeystoreAlias),
+	return report(m.withCommandConn(ctx, cfg, m.credFor(acct.KeystoreAlias),
 		func(client *imapclient.Client) error {
 			return imapsync.RefetchMessage(ctx, client, m.db, folder, msg)
 		}))
@@ -328,7 +328,7 @@ func (m *Manager) execSyncFolder(ctx context.Context, c SyncFolderCmd) error {
 		return err
 	}
 	cfg := ConfigFromStore(acct)
-	return imapsync.WithConnection(ctx, cfg, m.credFor(acct.KeystoreAlias),
+	return m.withCommandConn(ctx, cfg, m.credFor(acct.KeystoreAlias),
 		func(client *imapclient.Client) error {
 			selected, err := client.Select(folder.FullName, nil).Wait()
 			if err != nil {

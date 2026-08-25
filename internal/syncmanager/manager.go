@@ -33,6 +33,14 @@ type Manager struct {
 	// never races an in-flight sync.
 	runnerDone map[int64]chan struct{}
 
+	// Command-connection reuse (audit M4): one authenticated IMAP socket
+	// per account shared by every commandLoop execution, instead of a
+	// fresh TCP+TLS+LOGIN round-trip per tap. Guarded by poolMu; see
+	// connpool.go.
+	poolMu   sync.Mutex
+	cmdConns map[string]*cmdConn
+	dial     dialFunc
+
 	attachDir string
 }
 
@@ -49,6 +57,8 @@ func New(db *store.DB, ks crypto.Keystore) *Manager {
 	// Assigned outside the literal: the channel-buffer lines above must
 	// keep their exact spelling (checked by scripts/constitution.sh).
 	m.runnerDone = make(map[int64]chan struct{})
+	m.cmdConns = make(map[string]*cmdConn)
+	m.dial = imapsync.Dial
 	return m
 }
 
@@ -101,12 +111,19 @@ func (m *Manager) Start(ctx context.Context) error {
 	return nil
 }
 
-// Shutdown cancels every goroutine and blocks until all have exited.
+// Shutdown cancels every goroutine and blocks until all have exited, then
+// releases any pooled command connections.
 func (m *Manager) Shutdown() {
 	if m.cancel != nil {
 		m.cancel()
 	}
 	m.wg.Wait()
+	m.poolMu.Lock()
+	for alias, cc := range m.cmdConns {
+		_ = cc.client.Close()
+		delete(m.cmdConns, alias)
+	}
+	m.poolMu.Unlock()
 }
 
 // emit delivers an event without ever blocking a sync goroutine. When the
