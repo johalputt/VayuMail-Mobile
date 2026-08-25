@@ -30,6 +30,9 @@ permissions:
 jobs:
   ipa:
     runs-on: macos-15
+    # secrets aren't readable in step `if:` — surface through env instead.
+    env:
+      IOS_P12_B64: ${{ secrets.IOS_P12_B64 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -61,7 +64,7 @@ jobs:
             ./cmd/vayumail
 
       - name: Sign (optional, secrets-gated)
-        if: ${{ secrets.IOS_P12_B64 != '' }}
+        if: ${{ env.IOS_P12_B64 != '' }}
         env:
           P12_B64: ${{ secrets.IOS_P12_B64 }}
           P12_PASS: ${{ secrets.IOS_P12_PASS }}
