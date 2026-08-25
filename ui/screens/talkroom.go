@@ -56,6 +56,10 @@ type TalkRoom struct {
 	// spring in on arrival instead of popping into place (plan Phase 5.7).
 	// Entries are dropped once the spring settles.
 	bubbleIn map[string]time.Time
+
+	// checkIn records first sight of an outgoing message's read receipt,
+	// for the check spring-in. Same lifecycle as bubbleIn.
+	checkIn map[string]time.Time
 }
 
 // NewTalkRoom constructs the room screen.
@@ -64,6 +68,7 @@ func NewTalkRoom() *TalkRoom {
 		list:      layout.List{Axis: layout.Vertical},
 		msgClicks: map[string]*widget.Clickable{},
 		bubbleIn:  map[string]time.Time{},
+		checkIn:   map[string]time.Time{},
 		ttlIndex:  defaultTTLIndex,
 	}
 	r.input.Submit = true

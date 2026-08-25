@@ -22,6 +22,9 @@ import (
 // first appears (plan Phase 5.7).
 const bubbleSpringDuration = 260 * time.Millisecond
 
+// checkPopDuration is the read-receipt check's spring-in.
+const checkPopDuration = 240 * time.Millisecond
+
 // bubble draws one message. It reports live=true while the message still
 // has a running countdown, so the caller keeps requesting frames.
 func (s *TalkRoom) bubble(gtx layout.Context, env *Env, th *theme.Theme, m state.ChatMessage) (layout.Dimensions, bool) {
@@ -44,8 +47,25 @@ func (s *TalkRoom) bubble(gtx layout.Context, env *Env, th *theme.Theme, m state
 		frac := widgets.RemainingFraction(m.ArmedAt, m.ExpiresAt, now)
 		live := !m.ExpiresAt.IsZero() && frac > 0
 
+		// Read-receipt pop (plan Phase 5.7): first sight of a read
+		// outgoing message springs the check in beside its status label.
+		checkScale := float32(1)
+		if m.Self && m.Status == state.MsgRead {
+			start, seen := s.checkIn[m.ID]
+			if !seen {
+				start = now
+				s.checkIn[m.ID] = start
+			}
+			if t := float32(now.Sub(start)) / float32(checkPopDuration); t < 1 {
+				checkScale = anim.OutBack(t)
+				live = true // keep frames coming until it settles
+			} else {
+				delete(s.checkIn, m.ID)
+			}
+		}
+
 		inner := func(gtx layout.Context) layout.Dimensions {
-			return s.contentBubble(gtx, th, m, frac)
+			return s.contentBubble(gtx, th, m, frac, checkScale)
 		}
 		// Spring-in: the first frames of a new bubble rise into place with
 		// an overshoot settle; reduce-motion snaps t to done immediately.
@@ -108,7 +128,7 @@ func fillBubble(gtx layout.Context, fill color.NRGBA) layout.Dimensions {
 
 // contentBubble draws a revealed/outgoing message with its text and a meta
 // row carrying the countdown ring, remaining time, and status.
-func (s *TalkRoom) contentBubble(gtx layout.Context, th *theme.Theme, m state.ChatMessage, frac float32) layout.Dimensions {
+func (s *TalkRoom) contentBubble(gtx layout.Context, th *theme.Theme, m state.ChatMessage, frac float32, checkScale float32) layout.Dimensions {
 	bg := th.Palette.Surface
 	fg := th.Palette.OnBackground
 	meta := th.Palette.Subtle
@@ -137,7 +157,7 @@ func (s *TalkRoom) contentBubble(gtx layout.Context, th *theme.Theme, m state.Ch
 							}),
 							layout.Rigid(layout.Spacer{Height: theme.XS}.Layout),
 							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-								return s.metaRow(gtx, th, m, frac, meta)
+								return s.metaRow(gtx, th, m, frac, meta, checkScale)
 							}))
 					})
 			})
@@ -145,7 +165,8 @@ func (s *TalkRoom) contentBubble(gtx layout.Context, th *theme.Theme, m state.Ch
 }
 
 // metaRow renders the countdown ring, remaining time, and status text.
-func (s *TalkRoom) metaRow(gtx layout.Context, th *theme.Theme, m state.ChatMessage, frac float32, meta color.NRGBA) layout.Dimensions {
+// checkScale springs the read-receipt check in (1 = settled).
+func (s *TalkRoom) metaRow(gtx layout.Context, th *theme.Theme, m state.ChatMessage, frac float32, meta color.NRGBA, checkScale float32) layout.Dimensions {
 	track := theme.WithAlpha(meta, 0x40)
 	arc := meta
 	if !m.Self {
@@ -182,14 +203,33 @@ func (s *TalkRoom) metaRow(gtx layout.Context, th *theme.Theme, m state.ChatMess
 		}),
 		layout.Flexed(1, flexSpacer),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			label := statusLabel(m)
-			if label == "" {
-				return layout.Dimensions{}
+			// Read-receipt check springs in ahead of the status label
+			// (plan Phase 5.7); OutBack overshoots, so alpha clamps at 1.
+			check := float32(0)
+			if m.Self && m.Status == state.MsgRead {
+				check = min(checkScale, 1)
 			}
-			return layout.Inset{Left: theme.SM}.Layout(gtx,
-				func(gtx layout.Context) layout.Dimensions {
-					return th.Label(gtx, theme.Micro, meta, label, 1)
-				})
+			return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					if check <= 0 {
+						return layout.Dimensions{}
+					}
+					d := gtx.Dp(unit.Dp(11 * checkScale))
+					col := meta
+					col.A = uint8(float32(col.A) * check)
+					widgets.DrawIcon(gtx, widgets.IconCheck, col, unit.Dp(float32(11)*checkScale))
+					return layout.Dimensions{Size: image.Pt(d, d)}
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					label := statusLabel(m)
+					if label == "" {
+						return layout.Dimensions{}
+					}
+					return layout.Inset{Left: theme.SM}.Layout(gtx,
+						func(gtx layout.Context) layout.Dimensions {
+							return th.Label(gtx, theme.Micro, meta, label, 1)
+						})
+				}))
 		}))
 }
 
