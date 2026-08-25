@@ -105,6 +105,8 @@ jobs:
         run: |
           go test -run=NONE -fuzz=FuzzMIMEParse -fuzztime=15s ./test/
           go test -run=NONE -fuzz=FuzzHTMLToText -fuzztime=10s ./test/
+          go test -run=NONE -fuzz=FuzzSanitizedHTML -fuzztime=10s ./test/
+          go test -run=NONE -fuzz=FuzzAvatarImage -fuzztime=10s ./test/
 
       - name: Build all binaries
         run: go build -trimpath ./cmd/...

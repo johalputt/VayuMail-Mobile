@@ -11,6 +11,18 @@ Held under Unreleased until the whole track is done, per the release rules.
 
 ### Added
 
+- **The avatar pipeline is now fuzz-covered** (plan Phase 7.3). A new
+  `FuzzAvatarImage` feeds arbitrary bytes through the exact decoder
+  remote avatar servers can point us at — SVG path parsing and the four
+  registered raster decoders — enforcing never-panic plus square, size-
+  capped output; it and `FuzzSanitizedHTML` now run in CI's fuzz smoke.
+- **iOS builds are one workflow away** (plan Phase 7.2). `release-ios.yml`
+  mirrors the Android release on a macOS runner: pinned gogio → .app →
+  Payload IPA, optional secrets-gated codesigning, artifact + release
+  attachment. Store distribution stays deliberately parked until Apple
+  team setup and the iOS keystore bridge exist; `docs/RELEASE-POLICY.md`
+  documents channels, staged-rollout holds, halt criteria, and the
+  hotfix path for both platforms.
 - **Threads grow out of the row you tapped** (plan Phase 5.1). Opening
   a message plays a container-transform: an expanding rounded container
   rises out of the tapped row's exact on-screen position while the list

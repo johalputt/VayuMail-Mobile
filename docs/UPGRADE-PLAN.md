@@ -125,9 +125,9 @@ Text-only rendering is the strongest sanitizer but a UX ceiling. Milestone desig
 
 ## Phase 7 — Distribution & assurance
 
-1. Play internal track live via existing workflow (secrets + upload key); staged rollout policy documented.
-2. iOS pipeline: macOS runner, Keychain bridge (Phase 1), APNs relay decision point; IPA job mirrors release.yml.
-3. Coverage floor raised as packages move (floor mechanics already exist and can bite); add avatar + sanitizer fuzz targets to the smoke job.
+1. Play internal track live via existing workflow (secrets + upload key); ~~staged rollout policy documented~~ **DONE 2026-08**: `docs/RELEASE-POLICY.md` — channel table, 10/50/100 staged holds with halt criteria, hotfix path, signature/version invariants.
+2. iOS pipeline: **IPA job written** — `release-ios.yml` mirrors release.yml on macos-15 (dispatch/tag only, outside required checks): pinned gogio v0.10.0 → .app → Payload IPA, secrets-gated codesign, release attachment. Still open: Apple team/bundle-id registration for signing, Keychain bridge (Phase 1 has no iOS half — store builds wait on it), APNs relay decision.
+3. ~~Coverage floor raised as packages move~~ **DONE 2026-08** (floor 58.0→58.5 against the measured 59.0%); avatar + sanitizer fuzz targets added to the smoke job (`FuzzSanitizedHTML` wired in; `FuzzAvatarImage` new — exported `avatarimg.DecodeAvatar` seam, bounds/squareness/size contract).
 4. ~~Reproducible-build note~~ **DONE 2026-08**: `docs/REPRODUCIBLE-BUILDS.md` — what is already deterministic (pinned toolchains/actions/gogio, -trimpath, single version source, jars built from source, committed test keystore), the honest gap (zip timestamps → not yet byte-identical), the closing steps, and the F-Droid checklist.
 
 ## Sequencing & effort

@@ -190,6 +190,14 @@ func (c *Cache) fetch(key, domain string) {
 // decode turns raw avatar bytes into an image: a rasterised SVG (the server's
 // self-contained cartoons) or a natively-decoded raster (uploaded photos).
 func decode(raw []byte) image.Image {
+	return DecodeAvatar(raw)
+}
+
+// DecodeAvatar is the pure decode seam behind the cache: raw avatar bytes
+// in, decoded square image out (nil when nothing decodes). Exported so the
+// fuzz target exercises exactly what remote servers can feed us without
+// standing up the HTTP cache.
+func DecodeAvatar(raw []byte) image.Image {
 	if looksSVG(raw) {
 		return rasterizeSVG(raw)
 	}
