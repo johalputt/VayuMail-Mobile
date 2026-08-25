@@ -1,0 +1,95 @@
+name: Release iOS (unsigned IPA)
+
+# Mirrors release.yml for iOS (plan Phase 7.2). gogio builds the .app
+# bundle; this job wraps it into a Payload/ IPA.
+#
+# What you get WITHOUT any secrets: an unsigned IPA attached to the
+# GitHub Release — sideloadable through AltStore/Sideloadly or re-signable
+# in Xcode ("Device & Signatures > Manually manage"). It is NOT App Store
+# ready: Apple requires distribution signing by an Apple Developer team,
+# and VayuMail's secure keystore bridge (plan Phase 1) has no iOS half yet,
+# so a store build would fall back to weaker key storage. Treat this as a
+# developer/testflight-progression artifact until both are true.
+#
+# Optional signing: set IOS_P12_B64 / IOS_P12_PASS / IOS_PROFILE_B64 and
+# IOS_SIGNING_IDENTITY (e.g. "Apple Distribution: Example (TEAMID)") to
+# codesign in-place before zipping. Profile/bundle-id registration
+# (com.vayu.mail) stays a manual Apple-console step by design.
+#
+# This workflow never runs on regular pushes — only tags and manual
+# dispatch — so its jobs are not part of the ruleset's required checks.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ipa:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.25.13'
+
+      # Plain pinned gogio — the hardened manifest patch is Android-only.
+      - name: Install gogio (pinned)
+        run: go install gioui.org/cmd/gogio@v0.10.0
+
+      - name: Determine version
+        id: ver
+        run: |
+          SEMVER=$(grep -oP 'Semantic = "\K[^"]+' internal/version/version.go)
+          CODE=$(grep -oP 'Code = \K[0-9]+' internal/version/version.go)
+          echo "semver=$SEMVER" >> "$GITHUB_OUTPUT"
+
+      - name: Build .app
+        env:
+          GOFLAGS: -trimpath
+        run: |
+          gogio -target ios \
+            -appid com.vayu.mail \
+            -version ${{ steps.ver.outputs.semver }}.${CODE:-0} \
+            -o VayuMail.app \
+            ./cmd/vayumail
+
+      - name: Sign (optional, secrets-gated)
+        if: ${{ secrets.IOS_P12_B64 != '' }}
+        env:
+          P12_B64: ${{ secrets.IOS_P12_B64 }}
+          P12_PASS: ${{ secrets.IOS_P12_PASS }}
+          PROFILE_B64: ${{ secrets.IOS_PROFILE_B64 }}
+          IDENTITY: ${{ secrets.IOS_SIGNING_IDENTITY }}
+        run: |
+          echo "$P12_B64" | base64 --decode > cert.p12
+          echo "$PROFILE_B64" | base64 --decode > embedded.mobileprovision
+          security create-keychain -p "" build.keychain
+          security import cert.p12 -k build.keychain -P "$P12_PASS" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+          cp embedded.mobileprovision VayuMail.app/embedded.mobileprovision
+          codesign --force --sign "$IDENTITY" --timestamp VayuMail.app
+
+      - name: Wrap IPA
+        run: |
+          mkdir Payload
+          cp -R VayuMail.app Payload/VayuMail.app
+          KIND=unsigned
+          if [ -f VayuMail.app/embedded.mobileprovision ]; then KIND=signed; fi
+          zip -qry vayumail-${{ steps.ver.outputs.semver }}-$KIND.ipa Payload
+          ls -l vayumail-*.ipa
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ios-ipa
+          path: vayumail-*.ipa
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@c12583777ecdfd3be55c69cf75464299dc01057e # v3
+        with:
+          files: vayumail-*.ipa
