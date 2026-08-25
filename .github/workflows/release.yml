@@ -71,6 +71,23 @@ jobs:
           done
           ls -l "$ANDROID_HOME"/build-tools/*/bundletool.jar
 
+      # gogio bundles every *.jar sitting next to an imported Go package's
+      # files into the APK/AAB. The platform helpers are compiled fresh from
+      # committed sources against this SDK's android.jar, so the classes can
+      # never drift from the JNI signatures platform/android calls. Their
+      # presence is what makes the hardened manifest's service declaration
+      # resolvable; a missing class would crash startForegroundService.
+      - name: Compile platform helper jars
+        run: |
+          mkdir -p /tmp/vayucls
+          javac --release 8 \
+            -classpath "$ANDROID_HOME/platforms/android-35/android.jar" \
+            -d /tmp/vayucls platform/android/*.java
+          jar cf platform/android/VayuPlatform.jar -C /tmp/vayucls org
+          unzip -l platform/android/VayuPlatform.jar | grep -q 'org/vayu/mail/VayuKeystore.class'
+          unzip -l platform/android/VayuPlatform.jar | grep -q 'org/vayu/mail/VayuSyncService.class'
+          ls -l platform/android/VayuPlatform.jar
+
       - name: Prepare signing key
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}

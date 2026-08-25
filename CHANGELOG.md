@@ -24,6 +24,16 @@ Held under Unreleased until the whole track is done, per the release rules.
   key). Provider decisions are host-tested with injected wrap/unwrap
   primitives (`platform/android/provider_core_test.go`); the JNI path is
   exercised on-device only, so this ships PARTIAL until that first run.
+- **Background sync now pins the process inside a dataSync foreground
+  service** (audit H2 groundwork, plan Phase 2). `org.vayu.mail.VayuSyncService`
+  shows the low-importance "keeping your mail live" notification and hosts
+  the already-running sync goroutines while the app is backgrounded;
+  registration happens at engine start and release at window close.
+  `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`, `POST_NOTIFICATIONS`
+  and `USE_BIOMETRIC` are injected into both gogio manifest templates by
+  the hardened build (audit M6 closed — biometric's SecurityException
+  degradation no longer applies), with CI string-verifying every patch in
+  the built tool. On-device verification pending, same as above.
 
 ### Security
 

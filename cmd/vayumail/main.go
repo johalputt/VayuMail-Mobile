@@ -23,6 +23,7 @@ import (
 
 	"github.com/johalputt/VayuMail-Mobile/internal/biometric"
 	appcrypto "github.com/johalputt/VayuMail-Mobile/internal/crypto"
+	"github.com/johalputt/VayuMail-Mobile/internal/push"
 	"github.com/johalputt/VayuMail-Mobile/internal/pushnotify"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
@@ -67,6 +68,12 @@ func run(window *app.Window) int {
 
 	err := boot.Run()
 	cancel()
+	// The window is gone: release the Android foreground service pin so the
+	// notification disappears with the app. No-op on platforms without a
+	// registered controller.
+	if serr := push.StopBackgroundSync(); serr != nil {
+		slog.Debug("foreground service stop", "err", serr)
+	}
 	boot.Shutdown()
 	if err != nil {
 		slog.Error("window", "err", err)
@@ -104,6 +111,18 @@ func initEngine(ctx context.Context, window *app.Window, boot *ui.Boot, pickFile
 			slog.Error("close store", "err", cerr)
 		}
 		return
+	}
+
+	// Background delivery (ADR-0005): once the engine's goroutines exist,
+	// pin the process inside the dataSync foreground service so IMAP IDLE
+	// survives backgrounding. Off Android, or when the helper class is
+	// missing from an older dev build, both calls are no-ops and sync stays
+	// foreground-only as before.
+	if c := android.ForegroundSyncController(); c != nil {
+		push.RegisterForegroundService(c)
+		if serr := push.StartBackgroundSync(ctx); serr != nil {
+			slog.Warn("foreground service start failed; background sync inactive", "err", serr)
+		}
 	}
 
 	boot.Attach(ui.New(ctx, window, db, mgr, ks, dark, pickFile), db, mgr)

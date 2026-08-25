@@ -17,11 +17,14 @@ import (
 	appcrypto "github.com/johalputt/VayuMail-Mobile/internal/crypto"
 )
 
-// The helper class compiled into VayuPlatform.jar by release.yml (gogio
-// bundles every jar next to an imported package's files into the APK).
-// Resolved through the app class loader exactly like internal/biometric,
+// The two helper classes compiled into VayuPlatform.jar by release.yml
+// (gogio bundles every jar next to an imported package's files into the
+// APK). Resolved through the app class loader exactly like internal/biometric,
 // because gogio apps load their own classes, not the system's.
-const keystoreClass = "org/vayu/mail/VayuKeystore"
+const (
+	keystoreClass = "org/vayu/mail/VayuKeystore"
+	serviceClass  = "org/vayu/mail/VayuSyncService"
+)
 
 func loadClassNamed(env jni.Env, name string) (jni.Class, error) {
 	loader := jni.ClassLoaderFor(env, jni.Object(app.AppContext()))
@@ -116,3 +119,48 @@ func HardwareKeystore(dataDir string) appcrypto.KeyProvider {
 }
 
 var _ appcrypto.KeyProvider = (*WrappedKeyProvider)(nil)
+
+// fgSvc implements push.ForegroundServiceController against
+// org.vayu.mail.VayuSyncService's static start/stop.
+type fgSvc struct{}
+
+func (fgSvc) StartService() error {
+	return withClass(serviceClass, func(env jni.Env, cls jni.Class) error {
+		m, err := jni.GetStaticMethodID(env, cls, "start",
+			"(Landroid/content/Context;)V")
+		if err != nil {
+			return err
+		}
+		return jni.CallStaticVoidMethod(env, cls, m, jni.Value(app.AppContext()))
+	})
+}
+
+func (fgSvc) StopService() error {
+	return withClass(serviceClass, func(env jni.Env, cls jni.Class) error {
+		m, err := jni.GetStaticMethodID(env, cls, "stop",
+			"(Landroid/content/Context;)V")
+		if err != nil {
+			return err
+		}
+		return jni.CallStaticVoidMethod(env, cls, m, jni.Value(app.AppContext()))
+	})
+}
+
+// ForegroundSyncController returns the device controller for the sync
+// foreground service, or nil when the helper class is missing (a dev build
+// whose jar predates this feature) — push then stays a logged no-op instead
+// of crashing on every start.
+func ForegroundSyncController() push.ForegroundServiceController {
+	present := true
+	err := jni.Do(jni.JVMFor(app.JavaVM()), func(env jni.Env) error {
+		_, err := loadClassNamed(env, serviceClass)
+		return err
+	})
+	if err != nil {
+		present = false
+	}
+	if !present {
+		return nil
+	}
+	return fgSvc{}
+}

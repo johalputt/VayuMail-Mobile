@@ -1,6 +1,7 @@
 // Package push holds the platform hooks that keep sync alive when the app
-// is backgrounded. Both hooks are stubs at v0.1.0 — see
-// COMPLIANCE-TRACKER.md ("Android foreground service", "iOS APNs").
+// is backgrounded. The Android foreground-service hook is wired through
+// platform/android (COMPLIANCE-TRACKER.md, "Android foreground service");
+// the iOS APNs path remains pending.
 package push
 
 import (
@@ -19,11 +20,10 @@ type ForegroundServiceController interface {
 	StopService() error
 }
 
-// STUB: the gomobile binding that implements
-// ForegroundServiceController on Android is not wired to an OS service
-// yet. RegisterForegroundService accepts the controller so the engine
-// side is complete; until platform code calls it, StartBackgroundSync
-// logs and returns. Tracked in COMPLIANCE-TRACKER.md.
+// fgController is installed by platform/android once the engine's sync
+// goroutines exist (cmd/vayumail initEngine). Without a registration —
+// desktop, CI, or an APK whose jar predates the service class — every call
+// below stays a logged no-op and sync runs only while foregrounded.
 var fgController ForegroundServiceController
 
 // RegisterForegroundService installs the Android controller. Called once

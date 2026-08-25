@@ -52,6 +52,12 @@ The seam already exists (`KeyProvider`, `RegisterPlatform`, format-stable sealed
 
 ## Phase 2 — Background delivery (closes H2)
 
+**Status (2026-08): PARTIAL.** Item 1 done end-to-end except on-device
+verification: `VayuSyncService.java`, JNI controller registered at engine
+start / released at window close, all four permissions injected by
+gogio-hardened.sh with CI string-verifying them. Items 2–4 (battery-honesty
+settings, cadence option, cold-boot re-verification) remain open.
+
 1. **Foreground service**: Java helper `VayuSyncService` (type `dataSync`), started/stopped from Go via a `push.ForegroundServiceController` binding; persistent "syncing mail" notification; IMAP IDLE goroutines keep running inside it. Permissions injected by extending the hardened-gogio patch: `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`, `POST_NOTIFICATIONS` (and `USE_BIOMETRIC` from M6 while the patch is open).
 2. **Doze/OEM reality**: document battery behavior honestly in settings ("background sync runs continuously; disable to save battery"); offer a sync-cadence option for OEMs that ignore foreground services; WorkManager-based periodic catch-up sync as the fallback path.
 3. **Notification tap → mailbox** already works via the intent bridge; re-verify against the service-started cold-boot path.
