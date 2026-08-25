@@ -26,6 +26,7 @@ import (
 	"github.com/johalputt/VayuMail-Mobile/internal/pushnotify"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
+	"github.com/johalputt/VayuMail-Mobile/platform/android"
 	"github.com/johalputt/VayuMail-Mobile/ui"
 )
 
@@ -130,25 +131,38 @@ func probeDarkMode() bool {
 
 // keystore selects secret storage, strongest first:
 //
-//  1. The hardware-backed platform keystore (Android Keystore / iOS
-//     Keychain) when a gomobile bridge is registered — the secrets and the
-//     key protecting them stay in hardware.
-//  2. Otherwise a sealed AES-256-GCM store in the app-private data
-//     directory. Here credentials are encrypted at rest, but the 32-byte
-//     sealing key lives in a sibling 0600 file: the ciphertext is only as
-//     confidential as the OS app sandbox (an attacker with a one-time read
-//     of the app-private dir gets both halves — audit M16). This is the
-//     accepted posture on desktop/dev; on mobile it is a stopgap until the
-//     hardware bridge is wired (RegisterPlatform, tracked in
-//     internal/crypto/README).
-//  3. An in-memory store (credentials last one session) when the data
+//  1. The hardware-wrapped store (audit 2026-08 H1): the master key exists
+//     at rest only as ciphertext under an AndroidKeyStore key that never
+//     leaves the device's secure hardware, so hardware.key beside the sealed
+//     blob is useless off this device. The sealed-file FORMAT is unchanged
+//     — only where the sealing key comes from (ADR-0004's wrapping slot).
+//  2. The gomobile platform keystore bridge, when one is registered —
+//     reserved today for a future iOS Keychain implementation.
+//  3. A sealed AES-256-GCM store whose 32-byte sealing key is a sibling
+//     0600 file: encrypted at rest, but only as confidential as the OS app
+//     sandbox (an attacker with a one-time read of the app-private dir gets
+//     both halves — audit M16). Accepted on desktop/dev; the mobile stopgap
+//     step 1 replaced.
+//  4. An in-memory store (credentials last one session) when the data
 //     directory is unavailable.
 //
-// Setting VAYUMAIL_REQUIRE_SECURE_KEYSTORE=1 makes step 2 FAIL CLOSED:
-// rather than silently sealing secrets under an on-disk key, it drops to
-// the in-memory store so no cleartext key file is ever written. Use it for
-// high-assurance builds that must never persist secrets without hardware.
+// VAYUMAIL_REQUIRE_SECURE_KEYSTORE=1 makes steps 1 and 3 FAIL CLOSED: no
+// hardware wrap available means in-memory, never an on-disk cleartext key.
 func keystore() appcrypto.Keystore {
+	dir, err := app.DataDir()
+	if err == nil {
+		keysDir := filepath.Join(dir, "vayumail", "keys")
+		if p := android.HardwareKeystore(keysDir); p != nil {
+			slog.Info("master key wrapped by device secure hardware")
+			sealed, serr := appcrypto.NewSealedKeystoreWithProvider(
+				filepath.Join(keysDir, "credentials.sealed"), p)
+			if serr == nil {
+				return sealed
+			}
+			slog.Warn("hardware-wrapped store unavailable; falling back", "err", serr)
+		}
+	}
+
 	p := appcrypto.NewPlatformKeystore()
 	if _, err := p.Fetch("vayumail-probe"); err != appcrypto.ErrNoPlatformKeystore {
 		return p
@@ -159,7 +173,6 @@ func keystore() appcrypto.Keystore {
 			"no sealing key is written to disk")
 		return appcrypto.NewMemoryKeystore()
 	}
-	dir, err := app.DataDir()
 	if err == nil {
 		sealed, serr := appcrypto.NewSealedKeystore(filepath.Join(dir, "vayumail", "keys"))
 		if serr == nil {

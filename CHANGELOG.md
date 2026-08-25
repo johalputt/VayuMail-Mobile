@@ -9,6 +9,22 @@ project uses [Semantic Versioning](https://semver.org/).
 Remediations from the 2026-08 deep audit (`docs/SECURITY-AUDIT-2026-08.md`).
 Held under Unreleased until the whole track is done, per the release rules.
 
+### Added
+
+- **The master key is now wrapped by the device's secure hardware on
+  Android** (audit H1, plan Phase 1). The `KeyProvider` seam existed for
+  exactly this and had zero callers; it now has one. On Android the master
+  key exists at rest only as ciphertext under an AES-256 key generated
+  inside AndroidKeyStore (StrongBox attempted first, TEE fallback) — the
+  wrapped blob in `hardware.key` is useless on any other device. The
+  sealed-file format is unchanged (ADR-0004's wrapping slot), so every
+  secret already sealed keeps opening: generation happens once, later
+  launches unwrap, and an unwrap failure is fatal rather than a trigger to
+  regenerate (regeneration would orphan everything sealed under the old
+  key). Provider decisions are host-tested with injected wrap/unwrap
+  primitives (`platform/android/provider_core_test.go`); the JNI path is
+  exercised on-device only, so this ships PARTIAL until that first run.
+
 ### Security
 
 - **GO-2026-6222 — golang.org/x/image bumped to v0.45.0.** The VP8L decoder

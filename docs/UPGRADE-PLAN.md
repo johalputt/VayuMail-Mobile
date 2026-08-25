@@ -24,6 +24,15 @@ Also landed with this track (see `CHANGELOG.md [Unreleased]`): the master-key ca
 
 ## Phase 1 — Hardware-backed secrets (closes H1 · the highest-value change in this plan)
 
+**Status (2026-08): PARTIAL.** Implemented as `WrappedKeyProvider` in
+`platform/android`: static JNI `wrap`/`unwrap` against an AndroidKeyStore
+AES-256 key (`org.vayu.mail.VayuKeystore`, StrongBox attempted first), master
+key at rest only inside `hardware.key` ciphertext. Provider logic host-tested;
+the on-device acceptance items below await the first real-device run. Deltas
+from the sketch: the key alias is `vayumail-wrap`, and wiring goes through the
+existing `KeyProvider` seam in `keystore()` rather than a new
+`RegisterPlatform` call — same selection point, one less indirection.
+
 The seam already exists (`KeyProvider`, `RegisterPlatform`, format-stable sealed store). Fill it.
 
 1. **Android bridge** (`platform/android`, JNI pattern copied from biometrics):
