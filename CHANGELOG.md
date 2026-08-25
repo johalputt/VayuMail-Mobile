@@ -6,8 +6,12 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Remediations from the 2026-08 deep audit (`docs/SECURITY-AUDIT-2026-08.md`).
-Held under Unreleased until the whole track is done, per the release rules.
+## [2.3.0] - 2026-08-25
+
+The 2026-08 deep-audit track, cut as one release: security remediations,
+the on-device key generation phase, the interaction/animation polish
+pass, and both mobile release pipelines validated end-to-end on real
+runners (`docs/SECURITY-AUDIT-2026-08.md`, `docs/UPGRADE-PLAN.md`).
 
 ### Added
 
