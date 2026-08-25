@@ -13,6 +13,7 @@ import (
 	"github.com/johalputt/VayuMail-Mobile/internal/biometric"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
+	"github.com/johalputt/VayuMail-Mobile/ui/anim"
 )
 
 // loadPrefs folds the persisted preferences into a snapshot under
@@ -26,6 +27,14 @@ func (s *AppState) loadPrefs(ctx context.Context, next *Snapshot) {
 	if v, err := s.db.GetSetting(ctx, store.SettingNotifyPreview); err == nil && v == "0" {
 		next.NotifyPreviewOn = false
 	}
+	// Reduce-motion is an accessibility preference, not a taste toggle:
+	// when set, every ui/anim primitive snaps to its end state. The gate
+	// itself is global state in ui/anim so widgets cannot forget it.
+	next.MotionReduced = false
+	if v, err := s.db.GetSetting(ctx, store.SettingReduceMotion); err == nil && v == "1" {
+		next.MotionReduced = true
+	}
+	anim.SetMotionEnabled(!next.MotionReduced)
 	if s.lock != nil {
 		next.AppLockEnabled = s.lock.Enabled(ctx)
 		next.TOTPEnabled = s.lock.TOTPEnabled(ctx)
@@ -87,6 +96,26 @@ func (s *AppState) SetNotifyPreview(on bool) {
 			v = "1"
 		}
 		if err := s.db.SetSetting(ctx, store.SettingNotifyPreview, v); err != nil {
+			s.notify("Could not save setting")
+			return
+		}
+		s.Refresh()
+	}()
+}
+
+// SetMotionReduced persists the reduce-motion accessibility toggle and
+// applies it immediately — the gate is global, so in-flight animations
+// settle on their next frame.
+func (s *AppState) SetMotionReduced(reduced bool) {
+	anim.SetMotionEnabled(!reduced)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		v := "0"
+		if reduced {
+			v = "1"
+		}
+		if err := s.db.SetSetting(ctx, store.SettingReduceMotion, v); err != nil {
 			s.notify("Could not save setting")
 			return
 		}

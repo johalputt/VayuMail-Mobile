@@ -109,7 +109,7 @@ Already present and rare-in-Gio: physics springs, press-scale, staggered entranc
 3. **Swipe exit completion** (tracker PARTIAL): committed archive/delete rows slide fully out with fade before list collapse.
 4. **Haptics** (tracker PENDING): tiny JNI helper (`VibrateEffect`), tick on swipe-threshold crossing, confirm on pull-commit, error buzz on bad PIN.
 5. **Skeleton shimmer** on first folder load instead of blank-then-pop; unread-dot spring pop on new mail.
-6. **Reduce-motion setting** honoring system preference — every animation site reads one `anim.Enabled` flag.
+6. ~~**Reduce-motion setting**~~ **DONE 2026-08**: one atomic gate (`anim.SetMotionEnabled`) enforced inside all four primitives — `Anim`/`Bool`/`Spring`/`Stagger` snap instead of travel, persisted, in Settings, primitive-tested. System animator-scale auto-detect (JNI) still open.
 7. Talk room polish: bubble spring-in, burn countdown ring stroke animation (countdown widget already exists), read-receipt checkmark draw-on.
 
 **Acceptance:** profiled at 60 fps on a mid-tier arm64 device (Perfetto trace in PR); idle screens still render zero frames; reduce-motion kills all non-essential movement.

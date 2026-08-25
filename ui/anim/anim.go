@@ -25,9 +25,10 @@ func (a *Anim) Start(now time.Time, dur time.Duration) {
 func (a *Anim) Stop() { a.running = false }
 
 // Progress samples the animation. done is true once settled; callers
-// request another frame only while done is false.
+// request another frame only while done is false. Reduce-motion settles
+// in-flight work immediately.
 func (a *Anim) Progress(now time.Time, ease Easing) (t float32, done bool) {
-	if !a.running {
+	if !a.running || !MotionEnabled() {
 		return 1, true
 	}
 	elapsed := now.Sub(a.start)
@@ -50,8 +51,13 @@ type Bool struct {
 }
 
 // Set retargets the value; a no-op when the target is unchanged.
+// Reduce-motion snaps to v.
 func (b *Bool) Set(v bool, now time.Time, dur time.Duration) {
 	if v == b.target {
+		return
+	}
+	if !MotionEnabled() {
+		b.Jump(v)
 		return
 	}
 	b.from = b.value(now)
@@ -99,6 +105,9 @@ func (b *Bool) Progress(now time.Time, ease Easing) (t float32, done bool) {
 // beyond the cascade window are settled immediately so long lists never
 // animate off-screen rows.
 func Stagger(now, start time.Time, i int, step, dur time.Duration, ease Easing) (t float32, done bool) {
+	if !MotionEnabled() {
+		return 1, true
+	}
 	begin := start.Add(time.Duration(i) * step)
 	elapsed := now.Sub(begin)
 	if elapsed <= 0 {

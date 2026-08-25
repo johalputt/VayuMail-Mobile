@@ -44,6 +44,10 @@ const (
 	// public identifier is stored — the device password is a credential
 	// and lives exclusively in the platform keystore (Rule 6).
 	SettingDeviceIDPrefix = "device-id:"
+	// SettingReduceMotion disables non-essential animation ("1" = reduced).
+	// The gate itself lives in ui/anim and every primitive reads it, so
+	// elements snap instead of gliding. Consumed by the UI.
+	SettingReduceMotion = "reduce_motion"
 )
 
 // GetSetting returns the stored value for key, or "" if unset.

@@ -73,6 +73,10 @@ type Snapshot struct {
 	// NotifyPreviewOn mirrors the notification-preview setting: sender and
 	// subject in the tray vs a generic line (default on).
 	NotifyPreviewOn bool
+	// MotionReduced mirrors the reduce-motion accessibility setting: when
+	// true every ui/anim primitive snaps instead of gliding (default off,
+	// i.e. motion on, matching the system-wide default).
+	MotionReduced bool
 	// SelectedAccount is the account the folder list belongs to.
 	SelectedAccount int64
 }

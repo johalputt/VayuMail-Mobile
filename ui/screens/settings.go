@@ -39,6 +39,7 @@ type Settings struct {
 	biometricSwitch widgets.Switch
 	notifySwitch    widgets.Switch
 	previewSwitch   widgets.Switch
+	motionSwitch    widgets.Switch
 	syncAllBtn      widget.Clickable
 	autoWKDSwitch   widgets.Switch
 
@@ -302,6 +303,18 @@ func (s *Settings) syncRows(gtx layout.Context, env *Env, snap state.Snapshot) [
 					dims, toggled := s.previewSwitch.Layout(gtx, th, snap.NotifyPreviewOn)
 					if toggled {
 						env.State.SetNotifyPreview(!snap.NotifyPreviewOn)
+					}
+					return dims
+				})
+			return inner(gtx)
+		},
+		func(gtx layout.Context) layout.Dimensions {
+			inner := s.item(th, "Reduce motion",
+				"Accessibility: elements snap instead of animating",
+				func(gtx layout.Context) layout.Dimensions {
+					dims, toggled := s.motionSwitch.Layout(gtx, th, snap.MotionReduced)
+					if toggled {
+						env.State.SetMotionReduced(!snap.MotionReduced)
 					}
 					return dims
 				})

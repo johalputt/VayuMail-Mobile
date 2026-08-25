@@ -11,6 +11,14 @@ Held under Unreleased until the whole track is done, per the release rules.
 
 ### Added
 
+- **Reduce-motion accessibility setting** (plan Phase 5.6). One atomic
+  gate now lives inside every animation primitive — `Anim`, `Bool`,
+  `Spring`, and `Stagger` all check it before they move — so widgets can't
+  forget it: with the setting on, elements snap to their end state
+  instead of gliding, including mid-flight work already animating when
+  the toggle flips. Persisted across launches, applied at startup, and
+  surfaced under Settings. Enforcement tests pin each primitive's snap
+  behaviour and prove the gate reverses cleanly.
 - **Sign-only outbound mail now ships** (plan Phase 4.2). The composer's
   sign toggle used to refuse rather than pretend: the engine had detached
   signing but no RFC 3156 multipart/signed builder. It builds the canonical

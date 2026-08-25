@@ -63,13 +63,18 @@ func (s *Spring) Jump(v float32) {
 
 // Set retargets the spring toward v, capturing the current position and
 // velocity as the new anchor so an in-flight motion bends smoothly rather
-// than restarting. A no-op when already settled at v.
+// than restarting. A no-op when already settled at v. Reduce-motion jumps
+// straight to v: physics is motion, and reduce-motion means none.
 func (s *Spring) Set(v float32, now time.Time, c SpringConfig) {
 	if s.w == 0 {
 		s.SetConfig(c)
 	} else {
 		w, zeta := configFreq(c)
 		s.w, s.zeta = w, zeta
+	}
+	if !MotionEnabled() {
+		s.Jump(v)
+		return
 	}
 	if !s.moving && s.pos0 == v {
 		s.target = v
