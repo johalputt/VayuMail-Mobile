@@ -160,7 +160,7 @@ jobs:
           # script exited 0.
           strings ./gogio-hardened | grep -q 'android:allowBackup="false"' \
             || (echo "patched gogio does not carry allowBackup=false" && exit 1)
-          for perm in FOREGROUND_SERVICE DATA_SYNC POST_NOTIFICATIONS USE_BIOMETRIC; do
+          for perm in FOREGROUND_SERVICE FOREGROUND_SERVICE_DATA_SYNC POST_NOTIFICATIONS USE_BIOMETRIC; do
             strings ./gogio-hardened | grep -q "android.permission.$perm" \
               || (echo "patched gogio does not inject $perm" && exit 1)
           done
