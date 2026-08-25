@@ -4,15 +4,23 @@ import (
 	"image"
 	"image/color"
 	"strings"
+	"time"
 
 	"gioui.org/layout"
+	"gioui.org/op"
 	"gioui.org/op/clip"
+	"gioui.org/unit"
 	"gioui.org/widget"
 
+	"github.com/johalputt/VayuMail-Mobile/ui/anim"
 	"github.com/johalputt/VayuMail-Mobile/ui/state"
 	"github.com/johalputt/VayuMail-Mobile/ui/theme"
 	"github.com/johalputt/VayuMail-Mobile/ui/widgets"
 )
+
+// bubbleSpringDuration is the slide-and-settle a bubble plays when it
+// first appears (plan Phase 5.7).
+const bubbleSpringDuration = 260 * time.Millisecond
 
 // bubble draws one message. It reports live=true while the message still
 // has a running countdown, so the caller keeps requesting frames.
@@ -35,7 +43,29 @@ func (s *TalkRoom) bubble(gtx layout.Context, env *Env, th *theme.Theme, m state
 		// was sent — an un-armed message (sent, not yet read) shows no ring.
 		frac := widgets.RemainingFraction(m.ArmedAt, m.ExpiresAt, now)
 		live := !m.ExpiresAt.IsZero() && frac > 0
-		return s.contentBubble(gtx, th, m, frac), live
+
+		inner := func(gtx layout.Context) layout.Dimensions {
+			return s.contentBubble(gtx, th, m, frac)
+		}
+		// Spring-in: the first frames of a new bubble rise into place with
+		// an overshoot settle; reduce-motion snaps t to done immediately.
+		start, seen := s.bubbleIn[m.ID]
+		if !seen {
+			s.bubbleIn[m.ID] = now
+			start = now
+		}
+		if t := float32(now.Sub(start)) / float32(bubbleSpringDuration); t < 1 {
+			live = true // keep frames coming until the spring settles
+			dy := gtx.Dp(unit.Dp(14 * (1 - anim.OutBack(t))))
+			wrapped := inner
+			inner = func(gtx layout.Context) layout.Dimensions {
+				defer op.Offset(image.Pt(0, dy)).Push(gtx.Ops).Pop()
+				return wrapped(gtx)
+			}
+		} else {
+			delete(s.bubbleIn, m.ID)
+		}
+		return inner(gtx), live
 	}
 }
 

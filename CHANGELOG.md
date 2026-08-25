@@ -11,6 +11,18 @@ Held under Unreleased until the whole track is done, per the release rules.
 
 ### Added
 
+- **Send now plays a flight** (plan Phase 5.2). Tapping Send enqueues the
+  draft immediately, then a paper-plane accent arcs off-screen before the
+  composer closes — celebration after the data is already moving, never
+  latency for it.
+- **The inbox breathes while it loads** (plan Phase 5.5). A sync running
+  on an empty folder now shows pulsing row-shaped skeletons instead of
+  declaring "All clear" mid-flight, and a message arriving unread springs
+  its blue dot into view with an overshoot settle; marking it unread
+  again pops it once more.
+- **Chat bubbles spring in** (plan Phase 5.7). New Talk messages rise
+  into place with a small overshoot instead of popping into existence;
+  keyed per message so only arrivals move.
 - **Swipe-to-archive/delete now finishes what it started** (plan Phase
   5.3). Committing a swipe used to teleport the row away: offset reset to
   zero and the row vanished the moment the snapshot caught up, with no
