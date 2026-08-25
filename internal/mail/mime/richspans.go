@@ -93,7 +93,12 @@ func RichParagraphs(events []RichEvent) []RichPara {
 
 	flush := func() {
 		if cur != nil && len(cur.Runs) > 0 {
-			paras = append(paras, *cur)
+			// The cap is enforced at flush, the only place paragraphs are
+			// born: a document of single-character blocks cannot multiply
+			// past maxRichParas no matter how many events it produced.
+			if len(paras) < maxRichParas {
+				paras = append(paras, *cur)
+			}
 		}
 		cur = nil
 	}

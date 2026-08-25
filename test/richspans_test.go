@@ -170,4 +170,14 @@ func TestRichSpansLinkInvariant(t *testing.T) {
 	}
 }
 
-func itoa(n int) string { return strconv.Itoa(n) }
+// The paragraph cap is the presentation layer's own resource bound,
+// independent of the event cap upstream.
+func TestRichParagraphsCap(t *testing.T) {
+	var b strings.Builder
+	for i := 0; i < 5500; i++ {
+		b.WriteString("<p>x</p>")
+	}
+	if got := parasOf(t, b.String()); len(got) > 5000 {
+		t.Fatalf("paragraph cap not enforced: %d", len(got))
+	}
+}
