@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/mail/account"
@@ -94,12 +95,30 @@ func (m *Manager) execUpdateCredential(ctx context.Context, c UpdateCredentialCm
 // (plan Phase 4.1) apart from mailbox credentials in the keystore.
 const pgpKeyAliasPrefix = "pgppriv:"
 
-// PublishKeyFunc, when set, is called once after an on-device generated
-// public key is created so the server can publish it to WKD. The VayuPress
-// endpoint decision is still pending, so the default nil means generation
-// works but publication is skipped and logged — the account stays fully
-// functional, just not yet encryptable-to by others.
-var PublishKeyFunc func(ctx context.Context, email, armoredPublicKey string) error
+// PublishKey is called after an on-device generated public key is
+// created so the server can publish it to WKD. Guarded by a mutex
+// rather than being a bare package variable: the command loop reads it
+// while embedders (tests) may set it concurrently.
+type PublishKey func(ctx context.Context, email, armoredPublicKey string) error
+
+var (
+	publishKeyMu sync.RWMutex
+	publishKeyFn PublishKey // nil means publication is skipped (logged)
+)
+
+// SetPublishKeyFunc installs the WKD publication hook (nil restores the
+// skip default). Safe for concurrent use.
+func SetPublishKeyFunc(fn PublishKey) {
+	publishKeyMu.Lock()
+	defer publishKeyMu.Unlock()
+	publishKeyFn = fn
+}
+
+func currentPublishKey() PublishKey {
+	publishKeyMu.RLock()
+	defer publishKeyMu.RUnlock()
+	return publishKeyFn
+}
 
 // execSyncPrivateKey makes the account's own PGP private key available
 // on-device, delivered to the UI as a PrivateKeyEvent. Three tiers:
@@ -165,11 +184,11 @@ func (m *Manager) execSyncPrivateKey(ctx context.Context, c SyncPrivateKeyCmd) e
 		m.emit(PrivateKeyEvent{AccountID: c.AccountID, Email: acct.EmailAddress, Err: gerr})
 		return gerr
 	}
-	if PublishKeyFunc != nil {
+	if pk := currentPublishKey(); pk != nil {
 		go func(email, pub string) {
 			pctx, pcancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer pcancel()
-			if perr := PublishKeyFunc(pctx, email, pub); perr != nil {
+			if perr := pk(pctx, email, pub); perr != nil {
 				slog.Info("publish generated public key", "email", email, "err", perr)
 			}
 		}(acct.EmailAddress, string(pubArmored))

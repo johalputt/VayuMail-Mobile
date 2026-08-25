@@ -77,14 +77,14 @@ added:
 	// already returned.
 	type offer struct{ email, armoredPub string }
 	pubCh := make(chan offer, 4)
-	syncmanager.PublishKeyFunc = func(_ context.Context, email, armoredPub string) error {
+	syncmanager.SetPublishKeyFunc(func(_ context.Context, email, armoredPub string) error {
 		select {
 		case pubCh <- offer{email, armoredPub}:
 		default:
 		}
 		return nil
-	}
-	defer func() { syncmanager.PublishKeyFunc = nil }()
+	})
+	defer syncmanager.SetPublishKeyFunc(nil)
 
 	if err := mgr.Send(syncmanager.SyncPrivateKeyCmd{AccountID: added.AccountID}); err != nil {
 		t.Fatal(err)
