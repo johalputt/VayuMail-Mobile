@@ -25,6 +25,16 @@ Held under Unreleased until the whole track is done, per the release rules.
   the provisioner's admin listener). The module toolchain and both workflows
   now pin the patched release.
 
+### Changed
+
+- **Every GitHub Action is pinned by commit SHA and every lint tool by
+  version** (audit M8). Tags are mutable; a compromised upstream action or a
+  `@latest` tool release executes inside the trusted build — staticcheck
+  v0.8.1 already proved the failure mode by requiring go ≥ 1.26 mid-track.
+  Actions now resolve to immutable SHAs with the tag recorded in a comment;
+  govulncheck pins v1.7.0 and gosec pins v2.22.10 alongside staticcheck's
+  existing v0.7.0.
+
 ### Fixed
 
 - **The sealed store's atomic write failed on Windows whenever the target was
