@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -104,9 +105,18 @@ func buildOutbound(draft *smtpsend.Draft, opts SendOptions) ([]byte, error) {
 		}
 		return smtpsend.BuildPGPEncrypted(draft, ciphertext)
 	}
-	// Sign-only: full RFC 3156 multipart/signed is tracked in
-	// COMPLIANCE-TRACKER.md; v1.1 refuses rather than pretending.
-	return nil, errSignOnly
+	// Sign-only: RFC 3156 multipart/signed. The canonical part is built
+	// once and both signed and embedded, so receivers verify byte-identical
+	// content; see smtpsend.CanonicalSignedPart for the CRLF contract.
+	canonical, err := smtpsend.CanonicalSignedPart(draft)
+	if err != nil {
+		return nil, err
+	}
+	sig, err := opts.Keyring.Sign(canonical, draft.FromAddr)
+	if err != nil {
+		return nil, fmt.Errorf("sign as %s: %w", draft.FromAddr, err)
+	}
+	return smtpsend.BuildPGPSigned(draft, canonical, sig)
 }
 
 // Snooze hides a message until tomorrow morning (08:00 local).

@@ -14,7 +14,7 @@ does not) · **PENDING** (not started, deliberately deferred).
 | SMTP send + outbox | COMPLETE | STARTTLS/TLS, Bcc stripped on wire, retry ladder 1m·2ⁿ, dead-letter after 5 failures, tested |
 | MIME parse + render | COMPLETE | go-message; text/HTML/attachments, PGP/MIME detection, sanitized text-only HTML rendering (scripts/styles/iframes dropped), tested |
 | PGP encrypt/decrypt | COMPLETE | ProtonMail/go-crypto; encrypt+sign, decrypt+verify, detached signatures, keyring with trust levels, round-trip tested |
-| PGP sign-only outbound (RFC 3156 multipart/signed) | PENDING | Engine signs (detached) but the composer path refuses sign-without-encrypt rather than pretending; needs multipart/signed builder |
+| PGP sign-only outbound (RFC 3156 multipart/signed) | COMPLETE | `smtpsend.CanonicalSignedPart` renders the CRLF-canonical entity once; it is signed AND embedded verbatim, so receivers verify byte-identical content (`micalg=pgp-sha256`, crypto/rand boundary). Round-trip test parses the built message back apart and verifies the signature over the recovered bytes; tamper test proves one flipped byte breaks it. The extra CRLF before the part delimiter preserves the signed trailing newline through MIME parsing (RFC 3156 §5) |
 | SQLite store + FTS5 | COMPLETE | modernc.org/sqlite, WAL, versioned migrations, external-content FTS5 with triggers, injection-safe query builder, tested |
 | Setup-code provisioning (decode + verify) | COMPLETE | Ed25519 over canonical JSON, all six rejection paths fixture-tested (Rule 7); arrives by paste since v2.0.0 (ADR-0009) |
 | Setup-code token exchange | COMPLETE | Client tested against httptest; reference issuer ships in this repo (`cmd/vayumail-provision`, `GET /code`, ADR-0008/0009) |

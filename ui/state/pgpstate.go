@@ -12,10 +12,7 @@ import (
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 )
 
-var (
-	errNoKeys   = errors.New("no PGP keys configured")
-	errSignOnly = errors.New("sign-only mail is not supported yet — enable encryption too")
-)
+var errNoKeys = errors.New("no PGP keys configured")
 
 // Keyring returns the app keyring (loaded from the store at startup).
 func (s *AppState) Keyring() *pgp.Keyring { return s.keyring }

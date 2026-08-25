@@ -11,6 +11,15 @@ Held under Unreleased until the whole track is done, per the release rules.
 
 ### Added
 
+- **Sign-only outbound mail now ships** (plan Phase 4.2). The composer's
+  sign toggle used to refuse rather than pretend: the engine had detached
+  signing but no RFC 3156 multipart/signed builder. It builds the canonical
+  text/plain entity exactly once — signing those bytes and embedding them
+  verbatim, with the extra CRLF before the part delimiter that keeps the
+  signed trailing newline intact through MIME parsing — so receivers
+  verify byte-identical content. The round-trip test re-parses the built
+  message and verifies the signature over the recovered bytes; a one-byte
+  tamper breaks it.
 - **The master key is now wrapped by the device's secure hardware on
   Android** (audit H1, plan Phase 1). The `KeyProvider` seam existed for
   exactly this and had zero callers; it now has one. On Android the master
