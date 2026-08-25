@@ -64,16 +64,13 @@ func TestRichSpansBlocksQuotesAndBullets(t *testing.T) {
 	paras := parasOf(t, `<blockquote><p>q1</p><ul><li>one</li><li>two</li></ul>
 	<h2>head</h2></blockquote>`)
 
-	type want struct{ tag string; depth int; prefix string }
 	got := map[string]bool{}
 	for _, p := range paras {
-		key := p.Tag + "/" + itoa(p.Depth)
 		text := ""
 		for _, r := range p.Runs {
 			text += r.Text
 		}
-		got[key+"="+text] = true
-		_ = want{}
+		got[p.Tag+"/"+strconv.Itoa(p.Depth)+"="+text] = true
 	}
 	for _, need := range []string{
 		"p/1=q1",
