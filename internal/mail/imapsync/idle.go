@@ -180,7 +180,7 @@ func handleNotification(ctx context.Context, client *imapclient.Client, db *stor
 	case n.ExpungedSeq != 0:
 		return reconcileExpunged(ctx, client, db, accountID, folderName)
 	case n.FlagsChanged:
-		return refreshFlags(ctx, client, db, ev, accountID, folderName)
+		return RefreshFlags(ctx, client, db, ev, accountID, folderName)
 	default:
 		return deltaSync(ctx, client, db, ev, accountID, folderName)
 	}
@@ -203,7 +203,7 @@ func deltaSync(ctx context.Context, client *imapclient.Client, db *store.DB, ev 
 	return SyncFolder(ctx, client, db, ev, accountID, folder, selected)
 }
 
-// refreshFlags applies server-side flag changes to the local cache.
+// RefreshFlags applies server-side flag changes to the local cache.
 //
 // On a CONDSTORE server with a stored anchor, the fetch is
 // `UID FETCH 1:* (FLAGS) (CHANGEDSINCE <modseq>)` — only messages whose
@@ -213,7 +213,7 @@ func deltaSync(ctx context.Context, client *imapclient.Client, db *store.DB, ev 
 // Without CONDSTORE, or before any anchor exists, the full-flags scan runs
 // as before; its diff guard still keeps unchanged rows from paying an
 // UPDATE or emitting an event.
-func refreshFlags(ctx context.Context, client *imapclient.Client, db *store.DB, ev Events, accountID int64, folderName string) error {
+func RefreshFlags(ctx context.Context, client *imapclient.Client, db *store.DB, ev Events, accountID int64, folderName string) error {
 	folder, err := db.GetFolderByFullName(ctx, accountID, folderName)
 	if err != nil {
 		return err

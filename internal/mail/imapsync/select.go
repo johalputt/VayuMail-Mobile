@@ -11,7 +11,7 @@ import (
 // server advertises it (RFC 7162).
 //
 // The returned HighestModSeq is the anchor every delta decision hangs off:
-// without it the stored modseq stays zero and refreshFlags must re-read
+// without it the stored modseq stays zero and RefreshFlags must re-read
 // the flags of an entire mailbox on every unilateral notification —
 // O(mailbox) per flag change, per folder, per account (audit M3). With it,
 // CHANGEDSINCE narrows that fetch to exactly the messages that changed.
