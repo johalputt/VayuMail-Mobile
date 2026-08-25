@@ -5,9 +5,9 @@ package main
 import (
 	"gioui.org/app"
 	"gioui.org/io/event"
+	"gioui.org/x/haptic"
 
 	"github.com/johalputt/VayuMail-Mobile/ui/anim"
-	"gioui.org/x/haptic"
 )
 
 // feedView hands Android view lifecycle events to the buzzer; the view

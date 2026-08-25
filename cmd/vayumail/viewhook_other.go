@@ -4,9 +4,9 @@ package main
 
 import (
 	"gioui.org/io/event"
+	"gioui.org/x/haptic"
 
 	"github.com/johalputt/VayuMail-Mobile/ui/anim"
-	"gioui.org/x/haptic"
 )
 
 // feedView is a no-op off Android: the buzzer itself is already inert
