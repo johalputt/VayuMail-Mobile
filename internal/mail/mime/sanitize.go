@@ -47,6 +47,13 @@ const (
 	// events at all.
 	RichLinkOpen
 	RichLinkClose
+	// RichStyleOpen / RichStyleClose bracket styled text; Style names the
+	// aspect ("b", "i", "u", "code"). Pure formatting carriers carry no
+	// attributes, so they cannot smuggle anything.
+	RichStyleOpen
+	RichStyleClose
+	// RichBreak is an explicit line break inside the current paragraph.
+	RichBreak
 	// RichImage is an image placeholder: remote and data sources are NOT
 	// loaded in v1; Alt is all that survives.
 	RichImage
@@ -56,6 +63,7 @@ const (
 type RichEvent struct {
 	Kind  RichKind
 	Tag   string
+	Style string // style aspect for RichStyleOpen/Close ("b","i","u","code")
 	Href  string
 	Alt   string
 	Text  string
@@ -96,11 +104,11 @@ var richBlockTags = map[string]string{
 	"td": "td", "th": "td",
 }
 
-// inlineTags are permitted styling carriers; the UI decides how each maps
-// onto its span styles.
+// inlineTags unwrap transparently — permitted carriers of no styling the
+// renderer models. Handled style/link/break elements never reach this map
+// (their cases return first).
 var inlineTags = map[string]bool{
-	"b": true, "strong": true, "i": true, "em": true, "u": true,
-	"span": true, "code": true, "a": true, "sub": true, "sup": true,
+	"span": true, "sub": true, "sup": true,
 }
 
 // SanitizeHTML converts attacker-controlled HTML into the flat inert
@@ -166,6 +174,16 @@ func emitNode(out *[]RichEvent, n *html.Node, quoteDepth int) {
 		return
 	case "img":
 		appendEvent(out, RichEvent{Kind: RichImage, Alt: attrOf(n, "alt")})
+		return
+	case "b", "strong", "i", "em", "u", "code":
+		style := map[string]string{"b": "b", "strong": "b", "i": "i",
+			"em": "i", "u": "u", "code": "code"}[name]
+		appendEvent(out, RichEvent{Kind: RichStyleOpen, Style: style})
+		recurseChildren(out, n, quoteDepth)
+		appendEvent(out, RichEvent{Kind: RichStyleClose, Style: style})
+		return
+	case "br":
+		appendEvent(out, RichEvent{Kind: RichBreak})
 		return
 	}
 	if tag, ok := richBlockTags[name]; ok {
