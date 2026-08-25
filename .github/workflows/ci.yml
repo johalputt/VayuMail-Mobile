@@ -211,7 +211,7 @@ jobs:
       # the real number moves up — never lower it to make a build green.
       - name: Coverage floor
         run: |
-          FLOOR=58.0
+          FLOOR=58.5
           pct=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')
           echo "engine coverage: ${pct}% (floor ${FLOOR}%)"
           awk -v p="$pct" -v f="$FLOOR" 'BEGIN { exit !(p+0 >= f+0) }' || {
