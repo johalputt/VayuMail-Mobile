@@ -94,9 +94,9 @@ func runSession(ctx context.Context, cfg account.Config, cred func() (string, er
 	if err != nil {
 		return fmt.Errorf("imapsync: folder %q not in store: %w", folderName, err)
 	}
-	selected, err := client.Select(folderName, nil).Wait()
+	selected, err := SelectFolder(client, folderName)
 	if err != nil {
-		return fmt.Errorf("imapsync: select %q: %w", folderName, err)
+		return err
 	}
 	if err := SyncFolder(ctx, client, db, ev, accountID, folder, selected); err != nil {
 		return err
@@ -203,28 +203,43 @@ func deltaSync(ctx context.Context, client *imapclient.Client, db *store.DB, ev 
 	return SyncFolder(ctx, client, db, ev, accountID, folder, selected)
 }
 
-// refreshFlags re-reads the flags of every cached message in the folder
-// and applies changes locally. Flags-only FETCH is cheap even for large
-// folders; the answer is diffed against the cached flag state so only rows
-// that actually changed pay an UPDATE and emit a FlagChange event — a
-// single unilateral notification used to rewrite (and re-notify) the whole
-// mailbox.
+// refreshFlags applies server-side flag changes to the local cache.
+//
+// On a CONDSTORE server with a stored anchor, the fetch is
+// `UID FETCH 1:* (FLAGS) (CHANGEDSINCE <modseq>)` — only messages whose
+// flags changed since the last sync are returned, so a mailbox of fifty
+// thousand messages costs one round-trip and zero bytes when nothing
+// changed (audit M3). The anchor then advances to the highest MODSEQ seen.
+// Without CONDSTORE, or before any anchor exists, the full-flags scan runs
+// as before; its diff guard still keeps unchanged rows from paying an
+// UPDATE or emitting an event.
 func refreshFlags(ctx context.Context, client *imapclient.Client, db *store.DB, ev Events, accountID int64, folderName string) error {
 	folder, err := db.GetFolderByFullName(ctx, accountID, folderName)
 	if err != nil {
 		return err
 	}
+	condstore := client.Caps().Has(imap.CapCondStore) && folder.HighestModSeq > 0
+
 	cached, err := db.FolderFlags(ctx, folder.ID)
 	if err != nil {
 		return err
 	}
 	var uidSet imap.UIDSet
 	uidSet.AddRange(1, 0)
-	bufs, err := client.Fetch(uidSet, &imap.FetchOptions{UID: true, Flags: true}).Collect()
+	fetchOptions := &imap.FetchOptions{UID: true, Flags: true}
+	if condstore {
+		fetchOptions.ChangedSince = folder.HighestModSeq
+	}
+	bufs, err := client.Fetch(uidSet, fetchOptions).Collect()
 	if err != nil {
 		return fmt.Errorf("imapsync: refresh flags: %w", err)
 	}
+
+	maxModSeq := folder.HighestModSeq
 	for _, buf := range bufs {
+		if buf.ModSeq > maxModSeq {
+			maxModSeq = buf.ModSeq
+		}
 		uid := uint32(buf.UID)
 		next := store.FlagState{
 			Flags:     joinFlags(buf.Flags),
@@ -249,6 +264,14 @@ func refreshFlags(ctx context.Context, client *imapclient.Client, db *store.DB, 
 		}
 		if ev.FlagChange != nil {
 			ev.FlagChange(uid, splitFlags(msg.Flags))
+		}
+	}
+	if condstore && maxModSeq != folder.HighestModSeq {
+		// Advance the anchor so the next pass fetches nothing. The stored
+		// UIDVALIDITY is passed through untouched — this call must never
+		// invalidate the cache it just caught up.
+		if err := db.SetFolderSyncState(ctx, folder.ID, folder.UIDValidity, maxModSeq); err != nil {
+			return err
 		}
 	}
 	return nil

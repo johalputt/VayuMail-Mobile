@@ -41,8 +41,8 @@ func (m *Manager) execFetchAttachment(ctx context.Context, c FetchAttachmentCmd)
 	var path string
 	err = m.withCommandConn(ctx, ConfigFromStore(acct),
 		m.credFor(acct.KeystoreAlias), func(client *imapclient.Client) error {
-			if _, err := client.Select(folderName, nil).Wait(); err != nil {
-				return fmt.Errorf("syncmanager: select %q: %w", folderName, err)
+			if _, err := imapsync.SelectFolder(client, folderName); err != nil {
+				return err
 			}
 			raw, err := imapsync.FetchRaw(client, msg.UID)
 			if err != nil {

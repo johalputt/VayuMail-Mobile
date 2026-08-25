@@ -53,6 +53,17 @@ Held under Unreleased until the whole track is done, per the release rules.
 
 ### Changed
 
+- **Flag changes now sync as deltas instead of mailbox scans** (audit M3).
+  Every flags-changed notification used to re-read the flags of every
+  cached message in the folder — O(mailbox) per notification, per folder,
+  per account. Sessions now SELECT with CONDSTORE when the server
+  advertises it, and the refresh fetches `(FLAGS) (CHANGEDSINCE <anchor>)`,
+  so an unchanged fifty-thousand-message folder costs one round-trip and
+  zero payload bytes. The stored HIGHESTMODSEQ anchor advances from each
+  response's MODSEQ. Servers without CONDSTORE keep the previous
+  full-scan path, whose diff guard already skipped unchanged rows;
+  expunge reconciliation remains a deliberate inventory scan until
+  go-imap v2 exposes QRESYNC VANISHED.
 - **Every user command now reuses one authenticated IMAP connection per
   account** (audit M4). Archive, delete, flag, draft-append and sync-now
   each paid a full TCP + TLS + LOGIN round-trip before — on mobile radio

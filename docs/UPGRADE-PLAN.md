@@ -72,12 +72,21 @@ settings, cadence option, cold-boot re-verification) remain open.
 for every commandLoop execution (move/mark/delete/append/sync-now), with a
 90-second idle bound, retry-once on a suspect socket, and eviction on
 account removal and shutdown. Dial-counting loopback tests prove three
-commands now cost one connection. CONDSTORE/QRESYNC deltas remain open.
+commands now cost one connection. CONDSTORE flag deltas shipped the same
+week: `SelectFolder` enables CONDSTORE where advertised, and `refreshFlags`
+fetches `CHANGEDSINCE <anchor>` instead of scanning every UID, advancing
+the stored anchor from the returned MODSEQs. The CHANGEDSINCE branch is
+verified by review against RFC 7162 — no CONDSTORE-capable server exists in
+the offline test rig — while the fallback path is loopback-tested.
+Expunge reconciliation stays a deliberate UID inventory scan (QRESYNC
+VANISHED is not yet exposed by go-imap v2 beta). `COMPRESS=DEFLATE` is
+deferred: go-imap-compress targets v1 only and has no tagged release.
 
 | Task | Closes | Notes |
 |---|---|---|
-| CONDSTORE/QRESYNC deltas for flags + expunges (server-advertised) | M3 | HIGHESTMODSEQ already tracked in `folders`; falls back to inventory scan when server lacks QRESYNC |
+| ~~CONDSTORE/QRESYNC deltas~~ **DONE 2026-08 (flags)**: CONDSTORE-aware SELECT + CHANGEDSINCE refresh; expunges still inventory-scanned | M3 | HIGHESTMODSEQ anchor advances from FETCH MODSEQs; full-scan fallback preserved |
 | ~~Per-account command connection reuse~~ **DONE 2026-08**: `withCommandConn` in `connpool.go`; one persistent control connection per account, IDLE socket stays dedicated | M4 | Retry-once replaces reconnect/backoff for the pooled socket; `RunIDLE` untouched |
+| ~~COMPRESS=DEFLATE~~ **DEFERRED**: no v2-compatible module exists | — | Revisit if upstream ships an extension or a custom one is justified by profiling |
 | `COMPRESS=DEFLATE` on IMAP where advertised | — | Big win on body fetches over mobile radio |
 | Batched UID-fetch window sizing by folder size/bandwidth | — | Already delta-synced; tune chunk sizes |
 | Outbox SMTP connection reuse for multi-send bursts | — | Rare path; only if profiling justifies |

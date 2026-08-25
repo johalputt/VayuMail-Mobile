@@ -119,7 +119,7 @@ func (m *Manager) execMove(ctx context.Context, c MoveCmd) error {
 			if highest == 0 {
 				return nil
 			}
-			selected, err := client.Select(dest.FullName, nil).Wait()
+			selected, err := imapsync.SelectFolder(client, dest.FullName)
 			if err != nil {
 				return err
 			}
@@ -272,7 +272,7 @@ func (m *Manager) execSyncNow(ctx context.Context, c SyncNowCmd) error {
 				if ctx.Err() != nil {
 					return ctx.Err()
 				}
-				selected, err := client.Select(folder.FullName, nil).Wait()
+				selected, err := imapsync.SelectFolder(client, folder.FullName)
 				if err != nil {
 					slog.Warn("sync-now: select folder failed",
 						"folder", folder.FullName, "err", err)
@@ -330,7 +330,7 @@ func (m *Manager) execSyncFolder(ctx context.Context, c SyncFolderCmd) error {
 	cfg := ConfigFromStore(acct)
 	return m.withCommandConn(ctx, cfg, m.credFor(acct.KeystoreAlias),
 		func(client *imapclient.Client) error {
-			selected, err := client.Select(folder.FullName, nil).Wait()
+			selected, err := imapsync.SelectFolder(client, folder.FullName)
 			if err != nil {
 				return err
 			}

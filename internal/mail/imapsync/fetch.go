@@ -93,8 +93,8 @@ func SyncFolder(ctx context.Context, client *imapclient.Client, db *store.DB, ev
 // PGP/MIME "Version: 1" control part). The caller passes the message's
 // folder; the connection is positioned here.
 func RefetchMessage(ctx context.Context, client *imapclient.Client, db *store.DB, folder store.Folder, msg store.Message) error {
-	if _, err := client.Select(folder.FullName, nil).Wait(); err != nil {
-		return fmt.Errorf("imapsync: refetch select %s: %w", folder.FullName, err)
+	if _, err := SelectFolder(client, folder.FullName); err != nil {
+		return err
 	}
 	if err := fetchAndAttachBody(client, imap.UID(msg.UID), &msg); err != nil {
 		return err

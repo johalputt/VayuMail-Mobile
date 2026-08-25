@@ -36,8 +36,8 @@ func WithConnection(ctx context.Context, cfg account.Config, cred func() (string
 // MoveUID moves one message (by UID) from srcFolder to destFolder using
 // MOVE when available, falling back to COPY + STORE \Deleted + EXPUNGE.
 func MoveUID(client *imapclient.Client, srcFolder string, uid uint32, destFolder string) error {
-	if _, err := client.Select(srcFolder, nil).Wait(); err != nil {
-		return fmt.Errorf("imapsync: select %q: %w", srcFolder, err)
+	if _, err := SelectFolder(client, srcFolder); err != nil {
+		return err
 	}
 	uidSet := imap.UIDSetNum(imap.UID(uid))
 	if client.Caps().Has(imap.CapMove) {
@@ -60,8 +60,8 @@ func MoveUID(client *imapclient.Client, srcFolder string, uid uint32, destFolder
 
 // SetFlagUID sets or clears one flag on one message in folder.
 func SetFlagUID(client *imapclient.Client, folder string, uid uint32, flag string, set bool) error {
-	if _, err := client.Select(folder, nil).Wait(); err != nil {
-		return fmt.Errorf("imapsync: select %q: %w", folder, err)
+	if _, err := SelectFolder(client, folder); err != nil {
+		return err
 	}
 	return storeFlag(client, imap.UIDSetNum(imap.UID(uid)), imap.Flag(flag), set)
 }
@@ -70,8 +70,8 @@ func SetFlagUID(client *imapclient.Client, folder string, uid uint32, flag strin
 // delete used from Trash. Deleting from other folders should MoveUID to
 // Trash instead.
 func DeleteUID(client *imapclient.Client, folder string, uid uint32) error {
-	if _, err := client.Select(folder, nil).Wait(); err != nil {
-		return fmt.Errorf("imapsync: select %q: %w", folder, err)
+	if _, err := SelectFolder(client, folder); err != nil {
+		return err
 	}
 	uidSet := imap.UIDSetNum(imap.UID(uid))
 	if err := storeFlag(client, uidSet, imap.FlagDeleted, true); err != nil {
