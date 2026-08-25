@@ -41,7 +41,7 @@ does not) · **PENDING** (not started, deliberately deferred).
 | MIME parser fuzzing | COMPLETE | FuzzMIMEParse + FuzzHTMLToText, seeded, smoke-run in CI |
 | Constitution CI gate | COMPLETE | scripts/constitution.sh enforces all 10 rules mechanically on every push |
 | Reproducible release builds | COMPLETE | -trimpath, pinned toolchains, committed pure-Go icon generator |
-| Rich text compose | PENDING | Plain text only, by design; rich rendering of received HTML is a styled-text milestone |
+| Rich text compose | PARTIAL | Compose stays plain text by design. The RECEIVED-HTML milestone (plan Phase 6) now has its engine: `mime.SanitizeHTML` turns hostile markup into a flat inert event stream — allowlisted tags only, dangerous elements dropped with their subtrees, unknown tags unwrapped, links scheme-allowlisted to https/mailto with rejected anchors emitting no link events at all, images reduced to alt placeholders, input and output size caps. Enforcement tests + `FuzzSanitizedHTML` (href invariant checked per input) live in the measured package. Still open: the styled-span renderer consuming the stream behind a feature flag — deliberately unreleased until it survives a fuzzing season |
 | OAuth2 token refresh | PENDING | Static password (or one-shot OAuth token from provisioning) only |
 | JMAP protocol | PENDING | Deliberate own milestone — protocol-scale work, tracked for v2 |
 | F-Droid distribution | PENDING | Reproducible builds land the prerequisite; submission is an external process |
