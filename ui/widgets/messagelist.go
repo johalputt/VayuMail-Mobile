@@ -55,6 +55,12 @@ type MessageList struct {
 	entranceKey   string
 	entranceStart time.Time
 	entranceLive  bool
+
+	// popStart records when an unread message was first laid out, so its
+	// dot springs in instead of being there all along. Entries are dropped
+	// the moment the message reads; the map holds at most one entry per
+	// unread message ever seen this session.
+	popStart map[int64]time.Time
 }
 
 type rowState struct {
@@ -66,11 +72,16 @@ type rowState struct {
 	pressHad bool
 }
 
+// dotPopDuration is the unread-dot spring-in on first sight of an
+// unread message (plan Phase 5.5).
+const dotPopDuration = 320 * time.Millisecond
+
 // NewMessageList constructs a vertical list with swipe enabled.
 func NewMessageList() *MessageList {
 	return &MessageList{
-		list:  layout.List{Axis: layout.Vertical},
-		Swipe: true,
+		list:     layout.List{Axis: layout.Vertical},
+		Swipe:    true,
+		popStart: make(map[int64]time.Time),
 	}
 }
 
@@ -123,9 +134,28 @@ func (ml *MessageList) Layout(gtx layout.Context, th *theme.Theme, msgs []store.
 			gtx.Execute(op.InvalidateCmd{})
 		}
 
+		// Unread-dot spring (plan Phase 5.5): first layout of an unread
+		// message starts its pop; reading it removes the entry so a later
+		// re-mark-as-unread pops again. While any dot is mid-pop the list
+		// keeps requesting frames.
+		dotScale := float32(1)
+		if !msg.IsRead {
+			start, seen := ml.popStart[msg.ID]
+			if !seen {
+				start = now
+				ml.popStart[msg.ID] = start
+			}
+			if t := float32(now.Sub(start)) / float32(dotPopDuration); t < 1 {
+				dotScale = anim.OutBack(t)
+				gtx.Execute(op.InvalidateCmd{})
+			}
+		} else {
+			delete(ml.popStart, msg.ID)
+		}
+
 		rowWidget := func(gtx layout.Context) layout.Dimensions {
 			return row.click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return messageRow(gtx, th, msg, pt, rowText[msg.ID], now)
+				return messageRow(gtx, th, msg, pt, rowText[msg.ID], now, dotScale)
 			})
 		}
 
@@ -198,8 +228,9 @@ func (ml *MessageList) entranceWrap(w layout.Widget, i, count int) layout.Widget
 //	|bar| [16] [Avatar 40] [12] [ sender ... time / subject / preview ... dot ] [16]
 //
 // Unread rows carry a 3dp accent bar on the leading edge and full-strength
-// text; read rows recede to OnSurface/Subtle.
-func messageRow(gtx layout.Context, th *theme.Theme, msg store.Message, pressT float32, line string, now time.Time) layout.Dimensions {
+// text; read rows recede to OnSurface/Subtle. dotScale springs the unread
+// dot in on first sight (plan Phase 5.5); 1 means settled.
+func messageRow(gtx layout.Context, th *theme.Theme, msg store.Message, pressT float32, line string, now time.Time, dotScale float32) layout.Dimensions {
 	height := gtx.Dp(theme.RowHeight)
 	width := gtx.Constraints.Max.X
 	gtx.Constraints = layout.Exact(image.Pt(width, height))
@@ -229,7 +260,7 @@ func messageRow(gtx layout.Context, th *theme.Theme, msg store.Message, pressT f
 						}),
 						layout.Rigid(layout.Spacer{Height: theme.XS}.Layout),
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return rowLine2(gtx, th, msg, line)
+							return rowLine2(gtx, th, msg, line, dotScale)
 						}))
 				}))
 		})

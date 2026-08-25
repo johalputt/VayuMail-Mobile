@@ -12,6 +12,7 @@ import (
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
 	"gioui.org/text"
+	"gioui.org/unit"
 	"gioui.org/widget"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
@@ -57,7 +58,9 @@ func rowLine1(gtx layout.Context, th *theme.Theme, msg store.Message, now time.T
 // rowLine2: subject — snippet … [shield] [clip] [unread dot]. Subject and
 // snippet share one truncated line so every row keeps its fixed height.
 // line is precomputed (RowLine); an empty string falls back to building it.
-func rowLine2(gtx layout.Context, th *theme.Theme, msg store.Message, line string) layout.Dimensions {
+// dotScale animates the unread dot in (0 = invisible, 1 = full size, >1
+// overshooting briefly) when a message arrives unread (plan Phase 5.5).
+func rowLine2(gtx layout.Context, th *theme.Theme, msg store.Message, line string, dotScale float32) layout.Dimensions {
 	p := th.Palette
 	if line == "" {
 		line = RowLine(msg)
@@ -82,8 +85,11 @@ func rowLine2(gtx layout.Context, th *theme.Theme, msg store.Message, line strin
 	}
 	if !msg.IsRead {
 		trailing = append(trailing, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			d := gtx.Dp(unit.Dp(float32(theme.UnreadDotSize) * dotScale))
+			if d <= 0 {
+				return layout.Dimensions{}
+			}
 			return layout.Inset{Left: theme.SM}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				d := gtx.Dp(theme.UnreadDotSize)
 				defer clip.Ellipse{Max: image.Pt(d, d)}.Push(gtx.Ops).Pop()
 				paint.ColorOp{Color: p.Unread}.Add(gtx.Ops)
 				paint.PaintOp{}.Add(gtx.Ops)

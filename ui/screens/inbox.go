@@ -131,6 +131,12 @@ func (s *Inbox) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 			triggered, dims := s.pull.Layout(gtx, th, s.list.AtTop(), syncing,
 				func(gtx layout.Context) layout.Dimensions {
 					if len(visible) == 0 {
+						// Syncing with an empty folder: skeleton rows pulse
+						// where messages will land (plan Phase 5.5) instead of
+						// declaring "All clear" while work is in flight.
+						if syncing {
+							return widgets.SkeletonRows(gtx, th, 6)
+						}
 						return emptyState(gtx, th, widgets.IconEnvelope, true,
 							"All clear.", "New messages will appear here.")
 					}
