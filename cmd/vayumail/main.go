@@ -19,6 +19,7 @@ import (
 	"gioui.org/app"
 	"gioui.org/io/event"
 	"gioui.org/x/explorer"
+	"gioui.org/x/haptic"
 	xtheme "gioui.org/x/pref/theme"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/biometric"
@@ -29,6 +30,7 @@ import (
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
 	"github.com/johalputt/VayuMail-Mobile/platform/android"
 	"github.com/johalputt/VayuMail-Mobile/ui"
+	"github.com/johalputt/VayuMail-Mobile/ui/widgets"
 )
 
 func main() {
@@ -51,6 +53,12 @@ func run(window *app.Window) int {
 	// the boot loop before Run starts.
 	exp := explorer.NewExplorer(window)
 
+	// Haptics: one buzzer for the whole app (Android vibration over JNI;
+	// a silent no-op off Android). Like the file picker and biometrics it
+	// needs the Android view lifecycle, so it joins the event fan-out.
+	buzzer := haptic.NewBuzzer(window)
+	widgets.SetBuzzer(buzzer)
+
 	boot := ui.NewBoot(ctx, window)
 	// Both the file picker and the biometric backend need to observe the
 	// Android view lifecycle (BiometricPrompt needs the Activity behind the
@@ -61,6 +69,7 @@ func run(window *app.Window) int {
 	pushnotify.SetTapHandler(ui.SetMailNavTarget)
 	boot.SetEventListener(func(e event.Event) {
 		exp.ListenEvents(e)
+		feedView(buzzer, e)
 		biometric.HandleViewEvent(e)
 		pushnotify.HandleViewEvent(e)
 	})
@@ -68,6 +77,7 @@ func run(window *app.Window) int {
 
 	err := boot.Run()
 	cancel()
+	buzzer.Shutdown()
 	// The window is gone: release the Android foreground service pin so the
 	// notification disappears with the app. No-op on platforms without a
 	// registered controller.

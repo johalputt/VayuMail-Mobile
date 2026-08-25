@@ -140,6 +140,7 @@ func (s *Inbox) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 					return layout.Dimensions{Size: gtx.Constraints.Max}
 				})
 			if triggered {
+				widgets.Buzz() // confirm tick: pull committed (plan Phase 5.4)
 				env.State.SyncNow()
 			}
 			return dims

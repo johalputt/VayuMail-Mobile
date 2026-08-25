@@ -321,6 +321,7 @@ func (l *Lock) foldOutcome(gtx layout.Context, env *Env) {
 		// and no lockout) doesn't shake the pad — the user just uses the PIN.
 		if o.errMsg != "" || o.retryAfter > 0 {
 			l.shake.Start(gtx.Now, 400*time.Millisecond)
+			widgets.Buzz() // error buzz: wrong PIN or code (plan Phase 5.4)
 		}
 		return
 	}

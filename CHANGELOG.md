@@ -11,6 +11,13 @@ Held under Unreleased until the whole track is done, per the release rules.
 
 ### Added
 
+- **Haptic feedback** (plan Phase 5.4). A wrong PIN or verification code
+  now buzzes alongside the pad shake, and a committed pull-to-refresh
+  ticks as it fires — via the already-pinned gio-x haptic package
+  (Android vibration over JNI, a silent no-op everywhere else),
+  registered through the same view-lifecycle fan-out the file picker and
+  biometrics use. No new dependency; on-device feel pending the first
+  hardware run.
 - **Rich-HTML mail rendering ships behind an opt-in flag** (plan Phase 6).
   Settings gains "Rich HTML mail", off by default. With it on, HTML-only
   mail renders as styled text — bold, italic, underline, code in
