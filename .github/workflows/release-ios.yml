@@ -52,8 +52,10 @@ jobs:
         run: |
           TC=$(dirname "$(dirname "$(xcrun --find clang)")")
           sudo mkdir -p "$TC/usr/lib/arc"
+          echo 'int __vayu_arclite_stub;' > stub.c
+          clang -c stub.c -o stub.o
           for f in libarclite_iphonesimulator.a libarclite_iphoneos.a; do
-            ar rcs "$f" 2>/dev/null || true
+            ar rcs "$f" stub.o
             sudo cp "$f" "$TC/usr/lib/arc/$f"
           done
           ls -l "$TC/usr/lib/arc"
