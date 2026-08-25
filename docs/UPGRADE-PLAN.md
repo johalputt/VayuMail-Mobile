@@ -106,7 +106,7 @@ Already present and rare-in-Gio: physics springs, press-scale, staggered entranc
 
 1. **Thread-open hero transition**: tapped row expands into the thread header instead of a plain slide (row rect → screen-local morph over ~250 ms spring).
 2. **Send flight**: composer send triggers a paper-plane accent sweep + snackbar, outbox chip animates in.
-3. **Swipe exit completion** (tracker PARTIAL): committed archive/delete rows slide fully out with fade before list collapse.
+3. ~~**Swipe exit completion**~~ **DONE 2026-08**: committed rows slide fully out (200 ms OutQuad) while the slot collapses; exit keyed by message ID, parks zero-height for 2 s then self-restores on failed actions; headless state-machine tests.
 4. ~~**Haptics**~~ **DONE 2026-08**: gio-x/haptic buzzer (already-pinned x@0.10.2) through the view fan-out; wrong PIN buzzes with the pad shake, pull-commit ticks; swipe-threshold tick still open. On-device JNI verification pending like the rest of the platform row.
 5. **Skeleton shimmer** on first folder load instead of blank-then-pop; unread-dot spring pop on new mail.
 6. ~~**Reduce-motion setting**~~ **DONE 2026-08**: one atomic gate (`anim.SetMotionEnabled`) enforced inside all four primitives — `Anim`/`Bool`/`Spring`/`Stagger` snap instead of travel, persisted, in Settings, primitive-tested. System animator-scale auto-detect (JNI) still open.

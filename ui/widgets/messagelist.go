@@ -132,7 +132,8 @@ func (ml *MessageList) Layout(gtx layout.Context, th *theme.Theme, msgs []store.
 		var dims layout.Dimensions
 		if ml.Swipe {
 			var result SwipeResult
-			result, dims = row.swipe.Layout(gtx, th, ml.entranceWrap(rowWidget, i, len(msgs)))
+			result, dims = row.swipe.Layout(gtx, th, msg.ID,
+				ml.entranceWrap(rowWidget, i, len(msgs)))
 			switch result {
 			case SwipeArchive:
 				actions = append(actions, ListAction{Kind: ActionArchive, Message: msg})

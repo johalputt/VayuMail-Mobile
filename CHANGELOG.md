@@ -11,6 +11,13 @@ Held under Unreleased until the whole track is done, per the release rules.
 
 ### Added
 
+- **Swipe-to-archive/delete now finishes what it started** (plan Phase
+  5.3). Committing a swipe used to teleport the row away: offset reset to
+  zero and the row vanished the moment the snapshot caught up, with no
+  exit motion. Committed rows now slide fully out in their swipe
+  direction while their slot collapses — the list closes the gap instead
+  of popping — and if the backend action fails, the row restores itself
+  after a short hold rather than staying invisible forever.
 - **Haptic feedback** (plan Phase 5.4). A wrong PIN or verification code
   now buzzes alongside the pad shake, and a committed pull-to-refresh
   ticks as it fires — via the already-pinned gio-x haptic package
