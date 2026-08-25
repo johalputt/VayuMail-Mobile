@@ -72,11 +72,16 @@ added:
 		t.Fatalf("add account: %v", added.Err)
 	}
 
-	var pubCalls int
-	var pubEmail, pubArmored string
+	// Publication offers arrive on this channel from the engine's
+	// goroutine — no *testing.T calls there, they panic if the test has
+	// already returned.
+	type offer struct{ email, armoredPub string }
+	pubCh := make(chan offer, 4)
 	syncmanager.PublishKeyFunc = func(_ context.Context, email, armoredPub string) error {
-		pubCalls++
-		pubEmail, pubArmored = email, armoredPub
+		select {
+		case pubCh <- offer{email, armoredPub}:
+		default:
+		}
 		return nil
 	}
 	defer func() { syncmanager.PublishKeyFunc = nil }()
@@ -111,19 +116,25 @@ added:
 	}
 
 	// Publication was offered with the PUBLIC armor exactly once.
-	if pubCalls != 1 {
-		t.Fatalf("publish calls = %d, want 1", pubCalls)
+	select {
+	case o := <-pubCh:
+		if o.email != cfg.EmailAddress {
+			t.Fatalf("publish email = %q", o.email)
+		}
+		if !strings.Contains(o.armoredPub, "PUBLIC KEY BLOCK") {
+			t.Fatal("publish received something other than a public key")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("publication never offered")
 	}
-	if pubEmail != cfg.EmailAddress {
-		t.Fatalf("publish email = %q", pubEmail)
-	}
-	if !strings.Contains(pubArmored, "PUBLIC KEY BLOCK") {
-		t.Fatal("publish received something other than a public key")
+	select {
+	case o := <-pubCh:
+		t.Fatalf("unexpected second publication offer: %v", o)
+	default:
 	}
 
 	// Second invocation: served from the keystore — identical material,
 	// and publication is not offered twice.
-	before := pubCalls
 	if err := mgr.Send(syncmanager.SyncPrivateKeyCmd{AccountID: added.AccountID}); err != nil {
 		t.Fatal(err)
 	}
@@ -131,8 +142,10 @@ added:
 	if ev2.Err != nil || ev2.Armored != ev.Armored {
 		t.Fatal("keystore replay differed from the generated key")
 	}
-	if pubCalls != before {
-		t.Fatal("publication offered again on replay")
+	select {
+	case o := <-pubCh:
+		t.Fatalf("publication offered again on replay: %v", o)
+	default:
 	}
 }
 
