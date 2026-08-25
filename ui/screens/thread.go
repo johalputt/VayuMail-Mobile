@@ -90,6 +90,14 @@ func (s *Thread) Layout(gtx layout.Context, env *Env) layout.Dimensions {
 	for _, req := range s.view.DownloadRequests() {
 		env.State.DownloadAttachment(req.MessageID, req.Index)
 	}
+	// Links tapped inside rich bodies: the sanitizer only lets https and
+	// mailto through, so the URL is safe to hand over — copied, matching
+	// how the app hands off external targets.
+	for _, tap := range s.view.LinkTaps() {
+		gtx.Execute(clipboard.WriteCmd{Type: "text/plain",
+			Data: io.NopCloser(strings.NewReader(tap.URL))})
+		env.Snack.ShowInfo("Link copied")
+	}
 	return dims
 }
 

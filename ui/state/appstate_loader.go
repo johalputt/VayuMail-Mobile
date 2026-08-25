@@ -185,7 +185,7 @@ func (s *AppState) reload(ctx context.Context) {
 			// the result instead of tokenizing HTML per message per frame.
 			next.ThreadBodies = make(map[int64]widgets.MessageBody, len(next.Thread))
 			for _, m := range next.Thread {
-				next.ThreadBodies[m.ID] = widgets.ParseMessageBody(m)
+				next.ThreadBodies[m.ID] = widgets.ParseMessageBody(m, next.RichHTMLOn)
 			}
 		}
 	}

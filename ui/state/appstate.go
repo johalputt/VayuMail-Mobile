@@ -77,6 +77,9 @@ type Snapshot struct {
 	// true every ui/anim primitive snaps instead of gliding (default off,
 	// i.e. motion on, matching the system-wide default).
 	MotionReduced bool
+	// RichHTMLOn mirrors the experimental rich-HTML rendering opt-in.
+	// When true, HTML bodies parse into styled paragraphs; default off.
+	RichHTMLOn bool
 	// SelectedAccount is the account the folder list belongs to.
 	SelectedAccount int64
 }

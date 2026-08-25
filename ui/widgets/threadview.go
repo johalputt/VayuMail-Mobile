@@ -23,14 +23,25 @@ type MessageBody struct {
 	Quoted      string
 	Attachments []mime.AttachmentRef
 	HasBody     bool
+	// Rich carries sanitized styled paragraphs when the user opted into
+	// rich HTML and the message HAS an HTML part. When set, the view
+	// renders it instead of Visible/Quoted (the plain-text fallback).
+	Rich []mime.RichPara
 }
 
 // ParseMessageBody derives a message's display body once, off the frame
-// loop. The thread view renders the result verbatim.
-func ParseMessageBody(m store.Message) MessageBody {
+// loop. The thread view renders the result verbatim. rich selects the
+// flagged rich-HTML path for messages with an HTML part; plain text wins
+// whenever present, exactly as before.
+func ParseMessageBody(m store.Message, rich bool) MessageBody {
 	body := mime.DisplayText(m.BodyText, m.BodyHTML)
 	visible, quoted := splitQuoted(body)
 	mb := MessageBody{Visible: visible, Quoted: quoted, HasBody: visible != "" || quoted != ""}
+	if rich && strings.TrimSpace(m.BodyText) == "" && strings.TrimSpace(m.BodyHTML) != "" {
+		if paras := mime.RichParagraphs(mime.SanitizeHTML(m.BodyHTML)); len(paras) > 0 {
+			mb.Rich = paras
+		}
+	}
 	if m.Attachments != "" {
 		var refs []mime.AttachmentRef
 		if err := json.Unmarshal([]byte(m.Attachments), &refs); err == nil {
@@ -54,6 +65,7 @@ type ThreadView struct {
 
 	attachClicks map[int64][]widget.Clickable
 	requests     []DownloadRequest
+	rich         *RichBody
 }
 
 // DownloadRequest identifies one attachment the user tapped this frame.
@@ -69,8 +81,12 @@ func NewThreadView() *ThreadView {
 		shown:        make(map[int64]bool),
 		details:      make(map[int64]bool),
 		attachClicks: make(map[int64][]widget.Clickable),
+		rich:         NewRichBody(),
 	}
 }
+
+// LinkTaps drains hyperlinks the user tapped inside rich bodies.
+func (tv *ThreadView) LinkTaps() []LinkTap { return tv.rich.LinkTaps() }
 
 // DownloadRequests drains the attachment taps collected this frame.
 func (tv *ThreadView) DownloadRequests() []DownloadRequest {
@@ -94,7 +110,7 @@ func (tv *ThreadView) Layout(gtx layout.Context, th *theme.Theme, msgs []store.M
 		msg := msgs[i]
 		mb, ok := bodies[msg.ID]
 		if !ok {
-			mb = ParseMessageBody(msg)
+			mb = ParseMessageBody(msg, false)
 		}
 		return tv.message(gtx, th, &tv.toggles[i], &tv.detailBtns[i], msg, mb)
 	})
@@ -162,8 +178,12 @@ func (tv *ThreadView) message(gtx layout.Context, th *theme.Theme, toggle, dBtn 
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					return tv.attachmentChips(gtx, th, msg.ID, mb.Attachments)
 				}),
-				// Body text.
+				// Body text: rich styled paragraphs when the flagged path
+				// produced them, plain text otherwise.
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					if mb.Rich != nil {
+						return tv.rich.Layout(gtx, th, msg.ID, mb.Rich)
+					}
 					if visible == "" && quoted == "" {
 						return th.Label(gtx, theme.Body, th.Palette.Subtle,
 							"(message body not downloaded yet)", 0)

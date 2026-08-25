@@ -40,6 +40,7 @@ type Settings struct {
 	notifySwitch    widgets.Switch
 	previewSwitch   widgets.Switch
 	motionSwitch    widgets.Switch
+	richSwitch      widgets.Switch
 	syncAllBtn      widget.Clickable
 	autoWKDSwitch   widgets.Switch
 
@@ -315,6 +316,18 @@ func (s *Settings) syncRows(gtx layout.Context, env *Env, snap state.Snapshot) [
 					dims, toggled := s.motionSwitch.Layout(gtx, th, snap.MotionReduced)
 					if toggled {
 						env.State.SetMotionReduced(!snap.MotionReduced)
+					}
+					return dims
+				})
+			return inner(gtx)
+		},
+		func(gtx layout.Context) layout.Dimensions {
+			inner := s.item(th, "Rich HTML mail",
+				"Experimental: styled formatting in HTML mail; links still allowlisted",
+				func(gtx layout.Context) layout.Dimensions {
+					dims, toggled := s.richSwitch.Layout(gtx, th, snap.RichHTMLOn)
+					if toggled {
+						env.State.SetRichHTML(!snap.RichHTMLOn)
 					}
 					return dims
 				})

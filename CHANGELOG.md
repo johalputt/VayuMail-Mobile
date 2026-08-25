@@ -11,17 +11,22 @@ Held under Unreleased until the whole track is done, per the release rules.
 
 ### Added
 
-- **The rich-HTML engine lands** (plan Phase 6, first slice). Received
-  HTML is still rendered as text — nothing changes for users yet — but
-  the flagged rich renderer's trust boundary now exists and is enforced:
+- **Rich-HTML mail rendering ships behind an opt-in flag** (plan Phase 6).
+  Settings gains "Rich HTML mail", off by default. With it on, HTML-only
+  mail renders as styled text — bold, italic, underline, code in
+  monospace, heading scale, bulleted lists, indented quoted history,
+  tappable links. Plain-text parts still win whenever present.
+- **The rich pipeline's trust boundary** (the engine under that flag).
   `mime.SanitizeHTML` parses hostile markup into a flat stream of inert
-  span/block events. Only allowlisted tags survive; script, iframe, form
+  span/block events: only allowlisted tags survive; script, iframe, form
   and media elements vanish with their subtrees; unknown tags unwrap to
   their prose; anchors must be https or mailto or they stop being links;
   images become their alt text; input and output are size-capped so an
-  absurd document cannot hang a phone. The fuzz target checks the href
-  invariant on every input it invents. The styled renderer that consumes
-  this stream ships later, behind a flag, after a fuzzing season.
+  absurd document cannot hang a phone. `mime.RichParagraphs` folds the
+  events into styled runs (nesting via counters, validated hrefs on every
+  covered run, bullets, verbatim `<pre>` newlines). The fuzz target
+  checks the href invariant on every input it invents, at event level
+  AND at paragraph level.
 - **Reduce-motion accessibility setting** (plan Phase 5.6). One atomic
   gate now lives inside every animation primitive — `Anim`, `Bool`,
   `Spring`, and `Stagger` all check it before they move — so widgets can't

@@ -48,6 +48,11 @@ const (
 	// The gate itself lives in ui/anim and every primitive reads it, so
 	// elements snap instead of gliding. Consumed by the UI.
 	SettingReduceMotion = "reduce_motion"
+	// SettingRichHTML opts into experimental rich-HTML mail rendering
+	// ("1" = on). Default OFF: the sanitizer is hardened and fuzzed, but
+	// the plan keeps styled rendering flagged until it survives a full
+	// fuzzing season. Consumed by the UI.
+	SettingRichHTML = "rich_html"
 )
 
 // GetSetting returns the stored value for key, or "" if unset.

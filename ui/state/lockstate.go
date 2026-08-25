@@ -35,6 +35,12 @@ func (s *AppState) loadPrefs(ctx context.Context, next *Snapshot) {
 		next.MotionReduced = true
 	}
 	anim.SetMotionEnabled(!next.MotionReduced)
+	// Rich HTML is opt-in (default off): the sanitizer is hardened, but
+	// the plan keeps styled rendering behind its flag deliberately.
+	next.RichHTMLOn = false
+	if v, err := s.db.GetSetting(ctx, store.SettingRichHTML); err == nil && v == "1" {
+		next.RichHTMLOn = true
+	}
 	if s.lock != nil {
 		next.AppLockEnabled = s.lock.Enabled(ctx)
 		next.TOTPEnabled = s.lock.TOTPEnabled(ctx)
@@ -116,6 +122,23 @@ func (s *AppState) SetMotionReduced(reduced bool) {
 			v = "1"
 		}
 		if err := s.db.SetSetting(ctx, store.SettingReduceMotion, v); err != nil {
+			s.notify("Could not save setting")
+			return
+		}
+		s.Refresh()
+	}()
+}
+
+// SetRichHTML persists the rich-HTML rendering opt-in.
+func (s *AppState) SetRichHTML(on bool) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		v := "0"
+		if on {
+			v = "1"
+		}
+		if err := s.db.SetSetting(ctx, store.SettingRichHTML, v); err != nil {
 			s.notify("Could not save setting")
 			return
 		}

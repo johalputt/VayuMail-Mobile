@@ -119,9 +119,9 @@ Already present and rare-in-Gio: physics springs, press-scale, staggered entranc
 Text-only rendering is the strongest sanitizer but a UX ceiling. Milestone design:
 
 - ~~Strict allowlist sanitizer~~ **ENGINE DONE 2026-08**: `mime.SanitizeHTML` — flat inert event stream, allowlisted tags, dangerous subtrees dropped, unknown tags unwrapped, hrefs scheme-allowlisted (https/mailto only; rejected anchors emit no link events), images alt-only in v1, input/output caps. Enforcement tests + `FuzzSanitizedHTML` in `./test/`. Remaining: styled-span renderer consuming the stream + feature flag flip.
-- Render through the existing text-shaping pipeline as styled spans (Gio text already supports per-span styling) — not a WebView, keeping the lightness pillar.
+- ~~Render through the existing text-shaping pipeline as styled spans~~ **DONE 2026-08**: `widgets.RichBody` over gio-x richtext (already-pinned x@v0.10.2 — no WebView); headings/bold/italic/underline/code/lists/quote-indent/tappable links; link taps copied, never auto-opened.
 - Fuzz target `FuzzSanitizedHTML` in CI smoke alongside MIME/HTMLToText — seeds run with every CI test pass.
-- Feature-flagged until it has survived a fuzzing season.
+- ~~Feature-flagged~~ **shipped flagged**: `rich_html` setting, default OFF until the pipeline survives a fuzzing season.
 
 ## Phase 7 — Distribution & assurance
 
