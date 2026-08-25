@@ -128,7 +128,7 @@ Text-only rendering is the strongest sanitizer but a UX ceiling. Milestone desig
 1. Play internal track live via existing workflow (secrets + upload key); staged rollout policy documented.
 2. iOS pipeline: macOS runner, Keychain bridge (Phase 1), APNs relay decision point; IPA job mirrors release.yml.
 3. Coverage floor raised as packages move (floor mechanics already exist and can bite); add avatar + sanitizer fuzz targets to the smoke job.
-4. Reproducible-build note for F-Droid submission (prerequisite rows already COMPLETE).
+4. ~~Reproducible-build note~~ **DONE 2026-08**: `docs/REPRODUCIBLE-BUILDS.md` — what is already deterministic (pinned toolchains/actions/gogio, -trimpath, single version source, jars built from source, committed test keystore), the honest gap (zip timestamps → not yet byte-identical), the closing steps, and the F-Droid checklist.
 
 ## Sequencing & effort
 
