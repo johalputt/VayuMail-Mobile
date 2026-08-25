@@ -81,7 +81,9 @@ added:
 	}
 	defer func() { syncmanager.PublishKeyFunc = nil }()
 
-	mgr.Send(syncmanager.SyncPrivateKeyCmd{AccountID: added.AccountID})
+	if err := mgr.Send(syncmanager.SyncPrivateKeyCmd{AccountID: added.AccountID}); err != nil {
+		t.Fatal(err)
+	}
 	ev := waitPrivateEvent(t, mgr)
 	if ev.Err != nil {
 		t.Fatalf("sync private key: %v", ev.Err)
@@ -122,7 +124,9 @@ added:
 	// Second invocation: served from the keystore — identical material,
 	// and publication is not offered twice.
 	before := pubCalls
-	mgr.Send(syncmanager.SyncPrivateKeyCmd{AccountID: added.AccountID})
+	if err := mgr.Send(syncmanager.SyncPrivateKeyCmd{AccountID: added.AccountID}); err != nil {
+		t.Fatal(err)
+	}
 	ev2 := waitPrivateEvent(t, mgr)
 	if ev2.Err != nil || ev2.Armored != ev.Armored {
 		t.Fatal("keystore replay differed from the generated key")
