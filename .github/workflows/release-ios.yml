@@ -50,15 +50,15 @@ jobs:
       # needed them; an empty archive satisfies the link.
       - name: Stub removed libarclite archives
         run: |
-          TC=$(dirname "$(dirname "$(xcrun --find clang)")")
-          sudo mkdir -p "$TC/usr/lib/arc"
+          USR=$(dirname "$(dirname "$(xcrun --find clang)")")
+          sudo mkdir -p "$USR/lib/arc"
           echo 'int __vayu_arclite_stub;' > stub.c
           clang -c stub.c -o stub.o
           for f in libarclite_iphonesimulator.a libarclite_iphoneos.a; do
             ar rcs "$f" stub.o
-            sudo cp "$f" "$TC/usr/lib/arc/$f"
+            sudo cp "$f" "$USR/lib/arc/$f"
           done
-          ls -l "$TC/usr/lib/arc"
+          ls -l "$USR/lib/arc"
 
       - name: Determine version
         id: ver
