@@ -15,6 +15,7 @@ import (
 	"git.wow.st/gmp/jni"
 
 	appcrypto "github.com/johalputt/VayuMail-Mobile/internal/crypto"
+	"github.com/johalputt/VayuMail-Mobile/internal/push"
 )
 
 // The two helper classes compiled into VayuPlatform.jar by release.yml
@@ -46,11 +47,8 @@ func withClass(name string, fn func(env jni.Env, cls jni.Class) error) error {
 func wrapOnDevice(plain []byte) (string, error) {
 	var out string
 	err := withClass(keystoreClass, func(env jni.Env, cls jni.Class) error {
-		m, err := jni.GetStaticMethodID(env, cls, "wrap",
+		m := jni.GetStaticMethodID(env, cls, "wrap",
 			"(Landroid/content/Context;[B)Ljava/lang/String;")
-		if err != nil {
-			return err
-		}
 		arr := jni.NewByteArray(env, plain)
 		defer jni.DeleteLocalRef(env, jni.Object(arr))
 		obj, err := jni.CallStaticObjectMethod(env, cls, m,
@@ -73,11 +71,8 @@ func wrapOnDevice(plain []byte) (string, error) {
 func unwrapOnDevice(sealed string) ([]byte, error) {
 	var out []byte
 	err := withClass(keystoreClass, func(env jni.Env, cls jni.Class) error {
-		m, err := jni.GetStaticMethodID(env, cls, "unwrap",
+		m := jni.GetStaticMethodID(env, cls, "unwrap",
 			"(Landroid/content/Context;Ljava/lang/String;)[B")
-		if err != nil {
-			return err
-		}
 		obj, err := jni.CallStaticObjectMethod(env, cls, m,
 			jni.Value(app.AppContext()),
 			jni.Value(jni.JavaString(env, sealed)))
@@ -102,11 +97,8 @@ func unwrapOnDevice(sealed string) ([]byte, error) {
 func HardwareKeystore(dataDir string) appcrypto.KeyProvider {
 	ok := false
 	err := withClass(keystoreClass, func(env jni.Env, cls jni.Class) error {
-		m, err := jni.GetStaticMethodID(env, cls, "probe",
+		m := jni.GetStaticMethodID(env, cls, "probe",
 			"(Landroid/content/Context;)Z")
-		if err != nil {
-			return err
-		}
 		v, err := jni.CallStaticBooleanMethod(env, cls, m,
 			jni.Value(app.AppContext()))
 		ok = bool(v)
@@ -126,22 +118,16 @@ type fgSvc struct{}
 
 func (fgSvc) StartService() error {
 	return withClass(serviceClass, func(env jni.Env, cls jni.Class) error {
-		m, err := jni.GetStaticMethodID(env, cls, "start",
+		m := jni.GetStaticMethodID(env, cls, "start",
 			"(Landroid/content/Context;)V")
-		if err != nil {
-			return err
-		}
 		return jni.CallStaticVoidMethod(env, cls, m, jni.Value(app.AppContext()))
 	})
 }
 
 func (fgSvc) StopService() error {
 	return withClass(serviceClass, func(env jni.Env, cls jni.Class) error {
-		m, err := jni.GetStaticMethodID(env, cls, "stop",
+		m := jni.GetStaticMethodID(env, cls, "stop",
 			"(Landroid/content/Context;)V")
-		if err != nil {
-			return err
-		}
 		return jni.CallStaticVoidMethod(env, cls, m, jni.Value(app.AppContext()))
 	})
 }

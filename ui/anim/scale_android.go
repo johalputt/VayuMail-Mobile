@@ -28,10 +28,7 @@ const animatorScaleSetting = "animator_duration_scale"
 func SystemAnimatorScale() float32 {
 	var out float32 = 1.0
 	err := jni.Do(jni.JVMFor(app.JavaVM()), func(env jni.Env) error {
-		cls, err := jni.FindClass(env, "android/provider/Settings$Global")
-		if err != nil {
-			return err
-		}
+		cls := jni.FindClass(env, "android/provider/Settings$Global")
 		resolver, err := jni.CallObjectMethod(
 			env, jni.Object(app.AppContext()),
 			jni.GetMethodID(env, jni.GetObjectClass(env, jni.Object(app.AppContext())),

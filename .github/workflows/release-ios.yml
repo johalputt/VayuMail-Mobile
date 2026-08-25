@@ -44,6 +44,20 @@ jobs:
       - name: Install gogio (pinned)
         run: go install gioui.org/cmd/gogio@v0.10.0
 
+      # gogio hardcodes -mios-*-version-min=13 and Go's ObjC bits pass
+      # -fobjc-arc, which makes ld ask for libarclite_* — libraries Apple
+      # deleted from every Xcode since 14. Modern deployment targets never
+      # needed them; an empty archive satisfies the link.
+      - name: Stub removed libarclite archives
+        run: |
+          TC=$(dirname "$(dirname "$(xcrun --find clang)")")
+          sudo mkdir -p "$TC/usr/lib/arc"
+          for f in libarclite_iphonesimulator.a libarclite_iphoneos.a; do
+            ar rcs "$f" 2>/dev/null || true
+            sudo cp "$f" "$TC/usr/lib/arc/$f"
+          done
+          ls -l "$TC/usr/lib/arc"
+
       - name: Determine version
         id: ver
         # macOS has no GNU grep -P; sed works everywhere.
