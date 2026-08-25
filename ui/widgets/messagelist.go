@@ -29,9 +29,12 @@ const (
 )
 
 // ListAction is one user interaction with a message row this frame.
+// Open actions carry From: the tapped row's screen-local rectangle this
+// frame, so the navigation can grow the thread out of it (plan Phase 5.1).
 type ListAction struct {
 	Kind    ListActionKind
 	Message store.Message
+	From    image.Rectangle
 }
 
 // Entrance cascade: only the first screenful animates, and only once
@@ -70,6 +73,10 @@ type rowState struct {
 	// on/off fill, so a tap leaves a soft highlight that settles smoothly.
 	pressT   anim.Bool
 	pressHad bool
+
+	// rect is the row's screen-local bounds from the last frame — the
+	// seed for the thread-open hero morph.
+	rect image.Rectangle
 }
 
 // dotPopDuration is the unread-dot spring-in on first sight of an
@@ -115,12 +122,21 @@ func (ml *MessageList) Layout(gtx layout.Context, th *theme.Theme, msgs []store.
 	var actions []ListAction
 	now := gtx.Now
 
+	// rowRectAt maps a row index to its list-local top edge this frame:
+	// the first visible child sits at Position.Offset (negative when
+	// partially scrolled off), the rest follow at fixed row height.
+	rowRectAt := func(i, h int) image.Rectangle {
+		top := RowTop(ml.list.Position.First, ml.list.Position.Offset, i, gtx.Dp(theme.RowHeight))
+		return image.Rect(0, top, gtx.Constraints.Max.X, top+h)
+	}
+
 	ml.list.Layout(gtx, len(msgs), func(gtx layout.Context, i int) layout.Dimensions {
 		msg := msgs[i]
 		row := &ml.rows[i]
 
 		if row.click.Clicked(gtx) {
-			actions = append(actions, ListAction{Kind: ActionOpen, Message: msg})
+			actions = append(actions,
+				ListAction{Kind: ActionOpen, Message: msg, From: row.rect})
 		}
 
 		// Fade the press tint rather than snapping it on/off.
@@ -172,11 +188,13 @@ func (ml *MessageList) Layout(gtx layout.Context, th *theme.Theme, msgs []store.
 			case SwipeTap:
 				// The drag gesture consumes taps before the row's Clickable,
 				// so a tap arrives here as SwipeTap — treat it as open.
-				actions = append(actions, ListAction{Kind: ActionOpen, Message: msg})
+				actions = append(actions,
+					ListAction{Kind: ActionOpen, Message: msg, From: row.rect})
 			}
 		} else {
 			dims = ml.entranceWrap(rowWidget, i, len(msgs))(gtx)
 		}
+		row.rect = rowRectAt(i, dims.Size.Y)
 
 		sepGtx := gtx
 		sepGtx.Constraints.Min = image.Pt(gtx.Constraints.Max.X, 0)
@@ -221,6 +239,15 @@ func (ml *MessageList) entranceWrap(w layout.Widget, i, count int) layout.Widget
 		call.Add(gtx.Ops)
 		return dims
 	}
+}
+
+// RowTop is the list-local y of row i given the list's scroll position:
+// First visible index, Offset of that child from the viewport top
+// (negative while partially scrolled off), and the fixed row height in px.
+// It seeds the thread-open hero rect (plan Phase 5.1) and is a plain
+// function so the geometry contract is enforceable headlessly.
+func RowTop(first, offset, i, rowH int) int {
+	return offset + (i-first)*rowH
 }
 
 // messageRow draws one fixed-height row:

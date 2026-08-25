@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gioui.org/app"
+	"gioui.org/f32"
 	"gioui.org/io/key"
 	"gioui.org/io/system"
 	"gioui.org/layout"
@@ -24,6 +25,7 @@ import (
 	appcrypto "github.com/johalputt/VayuMail-Mobile/internal/crypto"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 	"github.com/johalputt/VayuMail-Mobile/internal/syncmanager"
+	"github.com/johalputt/VayuMail-Mobile/ui/anim"
 	"github.com/johalputt/VayuMail-Mobile/ui/screens"
 	"github.com/johalputt/VayuMail-Mobile/ui/state"
 	"github.com/johalputt/VayuMail-Mobile/ui/theme"
@@ -54,6 +56,11 @@ type UI struct {
 	avatars   *avatarimg.Cache
 	avatarSig string // account-domain signature, to refresh the avatar allow-list on change
 	lastFrame time.Time
+
+	// Hero morph state (plan Phase 5.1): the armed row rect while a
+	// thread push is playing its container transform.
+	heroActive bool
+	heroRect   image.Rectangle
 }
 
 // New wires the UI over an already-started sync manager. dark is the
@@ -225,9 +232,42 @@ func (ui *UI) layout(gtx layout.Context) {
 	entering, leaving, progress, done := ui.nav.Transition(gtx.Now)
 	width := gtx.Constraints.Max.X
 
+	// Hero container-transform (plan Phase 5.1): when a thread was opened
+	// from a tapped row, the push plays as an expanding rounded container
+	// from the row's rect instead of the horizontal slide. The parent
+	// stays put underneath — the list does not retreat while its row is
+	// becoming the thread.
+	if done || !entering {
+		ui.heroActive = false
+	}
+	if entering && !done {
+		if rect, ok := ui.nav.TakeHero(); ok {
+			ui.heroRect = rect
+			ui.heroActive = true
+		}
+	}
+
 	switch {
 	case done:
 		ui.layoutScreen(gtx, current)
+	case entering && ui.heroActive && anim.MotionEnabled() && current == state.ScreenThread:
+		e := 1 - (1-progress)*(1-progress)*(1-progress) // ease-out cubic
+		full := image.Rect(0, 0, gtx.Constraints.Max.X, gtx.Constraints.Max.Y)
+		cur := image.Rectangle{
+			Min: lerpPt(ui.heroRect.Min, full.Min, e),
+			Max: lerpPt(ui.heroRect.Max, full.Max, e),
+		}
+		ui.layoutScreen(gtx, ui.nav.Under()) // parent holds still
+
+		sx := float32(cur.Dx()) / float32(full.Dx())
+		sy := float32(cur.Dy()) / float32(full.Dy())
+		tr := (f32.Affine2D{}.Scale(f32.Point{}, f32.Point{X: sx, Y: sy})).
+			Offset(f32.Point{X: float32(cur.Min.X), Y: float32(cur.Min.Y)})
+		radius := int(float32(gtx.Dp(theme.PillRadius)) * (1 - e))
+		defer clip.UniformRRect(cur, radius).Push(gtx.Ops).Pop()
+		defer op.Affine(tr).Push(gtx.Ops).Pop()
+		ui.layoutScreen(gtx, current)
+		gtx.Execute(op.InvalidateCmd{})
 	case entering:
 		// Push: the parent recedes with a slight parallax and dim while
 		// the new screen slides in from the right.
@@ -249,6 +289,14 @@ func (ui *UI) layout(gtx layout.Context) {
 	overlayGtx.Constraints.Min = gtx.Constraints.Max
 	ui.env.Dialog.Layout(overlayGtx, ui.th)
 	ui.env.Snack.Layout(overlayGtx, ui.th)
+}
+
+// lerpPt interpolates two points by e in [0,1] — the hero morph's rect
+// corners travel on these straight lines.
+func lerpPt(a, b image.Point, e float32) image.Point {
+	return image.Pt(
+		int(float32(a.X)+(float32(b.X-a.X))*e),
+		int(float32(a.Y)+(float32(b.Y-a.Y))*e))
 }
 
 // handleBackKey maps the Android back button (and Escape on desktop)

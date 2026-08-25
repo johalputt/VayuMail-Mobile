@@ -1,6 +1,7 @@
 package state
 
 import (
+	"image"
 	"time"
 )
 
@@ -45,6 +46,29 @@ type Nav struct {
 	animating bool
 	// leaving is the screen sliding out during a pop.
 	leaving Screen
+
+	// Hero launch (plan Phase 5.1): a tapped list row's screen-local
+	// rect, armed by the screen right before Push so the frame loop can
+	// grow the destination out of it instead of sliding. Consumed once.
+	heroArmed bool
+	heroRect  image.Rectangle
+}
+
+// ArmHero records the source rectangle for the next Push's container
+// morph. Harmless if the push never happens: Pop and Replace disarm it.
+func (n *Nav) ArmHero(rect image.Rectangle) {
+	n.heroRect = rect
+	n.heroArmed = true
+}
+
+// TakeHero consumes the armed rect: true exactly once per arm, false
+// after any Pop or a second call.
+func (n *Nav) TakeHero() (image.Rectangle, bool) {
+	if !n.heroArmed {
+		return image.Rectangle{}, false
+	}
+	n.heroArmed = false
+	return n.heroRect, true
 }
 
 // NewNav starts on the given root screen.
@@ -84,6 +108,7 @@ func (n *Nav) Push(s Screen, now time.Time) {
 // false at the stack root (the platform back action should then exit or
 // background the app).
 func (n *Nav) Pop(now time.Time) bool {
+	n.heroArmed = false // a pop between arm and consume kills the morph
 	if len(n.stack) <= 1 {
 		return false
 	}
@@ -101,6 +126,7 @@ func (n *Nav) Replace(root Screen) {
 	n.stack = n.stack[:0]
 	n.stack = append(n.stack, root)
 	n.animating = false
+	n.heroArmed = false // nothing slid, so no rect can be trusted
 }
 
 // Transition reports the in-flight animation: which screen is entering

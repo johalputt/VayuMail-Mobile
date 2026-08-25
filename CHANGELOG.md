@@ -11,6 +11,12 @@ Held under Unreleased until the whole track is done, per the release rules.
 
 ### Added
 
+- **Threads grow out of the row you tapped** (plan Phase 5.1). Opening
+  a message plays a container-transform: an expanding rounded container
+  rises out of the tapped row's exact on-screen position while the list
+  holds still beneath it, replacing the sideways slide for this one
+  transition. Geometry capture and the once-only hand-off are enforced
+  by headless tests; reduce-motion keeps the plain slide.
 - **Send now plays a flight** (plan Phase 5.2). Tapping Send enqueues the
   draft immediately, then a paper-plane accent arcs off-screen before the
   composer closes — celebration after the data is already moving, never
@@ -21,8 +27,9 @@ Held under Unreleased until the whole track is done, per the release rules.
   its blue dot into view with an overshoot settle; marking it unread
   again pops it once more.
 - **Chat bubbles spring in** (plan Phase 5.7). New Talk messages rise
-  into place with a small overshoot instead of popping into existence;
-  keyed per message so only arrivals move.
+  into place with a small overshoot instead of popping into existence,
+  keyed per message so only arrivals move — and the read-receipt check
+  springs in beside "Read · burning" the moment the receipt lands.
 - **Swipe-to-archive/delete now finishes what it started** (plan Phase
   5.3). Committing a swipe used to teleport the row away: offset reset to
   zero and the row vanished the moment the snapshot caught up, with no

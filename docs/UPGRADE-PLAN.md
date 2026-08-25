@@ -104,13 +104,13 @@ deferred: go-imap-compress targets v1 only and has no tagged release.
 
 Already present and rare-in-Gio: physics springs, press-scale, staggered entrances, parallax push/pop, pull-to-refresh, swipe reveals, dialog enter/exit, zero idle frames. Add, in order:
 
-1. **Thread-open hero transition**: tapped row expands into the thread header instead of a plain slide (row rect → screen-local morph over ~250 ms spring).
+1. ~~**Thread-open hero transition**~~ **DONE 2026-08**: opening a thread from a tapped row plays a container-transform — an expanding rounded container grows out of the row's on-screen rect (ease-out cubic over the existing 200 ms push) while the list holds still underneath; rect capture is enforced by headless geometry + nav-contract tests; reduce-motion keeps the plain slide. Pop stays the standard slide-out.
 2. ~~**Send flight**~~ **DONE 2026-08**: the draft is enqueued first, then a paper-plane accent arcs off-screen (380 ms, fades over its last third) before the composer resets and pops; reduce-motion snaps it done instantly. The "Sending…" undo snackbar already existed.
 3. ~~**Swipe exit completion**~~ **DONE 2026-08**: committed rows slide fully out (200 ms OutQuad) while the slot collapses; exit keyed by message ID, parks zero-height for 2 s then self-restores on failed actions; headless state-machine tests.
 4. ~~**Haptics**~~ **DONE 2026-08**: gio-x/haptic buzzer (already-pinned x@0.10.2) through the view fan-out; wrong PIN buzzes with the pad shake, pull-commit ticks; swipe-threshold tick still open. On-device JNI verification pending like the rest of the platform row.
 5. ~~**Skeleton shimmer / unread-dot pop**~~ **DONE 2026-08**: syncing-with-empty-folder shows pulsing row-shaped skeletons instead of declaring "All clear"; unread dots spring in on first sight of an unread message (OutBack overshoot, per-ID tracking, re-pops on mark-unread).
 6. ~~**Reduce-motion setting**~~ **DONE 2026-08**: one atomic gate (`anim.SetMotionEnabled`) enforced inside all four primitives — `Anim`/`Bool`/`Spring`/`Stagger` snap instead of travel, persisted, in Settings, primitive-tested. System animator-scale auto-detect (JNI) still open.
-7. Talk room polish: ~~bubble spring-in~~ **DONE 2026-08** — new bubbles rise into place with an overshoot settle, keyed per message; burn ring already animates continuously while armed; read-receipt checkmark draw-on still open.
+7. Talk room polish: ~~bubble spring-in~~ **DONE 2026-08** — new bubbles rise into place with an overshoot settle, keyed per message; ~~read-receipt checkmark pop~~ **DONE 2026-08** — the check springs in ahead of "Read · burning" on first sight of the receipt; burn ring already animates continuously while armed.
 
 **Acceptance:** profiled at 60 fps on a mid-tier arm64 device (Perfetto trace in PR); idle screens still render zero frames; reduce-motion kills all non-essential movement.
 

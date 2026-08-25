@@ -254,6 +254,9 @@ func (s *Inbox) handleAction(gtx layout.Context, env *Env, snap state.Snapshot, 
 			env.State.Send(syncmanager.MarkCmd{MessageID: msg.ID, Flag: `\Seen`, Set: true})
 		}
 		env.State.OpenThread(msg.ThreadID)
+		if action.From != (image.Rectangle{}) {
+			env.Nav.ArmHero(action.From) // thread grows out of this row (5.1)
+		}
 		env.Nav.Push(state.ScreenThread, gtx.Now)
 
 	case widgets.ActionArchive:
