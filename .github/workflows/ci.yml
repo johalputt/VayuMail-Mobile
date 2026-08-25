@@ -156,11 +156,17 @@ jobs:
       - name: The gogio manifest patch still applies
         run: |
           sh scripts/gogio-hardened.sh ./gogio-hardened
-          # Prove the attribute reached the built tool, not just that the
+          # Prove every hardening reached the built tool, not just that the
           # script exited 0.
           strings ./gogio-hardened | grep -q 'android:allowBackup="false"' \
             || (echo "patched gogio does not carry allowBackup=false" && exit 1)
-          echo "manifest patch verified in the built tool"
+          for perm in FOREGROUND_SERVICE DATA_SYNC POST_NOTIFICATIONS USE_BIOMETRIC; do
+            strings ./gogio-hardened | grep -q "android.permission.$perm" \
+              || (echo "patched gogio does not inject $perm" && exit 1)
+          done
+          strings ./gogio-hardened | grep -q 'org.vayu.mail.VayuSyncService' \
+            || (echo "patched gogio does not declare VayuSyncService" && exit 1)
+          echo "manifest patches verified in the built tool"
 
   docs:
     name: Markdown lint

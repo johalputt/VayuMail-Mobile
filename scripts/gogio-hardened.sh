@@ -62,7 +62,8 @@ work = sys.argv[1]
 path = os.path.join(work, "gogio", "androidbuild.go")
 src = open(path).read()
 
-# The exact <application> line from gogio's APK manifest template.
+# 1. allowBackup: the exact <application> line from gogio's APK manifest
+#    template.
 old = '\t<application {{.IconSnip}} android:label="{{.AppName}}">'
 new = ('\t<application {{.IconSnip}} android:label="{{.AppName}}"\n'
        '\t\tandroid:allowBackup="false">')
@@ -75,8 +76,55 @@ if n != 1:
         "update this patch — do NOT relax the check, because the failure mode of a\n"
         "patch that no longer applies is an APK with Android backup enabled." % n)
 
-open(path, "w").write(src.replace(old, new))
+src = src.replace(old, new)
 print("gogio-hardened: manifest template patched (allowBackup=false)")
+
+# 2. Permissions gogio cannot express: its permission list comes only from
+#    imported gioui.org/app/permission/* packages, and none exists for the
+#    foreground service, notifications, or BiometricPrompt (audit M6). The
+#    same two-line sequence closes both manifest templates (APK and AAB),
+#    so the count is asserted at exactly 2.
+old = '{{end}}{{range .Features}}\t<uses-feature android:{{.}} android:required="false"/>'
+perms = (
+    '{{end}}\t<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>\n'
+    '\t<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>\n'
+    '\t<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n'
+    '\t<uses-permission android:name="android.permission.USE_BIOMETRIC"/>'
+    '{{range .Features}}\t<uses-feature android:{{.}} android:required="false"/>'
+)
+
+n = src.count(old)
+if n != 2:
+    sys.exit(
+        "gogio-hardened: expected exactly 2 permissions/Features sequences, found %d.\n"
+        "The template changed; re-read androidbuild.go and update the injection.\n"
+        "A missing injection ships without FOREGROUND_SERVICE, POST_NOTIFICATIONS\n"
+        "or USE_BIOMETRIC — the foreground service would crash on start and\n"
+        "biometric unlock would silently degrade." % n)
+
+src = src.replace(old, perms)
+print("gogio-hardened: manifest templates patched (4 injected permissions)")
+
+# 3. The sync service declaration, inside <application> ahead of the
+#    activity. Without it startForegroundService throws
+#    ActivityNotFoundException on every device.
+old = '\t\t<activity android:name="org.gioui.GioActivity"'
+new = ('\t\t<service android:name="org.vayu.mail.VayuSyncService"\n'
+       '\t\t\tandroid:exported="false"\n'
+       '\t\t\tandroid:foregroundServiceType="dataSync"/>\n'
+       '\t\t<activity android:name="org.gioui.GioActivity"')
+
+n = src.count(old)
+if n != 1:
+    sys.exit(
+        "gogio-hardened: expected exactly 1 GioActivity declaration, found %d.\n"
+        "Template changed; re-read androidbuild.go. A missing service tag makes\n"
+        "every background-sync start crash." % n)
+
+src = src.replace(old, new)
+print("gogio-hardened: manifest template patched (VayuSyncService declared)")
+
+open(path, "w").write(src)
 PY
 
 (cd "$WORK" && go build -trimpath -o "$OUT" ./gogio)
