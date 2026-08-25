@@ -95,7 +95,7 @@ deferred: go-imap-compress targets v1 only and has no tagged release.
 
 ## Phase 4 — Key model modernization
 
-1. **On-device PGP key generation for new accounts**: generate at provisioning, seal via Phase 1 keystore, publish public key to WKD/VayuPress; `FetchPrivateKey` remains only as legacy-account migration (closes M1 for everyone new).
+1. ~~**On-device PGP key generation for new accounts**~~ **DONE 2026-08 (client)**: `SyncPrivateKeyCmd` is now three-tier — keystore replay → legacy server fetch (which also gets sealed for next time) → **on-device generation** (`pgp.GenerateKey`, RSA-3072/AES-256) when the server has none, sealed under a namespaced alias so regeneration can never happen. Publication goes through the `syncmanager.PublishKeyFunc` seam: the VayuPress endpoint decision is the only remaining piece — wire it there and new keys start publishing, no client changes.
 2. Sign-only outbound (RFC 3156 multipart/signed builder) so users can sign to strangers without encrypting — tracker row PENDING today.
 3. OAuth refresh flow: provisioning issues refresh token; refresh happens in engine, token resealed on rotation (tracker row PENDING).
 4. Optional SPKI pin offered at provisioning time for VayuPress accounts (payload already carries the server's identity material).

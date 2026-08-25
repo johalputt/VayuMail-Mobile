@@ -2,12 +2,14 @@ package syncmanager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/johalputt/VayuMail-Mobile/internal/mail/account"
+	"github.com/johalputt/VayuMail-Mobile/internal/mail/pgp"
 	"github.com/johalputt/VayuMail-Mobile/internal/store"
 )
 
@@ -88,24 +90,45 @@ func (m *Manager) execUpdateCredential(ctx context.Context, c UpdateCredentialCm
 	return nil
 }
 
-// execSyncPrivateKey fetches the account's own PGP private key from its
-// VayuPress server using the stored mailbox credential, so received
-// encrypted mail can be decrypted on-device. The key is delivered to the
-// UI as a PrivateKeyEvent; the credential is used in memory only and the
-// key is never logged.
+// pgpKeyAliasPrefix namespaces the sealed on-device PGP private keys
+// (plan Phase 4.1) apart from mailbox credentials in the keystore.
+const pgpKeyAliasPrefix = "pgppriv:"
+
+// PublishKeyFunc, when set, is called once after an on-device generated
+// public key is created so the server can publish it to WKD. The VayuPress
+// endpoint decision is still pending, so the default nil means generation
+// works but publication is skipped and logged — the account stays fully
+// functional, just not yet encryptable-to by others.
+var PublishKeyFunc func(ctx context.Context, email, armoredPublicKey string) error
+
+// execSyncPrivateKey makes the account's own PGP private key available
+// on-device, delivered to the UI as a PrivateKeyEvent. Three tiers:
+//
+//  1. A previously stored/generated key in the sealed keystore — emitted
+//     directly, no network.
+//  2. The legacy path: the VayuPress server holds the key; fetch it with
+//     the mailbox credential and seal it for next time.
+//  3. The server has no key at all (new account): generate one on-device
+//     so the secret never exists anywhere else, then offer it for
+//     publication.
 func (m *Manager) execSyncPrivateKey(ctx context.Context, c SyncPrivateKeyCmd) error {
 	acct, err := m.db.GetAccount(ctx, c.AccountID)
 	if err != nil {
 		m.emit(PrivateKeyEvent{AccountID: c.AccountID, Err: err})
 		return err
 	}
+	alias := pgpKeyAliasPrefix + acct.EmailAddress
+
+	if sealed, err := m.ks.Fetch(alias); err == nil && len(sealed) > 0 {
+		m.emit(PrivateKeyEvent{AccountID: c.AccountID, Email: acct.EmailAddress, Armored: string(sealed)})
+		return nil
+	}
+
 	secret, err := m.credFor(acct.KeystoreAlias)()
 	if err != nil {
 		m.emit(PrivateKeyEvent{AccountID: c.AccountID, Email: acct.EmailAddress, Err: err})
 		return err
 	}
-	fctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
 	// Dedicated, non-pooling client: this fires opportunistically after
 	// every AddAccount, so a pooled keep-alive connection would leave its
 	// reader goroutine running past the fetch (a leak the tests catch).
@@ -113,12 +136,45 @@ func (m *Manager) execSyncPrivateKey(ctx context.Context, c SyncPrivateKeyCmd) e
 	// leaves nothing behind once the request returns.
 	tr := &http.Transport{DisableKeepAlives: true}
 	defer tr.CloseIdleConnections()
-	armored, err := account.FetchPrivateKey(fctx, &http.Client{Transport: tr}, acct.EmailAddress, secret)
+	fctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	armored, ferr := account.FetchPrivateKey(fctx, &http.Client{Transport: tr}, acct.EmailAddress, secret)
+	cancel()
+
+	switch {
+	case ferr == nil:
+		if err := m.ks.Store(alias, []byte(armored)); err != nil {
+			slog.Warn("seal fetched private key", "account", c.AccountID, "err", err)
+		}
+		m.emit(PrivateKeyEvent{AccountID: c.AccountID, Email: acct.EmailAddress, Armored: armored})
+		return nil
+	case errors.Is(ferr, account.ErrNoPrivateKey):
+		// Server has no key for this account: generate one on-device so
+		// the secret never exists anywhere else.
+	default:
+		m.emit(PrivateKeyEvent{AccountID: c.AccountID, Email: acct.EmailAddress, Err: ferr})
+		return ferr
+	}
+
+	pubArmored, privArmored, err := pgp.GenerateKey(acct.DisplayName, acct.EmailAddress)
 	if err != nil {
 		m.emit(PrivateKeyEvent{AccountID: c.AccountID, Email: acct.EmailAddress, Err: err})
 		return err
 	}
-	m.emit(PrivateKeyEvent{AccountID: c.AccountID, Email: acct.EmailAddress, Armored: armored})
+	if err := m.ks.Store(alias, privArmored); err != nil {
+		gerr := fmt.Errorf("syncmanager: seal generated key: %w", err)
+		m.emit(PrivateKeyEvent{AccountID: c.AccountID, Email: acct.EmailAddress, Err: gerr})
+		return gerr
+	}
+	if PublishKeyFunc != nil {
+		go func(email, pub string) {
+			pctx, pcancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer pcancel()
+			if perr := PublishKeyFunc(pctx, email, pub); perr != nil {
+				slog.Info("publish generated public key", "email", email, "err", perr)
+			}
+		}(acct.EmailAddress, string(pubArmored))
+	}
+	m.emit(PrivateKeyEvent{AccountID: c.AccountID, Email: acct.EmailAddress, Armored: string(privArmored)})
 	return nil
 }
 

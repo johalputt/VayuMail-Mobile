@@ -11,6 +11,22 @@ Held under Unreleased until the whole track is done, per the release rules.
 
 ### Added
 
+- **New accounts now generate their encryption keys on-device** (plan
+  Phase 4.1). When the server has no key for an account, the app creates
+  an RSA-3072 identity locally and seals it in the keystore — the private
+  material never exists anywhere else. Server-held keys still fetch as
+  before for legacy accounts, and fetched keys are now also sealed so
+  later sessions need no round-trip. Publishing new public keys waits
+  only on the VayuPress endpoint: the client side is a one-function
+  seam, tested.
+- **The Android release pipeline actually builds again** — dispatching
+  it exposed that the hardware-keystore and foreground-service JNI layer
+  had never been compiled against the pinned JNI binding; five call
+  sites and a missing import are fixed, proven by a green end-to-end
+  APK/AAB build on GitHub's runners.
+- **The iOS pipeline builds too**: gogio's pinned deployment target
+  trips Xcode 14+'s deleted libarclite archives; the workflow now stubs
+  them before linking, producing a sideloadable unsigned IPA.
 - **The app now follows Android's "remove animations" setting** (plan
   Phase 5.6). The animator duration scale is read straight through JNI on
   every resume — no new helper jar — and a system-wide scale of 0 snaps
