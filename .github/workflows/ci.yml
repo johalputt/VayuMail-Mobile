@@ -191,6 +191,15 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: '1.25.13'
+      # ./test/ now contains widget-level tests that import Gio, and Gio's
+      # Linux build needs these headers. Same list every other job installs.
+      - name: Install Gio native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libwayland-dev libx11-dev \
+            libx11-xcb-dev libxkbcommon-x11-dev libxkbcommon-dev \
+            libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev \
+            libxfixes-dev libvulkan-dev
       - name: Coverage on engine packages
         run: |
           go test -count=1 -coverpkg=./internal/... -coverprofile=coverage.out ./test/
