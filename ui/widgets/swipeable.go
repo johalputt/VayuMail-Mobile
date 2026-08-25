@@ -61,6 +61,9 @@ type Swipeable struct {
 	offset float32
 	active bool
 	moved  bool
+	// tickArmed tracks whether the finger is currently beyond the commit
+	// threshold, so the haptic tick fires once per crossing (plan 5.4).
+	tickArmed bool
 	// snap-back animation
 	snapFrom  float32
 	snapStart time.Time
@@ -124,6 +127,17 @@ func (s *Swipeable) Layout(gtx layout.Context, th *theme.Theme, id int64, row la
 				s.offset = ev.Position.X - s.pressX
 				if s.offset > tapSlop || s.offset < -tapSlop {
 					s.moved = true
+				}
+				// Threshold tick (plan Phase 5.4): one buzz at the moment
+				// the finger crosses the commit boundary — and only there,
+				// re-armed by dropping back below it. Release then fires
+				// its own confirm via the commit path.
+				beyond := s.offset > width*swipeThreshold || s.offset < -width*swipeThreshold
+				if beyond != s.tickArmed {
+					s.tickArmed = beyond
+					if beyond {
+						Buzz()
+					}
 				}
 			}
 		case pointer.Release:

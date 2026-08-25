@@ -11,6 +11,15 @@ Held under Unreleased until the whole track is done, per the release rules.
 
 ### Added
 
+- **The app now follows Android's "remove animations" setting** (plan
+  Phase 5.6). The animator duration scale is read straight through JNI on
+  every resume — no new helper jar — and a system-wide scale of 0 snaps
+  every animation to its end state, in AND with the in-app reduce-motion
+  toggle.
+- **Swipe gestures tick at the commit point** (plan Phase 5.4). Crossing
+  the archive/delete threshold under the finger gives one haptic tick —
+  re-armed if you drop back — so the moment of commitment is felt, not
+  guessed.
 - **The avatar pipeline is now fuzz-covered** (plan Phase 7.3). A new
   `FuzzAvatarImage` feeds arbitrary bytes through the exact decoder
   remote avatar servers can point us at — SVG path parsing and the four

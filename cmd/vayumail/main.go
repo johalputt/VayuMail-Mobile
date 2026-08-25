@@ -72,6 +72,7 @@ func run(window *app.Window) int {
 		feedView(buzzer, e)
 		biometric.HandleViewEvent(e)
 		pushnotify.HandleViewEvent(e)
+		refreshSystemMotion() // honor animator-scale changes on resume (5.6)
 	})
 	go initEngine(ctx, window, boot, func() (io.ReadCloser, error) { return exp.ChooseFile() })
 
