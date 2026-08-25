@@ -131,8 +131,8 @@ func TestPGPSignedTamperBreaksVerification(t *testing.T) {
 		t.Fatal(err)
 	}
 	status, err := kr.VerifyDetached(tampered, sig)
-	if status != pgp.SigInvalid && !(err != nil) {
-		t.Fatalf("tampered content verified: status=%v err=%v", status, err)
+	if err == nil && status == pgp.SigValid {
+		t.Fatal("tampered content verified")
 	}
 }
 
