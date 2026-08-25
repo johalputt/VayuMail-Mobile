@@ -43,10 +43,12 @@ jobs:
 
       - name: Determine version
         id: ver
+        # macOS has no GNU grep -P; sed works everywhere.
         run: |
-          SEMVER=$(grep -oP 'Semantic = "\K[^"]+' internal/version/version.go)
-          CODE=$(grep -oP 'Code = \K[0-9]+' internal/version/version.go)
+          SEMVER=$(sed -n 's/.*Semantic = "\([^"]*\)".*/\1/p' internal/version/version.go)
+          CODE=$(sed -n 's/.*Code = \([0-9]*\).*/\1/p' internal/version/version.go)
           echo "semver=$SEMVER" >> "$GITHUB_OUTPUT"
+          echo "gogiover=$SEMVER.$CODE" >> "$GITHUB_OUTPUT"
 
       - name: Build .app
         env:
@@ -54,7 +56,7 @@ jobs:
         run: |
           gogio -target ios \
             -appid com.vayu.mail \
-            -version ${{ steps.ver.outputs.semver }}.${CODE:-0} \
+            -version ${{ steps.ver.outputs.gogiover }} \
             -o VayuMail.app \
             ./cmd/vayumail
 
